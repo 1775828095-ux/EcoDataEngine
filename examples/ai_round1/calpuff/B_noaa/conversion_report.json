@@ -1,0 +1,70 @@
+{
+  "scope": "CALMET 5.8.5 SURF.DAT 2.0 formatted NONE only",
+  "complete_model_input": false,
+  "native_model_input_verified": false,
+  "hours": 24,
+  "stations": [
+    14732
+  ],
+  "records": 24,
+  "timezone_west_hours": 5,
+  "time_label": "hour_end",
+  "missing_policy": "preserve",
+  "missing_counts": {
+    "wind_speed": 0,
+    "wind_direction": 0,
+    "ceiling": 24,
+    "opaque_cover": 24,
+    "temperature": 0,
+    "relative_humidity": 24,
+    "station_pressure": 0,
+    "precip_code": 24
+  },
+  "rounding_max_in_target_units": {
+    "ceiling": 0.0,
+    "opaque_cover": 0.0,
+    "relative_humidity": 0.0,
+    "precip_code": 0.0
+  },
+  "required_next_steps": [
+    "CALMET.INP station locations/grid and NSSTA/IFORMS=2",
+    "GEO.DAT, upper-air/prognostic meteorology as configured",
+    "CALMET run, then CALPUFF sources/receptors/control"
+  ],
+  "range_basis": "provisional engineering bounds; missing codes from official RDS/SMERGE",
+  "format_source": "CALMET 5.8.5 RDHD and RDS; SMERGE 5.57 sample surf.dat",
+  "source_sha256": "e8896df5e99418f1bef0318c8a895a52eb72cfcf45660e33714e0070ddac7243",
+  "configuration": {
+    "version": "CALMET-5.8.5-SURF-2.0",
+    "station_ids": [
+      14732
+    ],
+    "timezone_west_hours": 5,
+    "time_label": "hour_end",
+    "missing_policy": "preserve",
+    "columns": {
+      "wind_speed": "wind_speed",
+      "wind_direction": "wind_direction",
+      "ceiling": "ceiling",
+      "opaque_cover": "opaque_cover",
+      "temperature": "temperature",
+      "relative_humidity": "relative_humidity",
+      "station_pressure": "station_pressure",
+      "precip_code": "precip_code"
+    },
+    "units": {
+      "wind_speed": "m/s",
+      "wind_direction": "degree",
+      "ceiling": "hundred_ft",
+      "opaque_cover": "tenths",
+      "temperature": "degC",
+      "relative_humidity": "%",
+      "station_pressure": "hPa",
+      "precip_code": "code"
+    }
+  },
+  "output_sha256": {
+    "SURF.DAT": "2439056b773ee31590c030f68487fabab2f527fce612dc3ed641aed6d61088a1"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

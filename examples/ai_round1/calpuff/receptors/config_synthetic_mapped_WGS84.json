@@ -1,0 +1,30 @@
+{
+  "mode": "receptors",
+  "version": "CALPUFF-5.8.4-group17",
+  "table": "receptors.csv",
+  "control_file": "CPUF.INP",
+  "fields": {
+    "id": "site",
+    "x": "east",
+    "y": "north",
+    "elevation": "base",
+    "height_agl": "above"
+  },
+  "units": {
+    "x": "km",
+    "y": "km",
+    "elevation": "km",
+    "height_agl": "km"
+  },
+  "source_crs": "EPSG:32619",
+  "elevation_vertical_reference": "MSL",
+  "missing_values": [
+    -9999
+  ],
+  "max_float32_error_m": 0.1,
+  "source": {
+    "kind": "synthetic_with_official_template",
+    "description": "Synthetic receptors in official control domain; not real receptors or a full engineering test",
+    "license": "Synthetic CC0; official template used for interface testing"
+  }
+}

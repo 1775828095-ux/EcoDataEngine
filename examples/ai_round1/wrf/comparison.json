@@ -1,0 +1,41 @@
+{
+  "format_parsed_by": "scipy.io.FortranFile (independent Fortran records)",
+  "sst_K": {
+    "count": 16,
+    "max_absolute_error": 1.4877319358674868e-05,
+    "MAE": 6.461143499336686e-06,
+    "RMSE": 8.557068343411232e-06,
+    "bias": 4.267692588655336e-06,
+    "threshold_atol": 2e-05,
+    "relative_error": "not used: values near zero occur",
+    "passed": true
+  },
+  "grid_coordinates": {
+    "count": 4,
+    "max_absolute_error": 0.0,
+    "MAE": 0.0,
+    "RMSE": 0.0,
+    "bias": 0.0,
+    "threshold_atol": 1e-05,
+    "relative_error": "not used: values near zero occur",
+    "passed": true
+  },
+  "earth_radius_km": {
+    "count": 1,
+    "max_absolute_error": 0.00021484374974534148,
+    "MAE": 0.00021484374974534148,
+    "RMSE": 0.00021484374974534148,
+    "bias": 0.00021484374974534148,
+    "threshold_atol": 0.0003,
+    "relative_error": "not used: values near zero occur",
+    "passed": true
+  },
+  "field_unit_level_exact": true,
+  "UTC_time": "2020-01-01_12:00:00",
+  "B2": null,
+  "C2": null,
+  "complete_model_run": false,
+  "boundary": "One SST supplemental slab; no pressure levels, winds, soil, geography, metgrid/real/WRF run",
+  "coordinate_max_error_degree": 0.0,
+  "coordinates_passed": true
+}

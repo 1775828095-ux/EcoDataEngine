@@ -1,0 +1,1 @@
+CMAQ5.5 BNDARY3显式外圈浓度，NTHIK=1；用户须已给目标网格/垂直层/UTC小时全部浓度与位置。这不是BC_PROFILE，也不从静态剖面推算三维边界；需匹配MCIP与项目完整机制，未执行BCON/CCTM。

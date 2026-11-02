@@ -1,0 +1,89 @@
+{
+  "scope": "仅生成aquifer.aqu含水层参数数据库，检查init名称在所给initial.aqu中存在。不生成aquifer.con、流域/HRU/河道连接、初始化学数据或file.cio。所给initial.aqu中更深层的外部引用未验证；本包不包含完整工程。",
+  "target": "SWAT+62.0.0 aqu_read/aquifer_database",
+  "aquifer_records": 2,
+  "initial_name_refs": [
+    "initaqu1"
+  ],
+  "target_units": {
+    "gw_flo": "mm",
+    "dep_bot": "m",
+    "dep_wt": "m",
+    "no3_n": "ppm NO3-N",
+    "sol_p": "ppm P",
+    "carbon": "%",
+    "flo_dist": "m",
+    "bf_max": "mm",
+    "alpha_bf": "1/day",
+    "revap": "1",
+    "rchg_dp": "1",
+    "spec_yld": "m3/m3",
+    "hl_no3n": "day",
+    "flo_min": "m",
+    "revap_min": "m"
+  },
+  "source": {
+    "url": "synthetic://aquifer-two-records",
+    "description": "Synthetic mapped input for alternative headers and cm/km/fraction unit conversions"
+  },
+  "missing_policy": "reject",
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "dea39f2af0725ddc4395d544a58cd8c24778b903245c6bb599b7f06974c5841a",
+  "configuration": {
+    "mode": "aquifer_parameters",
+    "target_model_version": "62.0.0",
+    "table": "mapped_source.csv",
+    "initial_aquifer_file": "initial.aqu",
+    "fields": {
+      "id": "source_id",
+      "name": "source_name",
+      "init": "source_init",
+      "gw_flo": "source_gw_flo",
+      "dep_bot": "source_dep_bot",
+      "dep_wt": "source_dep_wt",
+      "no3_n": "source_no3_n",
+      "sol_p": "source_sol_p",
+      "carbon": "source_carbon",
+      "flo_dist": "source_flo_dist",
+      "bf_max": "source_bf_max",
+      "alpha_bf": "source_alpha_bf",
+      "revap": "source_revap",
+      "rchg_dp": "source_rchg_dp",
+      "spec_yld": "source_spec_yld",
+      "hl_no3n": "source_hl_no3n",
+      "flo_min": "source_flo_min",
+      "revap_min": "source_revap_min"
+    },
+    "units": {
+      "gw_flo": "cm",
+      "dep_bot": "km",
+      "dep_wt": "m",
+      "no3_n": "ppm NO3-N",
+      "sol_p": "ppm P",
+      "carbon": "fraction",
+      "flo_dist": "m",
+      "bf_max": "mm",
+      "alpha_bf": "1/day",
+      "revap": "1",
+      "rchg_dp": "1",
+      "spec_yld": "m3/m3",
+      "hl_no3n": "day",
+      "flo_min": "m",
+      "revap_min": "m"
+    },
+    "missing_values": [
+      "-9999",
+      "NA"
+    ],
+    "source": {
+      "url": "synthetic://aquifer-two-records",
+      "description": "Synthetic mapped input for alternative headers and cm/km/fraction unit conversions"
+    }
+  },
+  "output_sha256": {
+    "aquifer.aqu": "40c149d1c45b4a715cc33fc6572014f08ecf3ab1eb10b3daeeea81a06592fa74",
+    "README_aquifer.txt": "3c5957c4c346f0e94032a69c514f8364e115b7857ac274a19e61b9f0abf41284"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

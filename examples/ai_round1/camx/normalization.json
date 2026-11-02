@@ -1,0 +1,16 @@
+{
+  "input_type": "CAMx7.40 TUV photolysis native reference input",
+  "title": "TUV4.8CAMx7.40_CB6r5",
+  "conditions": " O3 Column =   286. Albedo=  0.040 Terrain  =  0.000",
+  "shape": [
+    825,
+    23,
+    10
+  ],
+  "condition_count": 75,
+  "unique_height_count": 11,
+  "height_block_count": 825,
+  "scope": "Native input -> independently decoded table with all O3/albedo/terrain conditions -> EcoData standardized CF only; no upstream radiation model or native CAMx export",
+  "units": "Retained native file numbers; no unverified s^-1/min^-1 conversion, zenith columns retain indices until official source verification",
+  "reference_configuration": "Official June10-11 2016 CAMx7.40 test, CB6r5; values are same file, not observed atmospheric data"
+}

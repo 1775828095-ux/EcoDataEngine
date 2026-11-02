@@ -1,0 +1,51 @@
+{
+  "mode": "upper_air",
+  "version": "CALMET-5.8.5-UP-2.0",
+  "projection": "LL",
+  "height_reference": "MSL",
+  "wind_direction_reference": "meteorological_from_true_north",
+  "sounding_interval_hours": 12,
+  "missing_values": [
+    -8888,
+    -9999
+  ],
+  "top_pressure_hpa": 500,
+  "stations": [
+    {
+      "id": 72357,
+      "name": "OUN",
+      "latitude": 35.1808,
+      "longitude": -97.4378,
+      "elevation_m": 345
+    },
+    {
+      "id": 12345678,
+      "name": "TEST",
+      "latitude": -35.1,
+      "longitude": 149.2,
+      "elevation_m": 345
+    }
+  ],
+  "station_column": "station_id",
+  "time_column": "time",
+  "level_column": "level",
+  "columns": {
+    "pressure": "pressure_pa",
+    "height": "height_m_msl",
+    "temperature": "温度",
+    "wind_direction": "wind_from_degree",
+    "wind_speed": "风速"
+  },
+  "units": {
+    "pressure": "hPa",
+    "height": "km",
+    "temperature": "degC",
+    "wind_direction": "degree",
+    "wind_speed": "km/h"
+  },
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Synthetic 2-station test with 38 and 2 levels, custom UTF8 columns and changed units. Second station is NOT a real Australian sounding."
+  },
+  "datum": "WGS-84"
+}

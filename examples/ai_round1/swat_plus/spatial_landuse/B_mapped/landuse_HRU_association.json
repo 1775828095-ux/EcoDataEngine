@@ -1,0 +1,23 @@
+[
+  {
+    "hru_id": "3",
+    "category": "C",
+    "lu_mgt": "cosy_lum",
+    "area_m2": 5000.0,
+    "uncovered_m2": 0.0
+  },
+  {
+    "hru_id": "2",
+    "category": "M",
+    "lu_mgt": "mntill_corn_lum",
+    "area_m2": 5000.0,
+    "uncovered_m2": 0.0
+  },
+  {
+    "hru_id": "1",
+    "category": "C",
+    "lu_mgt": "cosy_lum",
+    "area_m2": 5000.0,
+    "uncovered_m2": 0.0
+  }
+]

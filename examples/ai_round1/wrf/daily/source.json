@@ -1,0 +1,44 @@
+{
+  "institution": "NOAA NCEI",
+  "product": "OISST v2.1 final daily analysis",
+  "product_url": "https://www.ncei.noaa.gov/products/optimum-interpolation-sst",
+  "use": "Public NOAA data; acknowledge NOAA OISST; no warranty; existing use agreement retained in data survey sources",
+  "time": [
+    "2020-01-01T12:00:00Z",
+    "2020-01-02T12:00:00Z",
+    "2020-01-03T12:00:00Z"
+  ],
+  "original_units": "Celsius",
+  "latitude_centers": [
+    30.125,
+    30.875
+  ],
+  "longitude_centers_degrees_east": [
+    300.125,
+    300.875
+  ],
+  "shape_time_z_lat_lon": [
+    3,
+    1,
+    4,
+    4
+  ],
+  "preparation": "Open each original NetCDF with CF scale/missing decoding. Select sst lat=slice(30,31), lon=slice(300,301). Assert original masks empty, all finite, 4x4 per day. xr.concat(pieces, dim=time); retain original packing encoding and dates; to_netcdf(engine=scipy). Reopen and assert values exactly equal. No filling/interpolation.",
+  "upstream_files": [
+    {
+      "url": "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/202001/oisst-avhrr-v02r01.20200101.nc",
+      "sha256": "11f1127a120f015a1412d44cccc5c94c364786f1f7b98615914ad5d418615ea4"
+    },
+    {
+      "url": "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/202001/oisst-avhrr-v02r01.20200102.nc",
+      "sha256": "13b747752fa9d65b0b0ec8ae609b4770a96b718c63d364894c9fbbcc4d9c50a5"
+    },
+    {
+      "url": "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/202001/oisst-avhrr-v02r01.20200103.nc",
+      "sha256": "52667e1e5c326f5ba746c0d4a101cc6541d09838e3738646185158df7fd98048"
+    }
+  ],
+  "sample_sha256": "377cd9ed4f97554b970e1228045d5dab320afffe4a9f272a9eb5a53e66ec025f",
+  "B2": null,
+  "independent_reader": "examples/ai_round1/independent.py: scipy.io.FortranFile; based on WPS v5 positions, not exporter implementation"
+}

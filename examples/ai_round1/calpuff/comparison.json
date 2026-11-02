@@ -1,0 +1,84 @@
+{
+  "reference": {
+    "format_parsed": true,
+    "records": 840,
+    "missing_counts": {
+      "wind_speed": 0,
+      "wind_direction": 0,
+      "ceiling": 0,
+      "opaque_cover": 168,
+      "temperature": 0,
+      "relative_humidity": 0,
+      "station_pressure": 0,
+      "precip_code": 0
+    },
+    "time_label": "hour_end",
+    "complete_model_run": false,
+    "time_station_exact": true,
+    "missing_mask_exact": true,
+    "value_metrics": {
+      "count": 6552,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 1e-06,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    },
+    "B2": "Official unchanged SMERGE5.57 SURF.DAT; same decoded values/configuration, validates serialization/unit inversion only"
+  },
+  "noaa": {
+    "format_parsed": true,
+    "records": 24,
+    "missing_counts": {
+      "wind_speed": 0,
+      "wind_direction": 0,
+      "ceiling": 24,
+      "opaque_cover": 24,
+      "temperature": 0,
+      "relative_humidity": 24,
+      "station_pressure": 0,
+      "precip_code": 24
+    },
+    "time_label": "hour_end",
+    "complete_model_run": false,
+    "temperature_conversion": {
+      "count": 24,
+      "max_absolute_error": 5.684341886080802e-14,
+      "MAE": 3.0790185216271006e-14,
+      "RMSE": 4.1835623516930536e-14,
+      "bias": 3.0790185216271006e-14,
+      "threshold_atol": 1e-06,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    },
+    "B2": null
+  },
+  "synthetic": {
+    "format_parsed": true,
+    "records": 4,
+    "missing_counts": {
+      "wind_speed": 0,
+      "wind_direction": 0,
+      "ceiling": 0,
+      "opaque_cover": 0,
+      "temperature": 0,
+      "relative_humidity": 0,
+      "station_pressure": 0,
+      "precip_code": 0
+    },
+    "time_label": "hour_end",
+    "complete_model_run": false,
+    "temperature_K": {
+      "count": 4,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 1e-06,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    }
+  }
+}

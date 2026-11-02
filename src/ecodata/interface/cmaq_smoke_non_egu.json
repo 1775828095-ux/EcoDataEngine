@@ -1,0 +1,53 @@
+{
+  "reference": "additional_sector_jobs/1810347fe00f453cb321f66cbeb3b700",
+  "raw": "additional_sector_jobs/1810347fe00f453cb321f66cbeb3b700/raw_inventory.csv",
+  "raw_sha256": "b7eaf12fd148609e70becc13991d8909c3dc68809b1891e6d8976c4fe81b9574",
+  "steps": [
+    {
+      "name": "inventory",
+      "subdir": ".",
+      "exe": "smkinven",
+      "exe_sha256": "30e1fd110b3a519dbad92629a238cad441179e82f902d53783ec83cb228328c7",
+      "environment_sha256": "b2c12fd94b64489f0769808877cb5f1f062bc52de3eea85c2ab481e21b2a1c3f"
+    },
+    {
+      "name": "speciation",
+      "subdir": "speciation",
+      "exe": "spcmat",
+      "exe_sha256": "12031d3147986f1f0c934d481ad6e90346928bcdb5f597f026d2ff0a002d391a",
+      "environment_sha256": "6de5089ecc95b3e6120e9cf9be4efa9574084a4bc193c8601ad2822dbb47bf0e"
+    },
+    {
+      "name": "gridding",
+      "subdir": "gridding",
+      "exe": "grdmat",
+      "exe_sha256": "e9d865ccdd9c2eb13b576678e438e77c13cd0ad685da4c42218c79bd6b8d5635",
+      "environment_sha256": "13557a69a67ba7d567cdf02dd282b027fe6a641d4684f357ddd97213bf8b69df"
+    },
+    {
+      "name": "temporal",
+      "subdir": "temporal",
+      "exe": "temporal",
+      "exe_sha256": "87a3374db4e0072a4c22d6f547046cb635b2bd4faae9aa577bd88fbb480c2388",
+      "environment_sha256": "f1a4d6c5b10531aadf6d74617ad47b21d16eb6e4aaab0e6afc71c03abfb1a7a2"
+    },
+    {
+      "name": "elevpoint",
+      "subdir": "elevpoint",
+      "exe": "elevpoint",
+      "exe_sha256": "ce75c1058fa4b90cb380f974442b19c60fb8b11ef8d75398380b156303b80c79",
+      "environment_sha256": "a0a2371b7bd641932f19f0357953c593672ba01137deb4474d8ef119b5262f33"
+    },
+    {
+      "name": "merge",
+      "subdir": "merge",
+      "exe": "smkmerge",
+      "exe_sha256": "6f34b6c0bffe43855e7266cd7c257d4cdc74589612adb9eabfd94124292d4390",
+      "environment_sha256": "e7dd793aad73d75961b1f4f5fc5cc02be1da0a6770fdc7b241e44716db2a09f8"
+    }
+  ],
+  "inventory_name": "northeast_ptnonipm2018",
+  "scope": "Audited selected 2018 NEI non-EGU point inventory; complete positive stacks only; 33 incomplete/inconsistent PM source identities quarantined in full. Native PMC=PM10-PM2_5; NO_SPC_ZERO_EMIS=Y explicitly audited. Published sector speciation and general temporal allocation, not local measured hourly emissions. Not complete regional inventory; other sectors remain separately reused.",
+  "prior_native_validation": "C:\\Users\\ASUS\\Documents\\ChatGPT\\\u6d4b\u8bd5\u91cd\\\u53cc\u4efb\u52a1\u63a8\u8fdb_20261030\\cmaq_additional_sector_jobs\\10387a2a271148cb979be54dcc96f280",
+  "quarantine": "C:\\Users\\ASUS\\Documents\\ChatGPT\\\u6d4b\u8bd5\u91cd\\\u53cc\u4efb\u52a1\u63a8\u8fdb_20261030\\additional_sector_jobs\\1810347fe00f453cb321f66cbeb3b700\\quarantined_source_rows.csv"
+}

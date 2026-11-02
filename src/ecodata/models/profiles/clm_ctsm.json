@@ -1,0 +1,44 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "clm_ctsm",
+  "name": "CLM/CTSM",
+  "category": "陆地生态",
+  "reference_version": "CTSM current maintained releases / CLM5",
+  "official_sources": [
+    "https://escomp.github.io/CTSM/release-clm5.0/users_guide/index.html"
+  ],
+  "input_formats": [
+    "NetCDF",
+    "namelist text",
+    "stream XML"
+  ],
+  "required_variables": [
+    "domain",
+    "surface_dataset",
+    "atmospheric_forcing",
+    "initial_conditions"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "domain",
+      "surface data",
+      "atmospheric forcing streams",
+      "finidat/restart",
+      "namelists"
+    ],
+    "dimensions": [
+      "time",
+      "gridcell",
+      "landunit",
+      "column",
+      "pft",
+      "soil_layer"
+    ],
+    "special": "component set, resolution and land-use options determine inputs"
+  },
+  "outputs": "history and restart NetCDF",
+  "exchange_notes": "CESM/CIME streams and coupler exchange; dimensions are hierarchical"
+}

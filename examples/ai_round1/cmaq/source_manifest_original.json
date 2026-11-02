@@ -1,0 +1,135 @@
+{
+  "sources": [
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240101/monitoring_site_locations.dat",
+      "path": "_sources\\monitoring_site_locations.dat",
+      "bytes": 3079915,
+      "sha256": "914185f0ea0dec1cd8bb92c3bef77156fe9eea44e07a24239d78f5b23ede0ae7"
+    },
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240101/HourlyData_2024010100.dat",
+      "path": "_sources\\HourlyData_2024010100.dat",
+      "bytes": 720549,
+      "sha256": "16b63f42faf6036558a43467acef0c00a14a2e10529e92d1ba1e2ff3ec578e05"
+    },
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240101/HourlyData_2024010106.dat",
+      "path": "_sources\\HourlyData_2024010106.dat",
+      "bytes": 698278,
+      "sha256": "3b49398d12d15db85059d69e2fc2a74d8ace1482887d66aacdc7a289597e113e"
+    },
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240101/HourlyData_2024010112.dat",
+      "path": "_sources\\HourlyData_2024010112.dat",
+      "bytes": 710980,
+      "sha256": "11da370deac15fdc5b009bc46b0be39d4c0a12ee8e4ce556a72c3a3957f493a0"
+    },
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240101/HourlyData_2024010118.dat",
+      "path": "_sources\\HourlyData_2024010118.dat",
+      "bytes": 721771,
+      "sha256": "af599047cfd8d162eeaf90b2197955cec0e1707566a8e14012bbb2bbe3e8709d"
+    },
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240102/HourlyData_2024010200.dat",
+      "path": "_sources\\HourlyData_2024010200.dat",
+      "bytes": 705105,
+      "sha256": "a45404aa0377a080273b7d2c8264ca61e6fbb713be143e01991f0bbb58faa656"
+    },
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240102/HourlyData_2024010206.dat",
+      "path": "_sources\\HourlyData_2024010206.dat",
+      "bytes": 705488,
+      "sha256": "9e9467a48ede76cdc53b6157e2d147d6aafe5876e236a728376154fb759769ba"
+    },
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240102/HourlyData_2024010212.dat",
+      "path": "_sources\\HourlyData_2024010212.dat",
+      "bytes": 710342,
+      "sha256": "9b39e6a1063674fe60f34a80196d81d974765e6e13ca2b0e74be359e61a58639"
+    },
+    {
+      "url": "https://files.airnowtech.org/airnow/2024/20240102/HourlyData_2024010218.dat",
+      "path": "_sources\\HourlyData_2024010218.dat",
+      "bytes": 686852,
+      "sha256": "ec854f88e90ed25962d195f1fe2863366fe04a71ae0c671f957d3ca68bca1297"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/aqc_tavg_1hr_g1440x721_v1.das",
+      "path": "_sources\\aqc_tavg_1hr_g1440x721_v1.das",
+      "bytes": 2584,
+      "sha256": "1957a517672270565b8de29f375873dec466475f096f86b761b35e0d7d6be797"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/aqc_tavg_1hr_g1440x721_v1.ascii?pm25_rh35_gcc[52584:6:52626][0][496:1:498][247:1:249]",
+      "path": "_sources\\pm25_rh35_gcc.ascii",
+      "bytes": 1279,
+      "sha256": "08e775b0f90c73bb7fb1c64f2f29d4027b638ce722571c68e1a9fb413a04d10a"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/met_tavg_1hr_g1440x721_x1.das",
+      "path": "_sources\\met_tavg_1hr_g1440x721_x1.das",
+      "bytes": 4781,
+      "sha256": "1e3aa9797c8f212365eeb97d179af201d4152a6b69903c2489607192dd1c8c0d"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/met_tavg_1hr_g1440x721_x1.ascii?t2m[52584:1:52631][494:2:500][244:2:252]",
+      "path": "_sources\\t2m.ascii",
+      "bytes": 12661,
+      "sha256": "b07cc86f8fbc824f9748761db3c6cd39da5cd14d9e9755dc0a3c92a73f7e11e6"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/met_tavg_1hr_g1440x721_x1.das",
+      "path": "_sources\\met_tavg_1hr_g1440x721_x1.das",
+      "bytes": 4781,
+      "sha256": "1e3aa9797c8f212365eeb97d179af201d4152a6b69903c2489607192dd1c8c0d"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/met_tavg_1hr_g1440x721_x1.ascii?u10m[52584:1:52631][494:2:500][244:2:252]",
+      "path": "_sources\\u10m.ascii",
+      "bytes": 13704,
+      "sha256": "d88dfa1e81b584575d83be7282f094c24e3350b3077abb29eaf740e70cd4f34d"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/met_tavg_1hr_g1440x721_x1.das",
+      "path": "_sources\\met_tavg_1hr_g1440x721_x1.das",
+      "bytes": 4781,
+      "sha256": "1e3aa9797c8f212365eeb97d179af201d4152a6b69903c2489607192dd1c8c0d"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/met_tavg_1hr_g1440x721_x1.ascii?v10m[52584:1:52631][494:2:500][244:2:252]",
+      "path": "_sources\\v10m.ascii",
+      "bytes": 13858,
+      "sha256": "bbadbd21009c1880f6887500d682a573690de2b3f9a16add88f8d9e070861b84"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/met_tavg_1hr_g1440x721_x1.das",
+      "path": "_sources\\met_tavg_1hr_g1440x721_x1.das",
+      "bytes": 4781,
+      "sha256": "1e3aa9797c8f212365eeb97d179af201d4152a6b69903c2489607192dd1c8c0d"
+    },
+    {
+      "url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/met_tavg_1hr_g1440x721_x1.ascii?rh[52584:1:52631][0][494:2:500][244:2:252]",
+      "path": "_sources\\rh.ascii",
+      "bytes": 14029,
+      "sha256": "c000de71b7ffb27635054eb3dede927354087bdf3c97952c3e062542a217e206"
+    },
+    {
+      "url": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer?f=pjson",
+      "path": "_sources\\usgs_service.json",
+      "bytes": 12981,
+      "sha256": "a300a739a6e47627d1cd6921fca368004d88a8ac62d6d32c64571c669e4349bb"
+    },
+    {
+      "url": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox=-118.375%2C33.875%2C-117.625%2C34.625&bboxSR=4326&imageSR=3857&size=128%2C128&format=tiff&pixelType=F32&f=image&renderingRule=%7B%22rasterFunction%22%3A+%22None%22%7D",
+      "path": "_sources\\usgs_dem_raw.tif",
+      "bytes": 66682,
+      "sha256": "101a2a2414e0c63218c9bb741e52b6fa6a5369cf6ab2965e8d098c5d03bff3f6"
+    }
+  ],
+  "documentation": [
+    "https://files.airnowtech.org/airnow/docs/HourlyDataFactSheet.pdf",
+    "https://gmao.gsfc.nasa.gov/pubs/docs/Knowland1446.pdf"
+  ],
+  "source_bytes": 8881839
+}

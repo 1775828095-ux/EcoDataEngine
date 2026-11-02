@@ -1,0 +1,2 @@
+"""Minimal local test interface."""
+

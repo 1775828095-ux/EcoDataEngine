@@ -1,0 +1,40 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "mt3d_usgs",
+  "name": "MT3D-USGS",
+  "category": "地下水",
+  "reference_version": "1.1.0 family",
+  "official_sources": [
+    "https://pubs.usgs.gov/tm/06/a53/"
+  ],
+  "input_formats": [
+    "package text",
+    "binary arrays"
+  ],
+  "required_variables": [
+    "flow_transport_link",
+    "grid",
+    "initial_concentration",
+    "transport_parameters",
+    "sources_sinks"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "name/basic/transport/advection/dispersion/source packages",
+      "MODFLOW flow link"
+    ],
+    "dimensions": [
+      "stress_period",
+      "time_step",
+      "layer",
+      "row",
+      "column"
+    ],
+    "special": "requires compatible MODFLOW flow solution"
+  },
+  "outputs": "concentration and mass-balance files",
+  "exchange_notes": "consumes MODFLOW heads/flows; package compatibility is version-specific"
+}

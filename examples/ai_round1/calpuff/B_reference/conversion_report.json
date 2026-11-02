@@ -1,0 +1,78 @@
+{
+  "scope": "CALMET 5.8.5 SURF.DAT 2.0 formatted NONE only",
+  "complete_model_input": false,
+  "native_model_input_verified": false,
+  "hours": 168,
+  "stations": [
+    14606,
+    14611,
+    14745,
+    14742,
+    14764
+  ],
+  "records": 840,
+  "timezone_west_hours": 5,
+  "time_label": "hour_end",
+  "missing_policy": "preserve",
+  "missing_counts": {
+    "wind_speed": 0,
+    "wind_direction": 0,
+    "ceiling": 0,
+    "opaque_cover": 168,
+    "temperature": 0,
+    "relative_humidity": 0,
+    "station_pressure": 0,
+    "precip_code": 0
+  },
+  "rounding_max_in_target_units": {
+    "ceiling": 0.0,
+    "opaque_cover": 0.0,
+    "relative_humidity": 0.0,
+    "precip_code": 0.0
+  },
+  "required_next_steps": [
+    "CALMET.INP station locations/grid and NSSTA/IFORMS=2",
+    "GEO.DAT, upper-air/prognostic meteorology as configured",
+    "CALMET run, then CALPUFF sources/receptors/control"
+  ],
+  "range_basis": "provisional engineering bounds; missing codes from official RDS/SMERGE",
+  "format_source": "CALMET 5.8.5 RDHD and RDS; SMERGE 5.57 sample surf.dat",
+  "source_sha256": "0ec5ad83c36cc7156ca4a2927f32136d76d16dbd52d340408c30e1d7d1098b7e",
+  "configuration": {
+    "version": "CALMET-5.8.5-SURF-2.0",
+    "station_ids": [
+      14606,
+      14611,
+      14745,
+      14742,
+      14764
+    ],
+    "timezone_west_hours": 5,
+    "time_label": "hour_end",
+    "missing_policy": "preserve",
+    "columns": {
+      "wind_speed": "wind_speed",
+      "wind_direction": "wind_direction",
+      "ceiling": "ceiling",
+      "opaque_cover": "opaque_cover",
+      "temperature": "temperature",
+      "relative_humidity": "relative_humidity",
+      "station_pressure": "station_pressure",
+      "precip_code": "precip_code"
+    },
+    "units": {
+      "wind_speed": "km/h",
+      "wind_direction": "degree",
+      "ceiling": "hundred_ft",
+      "opaque_cover": "tenths",
+      "temperature": "degC",
+      "relative_humidity": "%",
+      "station_pressure": "Pa",
+      "precip_code": "code"
+    }
+  },
+  "output_sha256": {
+    "SURF.DAT": "2a9ae3b56f24c81193cea5e93a516efbd3da3078848be6b4c4043af6b29a6c1e"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

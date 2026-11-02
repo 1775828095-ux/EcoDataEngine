@@ -1,0 +1,33 @@
+{
+  "version": "CALMET-5.8.5-SURF-2.0",
+  "station_ids": [
+    14606,
+    14611,
+    14745,
+    14742,
+    14764
+  ],
+  "timezone_west_hours": 5,
+  "time_label": "hour_end",
+  "missing_policy": "preserve",
+  "columns": {
+    "wind_speed": "wind_speed",
+    "wind_direction": "wind_direction",
+    "ceiling": "ceiling",
+    "opaque_cover": "opaque_cover",
+    "temperature": "temperature",
+    "relative_humidity": "relative_humidity",
+    "station_pressure": "station_pressure",
+    "precip_code": "precip_code"
+  },
+  "units": {
+    "wind_speed": "km/h",
+    "wind_direction": "degree",
+    "ceiling": "hundred_ft",
+    "opaque_cover": "tenths",
+    "temperature": "degC",
+    "relative_humidity": "%",
+    "station_pressure": "Pa",
+    "precip_code": "code"
+  }
+}

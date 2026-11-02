@@ -1,0 +1,56 @@
+{
+  "mode": "connections",
+  "target_model_version": "62.0.0",
+  "source_crs": "EPSG:3857",
+  "units": {
+    "area": "m2",
+    "elev": "m",
+    "coordinates": "m",
+    "fraction": "%"
+  },
+  "missing_values": [
+    -9999
+  ],
+  "fraction_policy": "sum_to_one_per_hydrograph",
+  "property_files": {
+    "hru": "hru-data.hru",
+    "aqu": "aquifer.aqu",
+    "ru": "rout_unit.rtu",
+    "sdc": "channel-lte.cha"
+  },
+  "weather_stations_file": "weather-sta.cli",
+  "nodes": {
+    "table": "nodes.csv",
+    "fields": {
+      "kind": "raw_kind",
+      "id": "raw_id",
+      "name": "raw_name",
+      "gis_id": "raw_gis_id",
+      "area": "raw_area",
+      "lat": "raw_lat",
+      "lon": "raw_lon",
+      "elev": "raw_elev",
+      "props": "raw_props",
+      "wst": "raw_wst",
+      "cst": "raw_cst",
+      "ovfl": "raw_ovfl",
+      "rule": "raw_rule"
+    }
+  },
+  "edges": {
+    "table": "edges.csv",
+    "fields": {
+      "from_kind": "route_from_kind",
+      "from_id": "route_from_id",
+      "order": "route_order",
+      "to_kind": "route_to_kind",
+      "to_id": "route_to_id",
+      "hyd_typ": "route_hyd_typ",
+      "fraction": "route_fraction"
+    }
+  },
+  "source": {
+    "kind": "synthetic",
+    "description": "Manual four-kind network; renamed CSV columns, projected coordinates and m2/% units; no real physical claim"
+  }
+}

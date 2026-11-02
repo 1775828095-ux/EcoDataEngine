@@ -1,0 +1,39 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "prms",
+  "name": "PRMS",
+  "category": "水文",
+  "reference_version": "6.0.0",
+  "official_sources": [
+    "https://water.usgs.gov/water-resources/software/PRMS/PRMS_tables_6.0.0.pdf"
+  ],
+  "input_formats": [
+    "PRMS control/parameter/data text"
+  ],
+  "required_variables": [
+    "control_parameters",
+    "hru_parameters",
+    "precipitation",
+    "temperature"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "control",
+      "parameter",
+      "climate data",
+      "optional initial-condition file"
+    ],
+    "dimensions": [
+      "time",
+      "HRU",
+      "segment",
+      "groundwater_reservoir"
+    ],
+    "special": "module choices determine additional parameters"
+  },
+  "outputs": "time-series water-balance and streamflow variables",
+  "exchange_notes": "HRU and segment identifiers must remain stable"
+}

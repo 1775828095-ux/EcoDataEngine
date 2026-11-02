@@ -1,0 +1,33 @@
+{
+  "mode": "landuse_database",
+  "target_model_version": "62.0.0",
+  "profile": "vegetated_nonurban",
+  "table": "A_custom.csv",
+  "fields": {
+    "name": "地类",
+    "cal_group": "分类组",
+    "plnt_com": "植物",
+    "mgt": "管理",
+    "cn2": "曲线数",
+    "cons_prac": "保育",
+    "urban": "城市",
+    "urb_ro": "城市径流",
+    "ov_mann": "糙率",
+    "tile": "排水",
+    "sep": "化粪池",
+    "vfs": "缓冲带",
+    "grww": "草水道",
+    "bmp": "措施"
+  },
+  "references": {
+    "plnt_com": "plant.ini",
+    "mgt": "management.sch",
+    "cn2": "cntable.lum",
+    "cons_prac": "cons_practice.lum",
+    "ov_mann": "ovn_table.lum"
+  },
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Three synthetic class identifiers/custom UTF8 columns/reverse order/no management. Real official reference DBs retained only as fixtures."
+  }
+}

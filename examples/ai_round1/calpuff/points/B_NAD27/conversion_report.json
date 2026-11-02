@@ -1,0 +1,135 @@
+{
+  "scope": "CALPUFF5.8.4常量点源group13，IPTU=1 g/s；用户已有控制中其它组保持。每物种/烟囱参数显式供给，无变排放、下洗、平台或自动分种；未检查所有外部引用，未运行CALPUFF。",
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Explicit synthetic stack values, some matching official demo constants; sigma zeros explicitly supplied, not missing-data defaults. Mapped control datum is synthetic, not a validated real meteorology case.",
+    "license": "CC0 synthetic; official control format per official download"
+  },
+  "point_sources": 1,
+  "species_order": [
+    "SO2",
+    "SO4",
+    "NO",
+    "NO2",
+    "HNO3",
+    "NO3",
+    "PM10"
+  ],
+  "source_crs": "EPSG:26719",
+  "emission_unit": "g/s",
+  "time_processing": "constant supplied rates; no time allocation",
+  "max_float32_coordinate_error_m": 0.0,
+  "float32_max_absolute_errors": {
+    "x": 0.0,
+    "y": 0.0,
+    "height": 0.0,
+    "elevation": 0.0,
+    "diameter": 0.0,
+    "exit_velocity": 0.0,
+    "exit_temperature": 0.0,
+    "downwash": 0.0,
+    "sigma_y": 0.0,
+    "sigma_z": 0.0,
+    "momentum_factor": 0.0,
+    "platform_height": 0.0,
+    "__species_0": 0.0,
+    "__species_1": 0.0,
+    "__species_2": 0.0,
+    "__species_3": 0.0,
+    "__species_4": 0.0,
+    "__species_5": 0.0,
+    "__species_6": 0.0
+  },
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "cc88447a205f2dc79bcd8b4b956ff1f2e68f318d505a12a818f1038c52e7f987",
+  "configuration": {
+    "mode": "constant_points",
+    "version": "CALPUFF-5.8.4-group13",
+    "emission_time_policy": "constant_supplied",
+    "table": "points.csv",
+    "control_file": "supplied.INP",
+    "fields": {
+      "name": "name",
+      "x": "x",
+      "y": "y",
+      "height": "height",
+      "elevation": "elevation",
+      "diameter": "diameter",
+      "exit_velocity": "exit_velocity",
+      "exit_temperature": "exit_temperature",
+      "downwash": "downwash",
+      "sigma_y": "sigma_y",
+      "sigma_z": "sigma_z",
+      "momentum_factor": "momentum_factor",
+      "platform_height": "platform_height"
+    },
+    "units": {
+      "x": "km",
+      "y": "km",
+      "height": "m",
+      "elevation": "m",
+      "diameter": "m",
+      "exit_velocity": "m/s",
+      "exit_temperature": "K",
+      "downwash": "1",
+      "sigma_y": "m",
+      "sigma_z": "m",
+      "momentum_factor": "1",
+      "platform_height": "m"
+    },
+    "species": [
+      {
+        "name": "PM10",
+        "column": "rate_PM10",
+        "unit": "g/s"
+      },
+      {
+        "name": "NO3",
+        "column": "rate_NO3",
+        "unit": "g/s"
+      },
+      {
+        "name": "HNO3",
+        "column": "rate_HNO3",
+        "unit": "g/s"
+      },
+      {
+        "name": "NO2",
+        "column": "rate_NO2",
+        "unit": "g/s"
+      },
+      {
+        "name": "NO",
+        "column": "rate_NO",
+        "unit": "g/s"
+      },
+      {
+        "name": "SO4",
+        "column": "rate_SO4",
+        "unit": "g/s"
+      },
+      {
+        "name": "SO2",
+        "column": "rate_SO2",
+        "unit": "g/s"
+      }
+    ],
+    "missing_values": [
+      -9999
+    ],
+    "source_crs": "EPSG:26719",
+    "elevation_vertical_reference": "MSL",
+    "max_float32_error_m": 0.02,
+    "source": {
+      "kind": "synthetic_test",
+      "description": "Explicit synthetic stack values, some matching official demo constants; sigma zeros explicitly supplied, not missing-data defaults. Mapped control datum is synthetic, not a validated real meteorology case.",
+      "license": "CC0 synthetic; official control format per official download"
+    }
+  },
+  "output_sha256": {
+    "CALPUFF.INP": "eb41b4084048274b2b675b849e3f7a78482740ef91170efac236e617a7053c79",
+    "README_point_sources.txt": "adc0766496a18f3ddcd0b9a4e3ebd1548ddffe3e6ebbfb13495f48751b3114c3"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

@@ -1,0 +1,12 @@
+{
+  "id":"swat", "name":"SWAT 2012 (traditional)", "category":"水文",
+  "adapter_status":"index_only", "reference_version":"SWAT 2012 daily single gauge weather",
+  "official_sources":["https://swat.tamu.edu/media/69296/SWAT-IO-Documentation-2012.pdf"],
+  "input_formats":["SWAT 2012 fixed-width .pcp/.tmp", "ASCII project files"],
+  "required_variables":["weather","soil","landuse","topography","hydrologic_units","simulation_control"],
+  "requirements":{"files":["file.cio","weather.pcp","weather.tmp","basin/HRU/soil/management files"],"dimensions":["day","station","HRU","subbasin"],"special":"Traditional SWAT 2012 is separate from SWAT+; use 首轮专项转换 for single gauge weather"},
+  "outputs":"Scoped .pcp/.tmp weather input candidates only",
+  "exchange_notes":"Daily rainfall mm and max/min temperature degC; -99.0 invokes SWAT weather generation and requires explicit policy.",
+  "scoped_converter":"ecodata.round1 --model swat",
+  "adapter_note":"已实现传统SWAT2012单站日天气专项转换；不是SWAT+，不是完整流域工程。"
+}

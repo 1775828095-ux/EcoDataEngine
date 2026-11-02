@@ -1,0 +1,112 @@
+{
+  "scope": "WPS4.6 intermediate-v5 mapped pressure/surface/soil fields; IPROJ=3",
+  "projection": {
+    "iproj": 3,
+    "type": "spherical_lambert",
+    "source_crs": "+proj=lcc +lat_0=40 +lon_0=-100 +lat_1=30 +lat_2=60 +R=6370000 +units=m +no_defs +type=crs",
+    "start_latitude": 40.00000000000001,
+    "start_longitude": -100.0,
+    "dx_km": 12.0,
+    "dy_km": 9.0,
+    "earth_radius_km": 6370.0,
+    "coordinate_processing": "axis sorting and unit conversion only; no interpolation",
+    "projection_float32_max_absolute_error": 7.105427357601002e-15
+  },
+  "complete_model_input": false,
+  "native_model_input_verified": false,
+  "fields": [
+    "SKINTEMP"
+  ],
+  "pressure_levels_Pa": {},
+  "shape_y_x": [
+    2,
+    3
+  ],
+  "timestamps_UTC": [
+    "2024-02-29T00:00:00Z",
+    "2024-02-29T06:00:00Z"
+  ],
+  "interval_seconds": 21600,
+  "records_per_time": 1,
+  "time_processing": "none; source timestamps retained",
+  "wind_reference": null,
+  "unit_transformations": {
+    "SKINTEMP": {
+      "source_variable": "skin",
+      "source_units": "degC",
+      "target_units": "K",
+      "scale": 1.0,
+      "offset": 273.15
+    }
+  },
+  "float32_max_absolute_error": {
+    "SKINTEMP": 6.1035156022626325e-06
+  },
+  "engineering_bounds_source": "Provisional pre-conversion engineering checks; not WPS acceptance thresholds",
+  "missing_pressure_fields_for_common_WRF_chain": [
+    "GHT",
+    "RH",
+    "TT",
+    "UU",
+    "VV"
+  ],
+  "missing_surface_fields_for_common_WRF_chain": [
+    "LANDSEA",
+    "PSFC",
+    "SOILHGT"
+  ],
+  "missing_soil_layers_for_common_WRF_chain": [
+    "SM000010",
+    "SM010040",
+    "SM040100",
+    "SM100200",
+    "ST000010",
+    "ST010040",
+    "ST040100",
+    "ST100200"
+  ],
+  "unimplemented_required_components": [
+    "geogrid/geo_em terrain and land use",
+    "METGRID.TBL + metgrid.exe",
+    "real.exe initialization, boundary configuration, wrf.exe"
+  ],
+  "format_sources": [
+    "https://github.com/wrf-model/WPS/blob/v4.6.0/ungrib/src/output.F",
+    "https://github.com/wrf-model/WPS/blob/v4.6.0/metgrid/src/read_met_module.F",
+    "https://github.com/wrf-model/WPS/blob/v4.6.0/metgrid/METGRID.TBL.ARW"
+  ],
+  "source_sha256": "3fe0479f3c39bd8ef4c141cb2c4eeb237235277f8ea6bf58a02c177e0829030c",
+  "configuration": {
+    "mode": "pressure_fields",
+    "version": "WPS-4.6-intermediate-v5-fields",
+    "time_basis": "UTC",
+    "crs": "+proj=lcc +lat_0=40 +lon_0=-100 +lat_1=30 +lat_2=60 +R=6370000 +units=m +no_defs",
+    "projection": {
+      "type": "lambert",
+      "earth_radius_m": 6370000,
+      "latitude_origin": 40,
+      "standard_longitude": -100,
+      "true_latitudes": [
+        30,
+        60
+      ]
+    },
+    "coordinates": {
+      "time": "time",
+      "x": "x",
+      "y": "y"
+    },
+    "interval_seconds": 21600,
+    "fields": {
+      "SKINTEMP": {
+        "variable": "skin"
+      }
+    }
+  },
+  "output_sha256": {
+    "ATM_2024-02-29_00.wps": "75906b7ce35dd2fae5a790473f58f667dea11b557a28d70255042f2b2f77619a",
+    "ATM_2024-02-29_06.wps": "7ec1434cea316ed61ad1189189b2286b7a7cda18f260a7245146bf7926ee4aca",
+    "README_WPS_atmospheric_fields.txt": "b364284a95f0764b84975ee3ff888343f5a95342c145552b7afee441ff9c1898"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

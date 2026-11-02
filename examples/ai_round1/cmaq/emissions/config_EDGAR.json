@@ -1,0 +1,56 @@
+{
+  "mode": "gridded_emissions",
+  "version": "CMAQ-5.5",
+  "mechanism": "cb6r3_ae7_aq",
+  "layer_mode": "surface",
+  "axes": {
+    "x": "lon",
+    "y": "lat"
+  },
+  "coordinate_units": "degree",
+  "time_mode": "static_inventory",
+  "static_mean_description": "2014 calendar-year mean CO flux; explicit time-independent inventory, NOT hourly measurements or disaggregation",
+  "source": {
+    "kind": "real_inventory",
+    "description": "European Commission JRC EDGAR v8.1 CO TOTALS annual mean 2014; exact 3x3 Paris subset, no fill or interpolation",
+    "url": "https://edgar.jrc.ec.europa.eu/dataset_ap81",
+    "usage": "Public data; source acknowledgement required by dataset conditions. See evidence EDGAR conditions; not a code license."
+  },
+  "grid": {
+    "GDTYP": 1,
+    "P_ALP": 0,
+    "P_BET": 0,
+    "P_GAM": 0,
+    "XCENT": 0,
+    "YCENT": 0,
+    "XORIG": 2.2,
+    "YORIG": 48.7,
+    "XCELL": 0.1,
+    "YCELL": 0.1,
+    "NCOLS": 3,
+    "NROWS": 3,
+    "GDNAM": "PARIS_EDGAR"
+  },
+  "vertical": {
+    "VGTYP": 7,
+    "VGTOP": 10000,
+    "VGLVLS": [
+      1,
+      0.99
+    ]
+  },
+  "fields": {
+    "CO": {
+      "source": "fluxes",
+      "source_units": "kg m-2 s-1",
+      "basis": "surface_flux",
+      "type": "gas",
+      "molecular_weight_g_mol": 28.01,
+      "molecular_weight_source": "CO molar mass explicit engineering value 28.01 g/mol; not inferred from variable label"
+    }
+  },
+  "area_method": "geodesic_WGS84",
+  "missing_values": [
+    -9999
+  ]
+}

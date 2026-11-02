@@ -1,0 +1,23 @@
+{
+  "mode": "input_package",
+  "version": "WPS-4.6-intermediate-v5-package",
+  "time_basis": "UTC",
+  "expected_times_utc": [
+    "2024-02-29T00:00:00Z",
+    "2024-02-29T06:00:00Z"
+  ],
+  "interval_seconds": 21600,
+  "required_levels": {
+    "TT": [
+      85000,
+      50000
+    ],
+    "SST": [
+      200100
+    ]
+  },
+  "missing_values": [
+    -9999
+  ],
+  "prefix": "COMBINED"
+}

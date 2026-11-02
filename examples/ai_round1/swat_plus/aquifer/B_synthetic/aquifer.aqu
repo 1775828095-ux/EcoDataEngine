@@ -1,0 +1,4 @@
+aquifer.aqu EcoDataEngine SWAT+62 parameter database
+id name init gw_flo dep_bot dep_wt no3_n sol_p carbon flo_dist bf_max alpha_bf revap rchg_dp spec_yld hl_no3n flo_min revap_min
+1 aqA initaqu1 5.0 10.00 6 1 0.1 0.500 50 1 0.95 0.02 0.01 0.05 30 5 5
+2 aqB initaqu1 2.50 20.00 7 2 0.2 0.800 60 2 0.5 0.03 0.02 0.08 40 6 6

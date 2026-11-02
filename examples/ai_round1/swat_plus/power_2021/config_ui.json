@@ -1,0 +1,17 @@
+{
+  "project_name": "POWER_2021_daily_weather",
+  "start": "2021-01-01",
+  "end": "2021-12-31",
+  "station": {
+    "name": "POWER_site",
+    "latitude": 39.679,
+    "longitude": -77.234,
+    "elevation": 191.0
+  },
+  "target_model_version": "62.0.0",
+  "additional_weather": [
+    "solar_radiation",
+    "relative_humidity",
+    "wind_speed"
+  ]
+}

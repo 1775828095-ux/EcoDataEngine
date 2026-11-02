@@ -1,0 +1,13 @@
+{
+  "version": "WPS-4.6-intermediate-v5-SST",
+  "variable": "sst",
+  "latitude": "lat",
+  "longitude": "lon",
+  "time": "time",
+  "squeeze_dimensions": [
+    "zlev"
+  ],
+  "crs": "EPSG:4326",
+  "time_basis": "UTC",
+  "map_source": "NOAA OISST v2.1"
+}

@@ -1,0 +1,73 @@
+{
+  "version": "traditional SWAT2012 daily single gauge; NOT SWAT+",
+  "sources": [
+    {
+      "name": "noaa_swat_2020.csv",
+      "url": "https://www.ncei.noaa.gov/data/global-summary-of-the-day/access/2020/72405013743.csv",
+      "started": "2026-10-04T04:20:05.4212753Z",
+      "status": "downloaded",
+      "bytes": 92541,
+      "sha256": "420A115CBE83D4D0680388E3D35920948437BD8714CB0BFCBD6C3122A15C45B1",
+      "error": "",
+      "publisher": "NOAA NCEI",
+      "role": "independent primary raw A",
+      "license_or_restrictions": "NOAA/NCEI公开访问科学数据；下载文件没有独立许可证文本。本轮不推断第三方数据全部属于公共领域；保留来源与质量标记，按NCEI适用使用政策使用。"
+    },
+    {
+      "name": "swat_io2012.pdf",
+      "url": "https://swat.tamu.edu/media/69296/SWAT-IO-Documentation-2012.pdf",
+      "started": "2026-10-04T04:19:33.9440434Z",
+      "status": "downloaded",
+      "bytes": 7236384,
+      "sha256": "A4F9AFB53FD4A710712D120D912924476ACA4845C897609C6B842D6CADCE8CD8",
+      "error": "",
+      "publisher": "Texas A&M / SWAT",
+      "role": "fixed positions and generator semantics",
+      "license_or_restrictions": "公开官方文档；版权保留。"
+    }
+  ],
+  "time": "2020-01-01..2020-12-31,366 reported GSOD days, no timezone reinterpretation.",
+  "space": "Washington Reagan 38.84721N,-77.03454E,elevation4.1m; EPSG4326.",
+  "variables_units": {
+    "precipitation": "inch -> mm",
+    "tmax": "degF -> degC",
+    "tmin": "degF -> degC"
+  },
+  "missing": "PRCP99.99,Tmax/Tmin9999.9; PRCP D/F/G accepted, nine other flags explicitly NaN -> SWAT-99 generator, not zero.",
+  "B2": null,
+  "C2": null,
+  "prepared_at_utc": "2026-10-04",
+  "normalization": "normalize_sources.py and per-case normalization.json where present",
+  "files": [
+    {
+      "path": "A_daily_weather.csv",
+      "bytes": 9666,
+      "sha256": "7b41ea1c7471b6a1fd9217daeeba53ab3c679f0c60d9567a7c2643363db34d62"
+    },
+    {
+      "path": "comparison.json",
+      "bytes": 1140,
+      "sha256": "0f07bf24ca90f0e02c8fb8394ac96b34c0d1d261b5cefb9a27f51e8f450b478b"
+    },
+    {
+      "path": "config.json",
+      "bytes": 504,
+      "sha256": "9901d120c0e73b8d7edf567d60fbf8446e26066f5087d8c6ea86925e242989b1"
+    },
+    {
+      "path": "normalization.json",
+      "bytes": 359,
+      "sha256": "6f2e0bf2f079407c8b1308b19a36573a779b99944ca4bc31ef4116666cea9469"
+    },
+    {
+      "path": "source_manifest_round1.json",
+      "bytes": 2662,
+      "sha256": "b4c13e806fce68a37905e85d80d520f4824af354de920ce0bde0df511f6b100b"
+    },
+    {
+      "path": "raw/noaa_gsod_2020.csv",
+      "bytes": 92541,
+      "sha256": "420a115cbe83d4d0680388e3d35920948437bd8714cb0bfcbd6c3122a15c45b1"
+    }
+  ]
+}

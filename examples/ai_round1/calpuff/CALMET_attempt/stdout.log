@@ -1,0 +1,9 @@
+ENTERING SETUP PHASE
+WARNINGS are found in the CONTROL file
+Review messages written to the LIST file
+
+STDERR
+The value of the STATUS specifier in an OPEN statement does not match the file status (unit= 8).
+ Error occurs at or near line 10504 of _openot_  
+ Called from or near line 24513 of _setup_       
+ Called from or near line 1231 of _MAIN__       

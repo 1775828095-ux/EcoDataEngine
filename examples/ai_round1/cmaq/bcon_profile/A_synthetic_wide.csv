@@ -1,0 +1,4 @@
+species_name,input_unit,bottom,middle,top
+ZH,km,0.05,0.15,0.3
+PRES,hPa,1000,900,800
+O3,ppbV,20,30,40

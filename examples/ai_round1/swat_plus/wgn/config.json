@@ -1,0 +1,61 @@
+{
+  "mode": "wgn",
+  "target_model_version": "62.0.0",
+  "stations": [
+    {
+      "id": "wgn001",
+      "latitude": 37.48,
+      "longitude": -100.83,
+      "elevation": 887.0,
+      "rain_years": 10.0
+    }
+  ],
+  "fields": {
+    "station": "station",
+    "month": "month",
+    "tmpmx": "TMPMX",
+    "tmpmn": "TMPMN",
+    "tmpstdmx": "TMPSTDMX",
+    "tmpstdmn": "TMPSTDMN",
+    "pcpmm": "PCPMM",
+    "pcpstd": "PCPSTD",
+    "pcpskw": "PCPSKW",
+    "pr_wd": "PR_WD",
+    "pr_ww": "PR_WW",
+    "pcpd": "PCPD",
+    "rainhmx": "RAINHMX",
+    "solarav": "SOLARAV",
+    "dewpt": "DEWPT",
+    "windav": "WINDAV"
+  },
+  "units": {
+    "tmpmx": "degC",
+    "tmpmn": "degC",
+    "tmpstdmx": "degC",
+    "tmpstdmn": "degC",
+    "pcpmm": "mm",
+    "pcpstd": "mm/day",
+    "pcpskw": "1",
+    "pr_wd": "1",
+    "pr_ww": "1",
+    "pcpd": "day",
+    "rainhmx": "mm",
+    "solarav": "MJ/m2/day",
+    "dewpt": "degC",
+    "windav": "m/s"
+  },
+  "station_units": {
+    "latitude": "degree",
+    "longitude": "degree",
+    "elevation": "m",
+    "rain_years": "year"
+  },
+  "missing_values": [],
+  "source": {
+    "kind": "format_reference",
+    "url": "https://github.com/swat-model/swatplus/blob/62.0.0/refdata/Ames_sub1/weather-wgn.cli",
+    "institution": "SWAT official reference repository",
+    "license": "LGPL-2.1 (repository); retain attribution, not a certification of third-party climatology",
+    "description": "Independent positional decode of official WGN example; format/encoding verification ONLY, not independent climate statistics"
+  }
+}

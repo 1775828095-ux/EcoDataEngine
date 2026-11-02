@@ -1,0 +1,51 @@
+{
+  "mode": "pressure_fields",
+  "version": "WPS-4.6-intermediate-v5-fields",
+  "time_basis": "UTC",
+  "crs": "EPSG:4326",
+  "coordinates": {
+    "time": "time",
+    "pressure": "level",
+    "latitude": "lat",
+    "longitude": "lon"
+  },
+  "interval_seconds": 21600,
+  "coordinate_units": {
+    "latitude": "degrees_north",
+    "longitude": "degrees_east",
+    "pressure": "millibar"
+  },
+  "wind_reference": "earth_relative",
+  "map_source": "NOAA NCEP-NCAR Reanalysis 1",
+  "prefix": "ATM",
+  "required_fields": [
+    "TT",
+    "UU",
+    "VV",
+    "RH",
+    "GHT"
+  ],
+  "fields": {
+    "TT": {
+      "variable": "air"
+    },
+    "UU": {
+      "variable": "uwnd"
+    },
+    "VV": {
+      "variable": "vwnd"
+    },
+    "RH": {
+      "variable": "rhum"
+    },
+    "GHT": {
+      "variable": "hgt"
+    }
+  },
+  "source": {
+    "url": "https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.html",
+    "institution": "NOAA PSL/NCEP/NCAR",
+    "usage_policy": "https://psl.noaa.gov/data/gridded/faq.html#usage",
+    "license_note": "Freely available NOAA data; cite NOAA PSL and original dataset. No separate SPDX license asserted."
+  }
+}

@@ -1,0 +1,1 @@
+WPS4.6 v5已有场检查与组包，保留每场原生五记录的逐字节内容。只接受IPROJ0/3同网格、earth-relative风；不插值、不补字段/层/日期，不生成geo_em/met_em/wrfinput，不认证物理方案完整输入。在WPS主机将PREFIX_YYYY-MM-DD_HH.wps改名PREFIX:YYYY-MM-DD_HH，合入已有metgrid fg_name；仍需目标域geo_em、METGRID.TBL和项目全部必要驱动。

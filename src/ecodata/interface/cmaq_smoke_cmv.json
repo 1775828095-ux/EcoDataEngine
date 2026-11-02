@@ -1,0 +1,54 @@
+{
+  "reference": "cmv_native_jobs/3e5c69d51a13474cae263bc877a5301d",
+  "raw": "cmv_native_jobs/3e5c69d51a13474cae263bc877a5301d/raw_inventory.csv",
+  "raw_sha256": "f4e2074769e6f5a1d8d22a560bb53d319a8eb5674ae4ae2052a6c0f59f233757",
+  "steps": [
+    {
+      "name": "inventory",
+      "subdir": ".",
+      "exe": "smkinven",
+      "exe_sha256": "30e1fd110b3a519dbad92629a238cad441179e82f902d53783ec83cb228328c7",
+      "environment_sha256": "4cc88e593c5b0c339a0e05e68f5c15652a0fe1a4402c5d9b9b57cdf5824a2f91"
+    },
+    {
+      "name": "speciation",
+      "subdir": "speciation",
+      "exe": "spcmat",
+      "exe_sha256": "12031d3147986f1f0c934d481ad6e90346928bcdb5f597f026d2ff0a002d391a",
+      "environment_sha256": "85c54ea819398f249f9a75f5547037ab5600906ca25f99a1711c8eae6b14b8e2"
+    },
+    {
+      "name": "gridding",
+      "subdir": "gridding",
+      "exe": "grdmat",
+      "exe_sha256": "e9d865ccdd9c2eb13b576678e438e77c13cd0ad685da4c42218c79bd6b8d5635",
+      "environment_sha256": "594a9f7ffd751616dc33c4ffd666778a45e2d82ffc0902b5a6549c82ef628d0a"
+    },
+    {
+      "name": "temporal",
+      "subdir": "temporal",
+      "exe": "temporal",
+      "exe_sha256": "87a3374db4e0072a4c22d6f547046cb635b2bd4faae9aa577bd88fbb480c2388",
+      "environment_sha256": "c054e7288b4838ecf8d5693a7dbe3ac154a319a1e39185951bb084f98a9182e5"
+    },
+    {
+      "name": "elevpoint",
+      "subdir": "elevpoint",
+      "exe": "elevpoint",
+      "exe_sha256": "ce75c1058fa4b90cb380f974442b19c60fb8b11ef8d75398380b156303b80c79",
+      "environment_sha256": "2bea1fb6fcce5658e27072afae2aaa641f3c47f59ed155a3e1ad87b795f0e57f"
+    },
+    {
+      "name": "merge",
+      "subdir": "merge",
+      "exe": "smkmerge",
+      "exe_sha256": "6f34b6c0bffe43855e7266cd7c257d4cdc74589612adb9eabfd94124292d4390",
+      "environment_sha256": "09726579452d0a779d9527b5535f08873b38d87c3276d5e254067fa7d087618d"
+    }
+  ],
+  "inventory_name": "northeast_cmv2018",
+  "hourly_raw": "cmv_native_jobs/3e5c69d51a13474cae263bc877a5301d/raw_hourly.csv",
+  "hourly_raw_sha256": "d30cc1d088642ef0a96282a11593796bbe9818a11589efb4faa7ec6b53e0b6b3",
+  "prior_native_validation": "C:\\Users\\ASUS\\Documents\\ChatGPT\\\u6d4b\u8bd5\u91cd\\\u53cc\u4efb\u52a1\u63a8\u8fdb_20261030\\cmaq_additional_sector_jobs\\490e109636034533bc98bbd52d240f11",
+  "scope": "225 complete quality-screened CMV-C3 source identities, all seven raw pollutants and Aug4-6 hourly records. Native PMC difference exactly once; county DST conversion audited. Not full regional shipping. Original projected 2018 from 2017 inventory, not measured hourly observations. Other unselected sectors remain separately reused."
+}

@@ -1,0 +1,306 @@
+{
+  "model": "CMAQ",
+  "version": "5.5",
+  "scenario": "cmaq_pm25_auxiliary",
+  "scope": "auxiliary_preparation",
+  "can_process": true,
+  "assignments": {
+    "background": "pm25_background.nc",
+    "meteorology": "geos_cf_meteorology.nc",
+    "terrain": "dem.tif",
+    "observation": "pm25_station.csv",
+    "boundary": ""
+  },
+  "matches": [
+    {
+      "role": "background",
+      "name": "初始浓度辅助背景场",
+      "file": "pm25_background.nc",
+      "required": true,
+      "can_process": true,
+      "mapping": {
+        "PM25": "PM25"
+      },
+      "fields": [
+        {
+          "variable": "PM25",
+          "source": "PM25",
+          "required": true,
+          "classification": "satisfied"
+        }
+      ],
+      "role_compatibility": {
+        "passed": true,
+        "status": "PASS",
+        "role": "background",
+        "physical_kinds": [
+          "pollution"
+        ],
+        "reasons": []
+      },
+      "classification": "satisfied",
+      "missing": [],
+      "reasons": [],
+      "operations": [],
+      "status": "已满足"
+    },
+    {
+      "role": "meteorology",
+      "name": "气象场",
+      "file": "geos_cf_meteorology.nc",
+      "required": true,
+      "can_process": true,
+      "mapping": {
+        "temperature": "temperature",
+        "wind": "wind",
+        "humidity": "humidity"
+      },
+      "fields": [
+        {
+          "variable": "temperature",
+          "source": "temperature",
+          "required": true,
+          "classification": "convertible"
+        },
+        {
+          "variable": "wind",
+          "source": "wind",
+          "required": true,
+          "classification": "satisfied"
+        },
+        {
+          "variable": "humidity",
+          "source": "humidity",
+          "required": true,
+          "classification": "satisfied"
+        }
+      ],
+      "role_compatibility": {
+        "passed": true,
+        "status": "PASS",
+        "role": "meteorology",
+        "physical_kinds": [
+          "meteorology"
+        ],
+        "reasons": []
+      },
+      "classification": "convertible",
+      "missing": [],
+      "reasons": [],
+      "operations": [
+        {
+          "operation": "unit_conversion",
+          "variable": "temperature",
+          "source_unit": "K",
+          "target_unit": "degC",
+          "scale": 1.0,
+          "offset": -273.15
+        }
+      ],
+      "status": "可以转换/标准化"
+    },
+    {
+      "role": "terrain",
+      "name": "地形数据",
+      "file": "dem.tif",
+      "required": true,
+      "can_process": true,
+      "mapping": {
+        "elevation": "elevation"
+      },
+      "fields": [
+        {
+          "variable": "elevation",
+          "source": "elevation",
+          "required": true,
+          "classification": "satisfied"
+        }
+      ],
+      "role_compatibility": {
+        "passed": true,
+        "status": "PASS",
+        "role": "terrain",
+        "physical_kinds": [
+          "terrain"
+        ],
+        "reasons": []
+      },
+      "classification": "convertible",
+      "missing": [],
+      "reasons": [],
+      "operations": [
+        {
+          "operation": "format_conversion",
+          "source_format": "GeoTIFF",
+          "target_format": "NetCDF"
+        }
+      ],
+      "status": "可以转换/标准化"
+    },
+    {
+      "role": "observation",
+      "name": "观测约束数据",
+      "file": "pm25_station.csv",
+      "required": true,
+      "can_process": true,
+      "mapping": {
+        "PM25": "PM25"
+      },
+      "fields": [
+        {
+          "variable": "PM25",
+          "source": "PM25",
+          "required": true,
+          "classification": "satisfied"
+        }
+      ],
+      "role_compatibility": {
+        "passed": true,
+        "status": "PASS",
+        "role": "observation",
+        "physical_kinds": [
+          "pollution"
+        ],
+        "reasons": []
+      },
+      "classification": "convertible",
+      "missing": [],
+      "reasons": [],
+      "operations": [
+        {
+          "operation": "format_conversion",
+          "source_format": "CSV",
+          "target_format": "NetCDF"
+        }
+      ],
+      "status": "可以转换/标准化"
+    },
+    {
+      "role": "boundary",
+      "name": "边界条件",
+      "file": "",
+      "required": false,
+      "can_process": false,
+      "mapping": {},
+      "fields": [],
+      "status": "原生依赖，本辅助场景不生成",
+      "classification": "missing",
+      "reason": "仅记录原生依赖，本准备场景不处理",
+      "required_for_native": true
+    }
+  ],
+  "errors": [],
+  "steps": [
+    {
+      "stage": "时间统一",
+      "operation": "选取背景、气象、有效站点共同时间；检查平均窗口",
+      "no_invention": "不补造缺测时刻"
+    },
+    {
+      "stage": "空间/坐标统一",
+      "operation": "以背景网格为目标，气象重网格、DEM/站点重投影至EPSG:4326"
+    },
+    {
+      "stage": "单位统一",
+      "operation": "PM25 ug/m3；temperature degC；wind m/s；humidity %；elevation m"
+    },
+    {
+      "stage": "融合",
+      "operation": "每个实际时段调用已有Pipeline背景+站点残差融合；保留背景和原始融合"
+    },
+    {
+      "stage": "模型准备输出",
+      "operation": "生成CF风格辅助NetCDF及质量标记，不声称I/O API原生输入"
+    }
+  ],
+  "compatibility": {
+    "common_times": [
+      "2024-01-01T00:30:00.000000000",
+      "2024-01-01T06:30:00.000000000",
+      "2024-01-01T12:30:00.000000000",
+      "2024-01-01T18:30:00.000000000",
+      "2024-01-02T00:30:00.000000000",
+      "2024-01-02T06:30:00.000000000",
+      "2024-01-02T12:30:00.000000000",
+      "2024-01-02T18:30:00.000000000"
+    ],
+    "target_center_extent": [
+      -118.25,
+      34.0,
+      -117.75,
+      34.5
+    ],
+    "meteorology_extent_in_target_crs": [
+      -119.0,
+      33.5,
+      -117.0,
+      35.0
+    ],
+    "terrain_extent_in_target_crs": [
+      -118.45367748654071,
+      33.87499999999988,
+      -117.54632251345916,
+      34.625
+    ]
+  },
+  "unassigned_files": [],
+  "native_model_input": false,
+  "native_gaps": [
+    "对应版本/化学机制的三维物种初始场及垂直网格",
+    "I/O API维度、TFLAG和投影/网格元数据",
+    "WRF/MCIP完整气象与模型地形一致性",
+    "真实边界条件和排放等运行依赖",
+    "对应版本官方工具的原生读取验收",
+    "观测误差及独立验证；地形/气象尚未参与融合权重或物理约束"
+  ],
+  "algorithm_options": {
+    "spatial_method": "bilinear",
+    "residual_method": "nearest",
+    "negative_policy": "clip",
+    "terrain_spatial_method": "bilinear"
+  },
+  "common_times": [
+    "2024-01-01T00:30:00.000000000",
+    "2024-01-01T06:30:00.000000000",
+    "2024-01-01T12:30:00.000000000",
+    "2024-01-01T18:30:00.000000000",
+    "2024-01-02T00:30:00.000000000",
+    "2024-01-02T06:30:00.000000000",
+    "2024-01-02T12:30:00.000000000",
+    "2024-01-02T18:30:00.000000000"
+  ],
+  "original_time_counts": {
+    "background": 8,
+    "meteorology": 48
+  },
+  "boundary_supplied": false,
+  "boundary_processed": false,
+  "runtime_seconds": 1.1860882000000856,
+  "adapter": "cmaq_auxiliary",
+  "execution_order": [
+    "background",
+    "meteorology",
+    "terrain",
+    "observation",
+    "boundary"
+  ],
+  "information_loss": [
+    {
+      "operation": "time_intersection",
+      "loss": "仅共同实际时段，未输出时段计数见original_time_counts"
+    },
+    {
+      "operation": "spatial_regrid",
+      "loss": "重采样可能平滑极值；不代表新增真实观测"
+    },
+    {
+      "operation": "residual_fusion",
+      "loss": "推断改变背景；原始背景和融合值独立保留"
+    },
+    {
+      "operation": "negative_policy",
+      "loss": "截断改变数值；原始值、修正量和质量标记保留"
+    }
+  ],
+  "complete_model_input": false
+}

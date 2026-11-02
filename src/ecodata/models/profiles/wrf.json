@@ -1,0 +1,299 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "通用场景仅标准化；专项可写WPS4.6 intermediate v5 SST，并可显式输出固定快照metgrid交接包。尚无metgrid/WRF程序实读证据。",
+  "id": "wrf",
+  "name": "WRF",
+  "category": "大气/气象",
+  "reference_version": "Scoped SST interface: WPS4.6.0 intermediate v5; complete WRF version compatibility unverified",
+  "official_sources": [
+    "https://www2.mmm.ucar.edu/wrf/site/documentation/users_guide/wps.html"
+  ],
+  "input_formats": [
+    "WPS intermediate",
+    "NetCDF",
+    "GRIB"
+  ],
+  "required_variables": [
+    "static_geography",
+    "meteorological_analysis",
+    "surface_pressure",
+    "temperature",
+    "humidity",
+    "wind"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "namelist.wps",
+      "GEOGRID.TBL",
+      "METGRID.TBL",
+      "met_em files",
+      "namelist.input"
+    ],
+    "dimensions": [
+      "Time",
+      "bottom_top",
+      "south_north",
+      "west_east",
+      "staggered dimensions"
+    ],
+    "time": "forcing times must cover simulation and boundary interval",
+    "special": "projection, nesting, vertical levels and staggered grids"
+  },
+  "outputs": "wrfout NetCDF and restart/boundary files",
+  "exchange_notes": "WPS prepares real-data inputs; WRF output commonly feeds CMAQ/WRF-Chem",
+  "preparation_scenario": {
+    "id": "wrf_standardized_v1",
+    "name": "WRF 标准化气象准备（非 WPS intermediate）",
+    "adapter": "standardized",
+    "status": "standardized_preprocessing",
+    "output_format": "NetCDF",
+    "native_model_input": false,
+    "format_scope": "standardized_only",
+    "target_crs": "EPSG:4326",
+    "record_only_roles": [
+      "surface_pressure",
+      "temperature",
+      "humidity",
+      "wind"
+    ],
+    "derivable_fields": [],
+    "native_gaps": [
+      "通用场景未写完整WPS/GRIB气象输入；专项仅实现SST补充场及固定快照交接",
+      "未实现 namelist 生成和 real.exe 输入验证",
+      "官方原始再分析场未下载，仅使用官方配置文本和小型真实气象样本"
+    ],
+    "inputs": [
+      {
+        "role": "static_geography",
+        "name": "静态地理场",
+        "required": true,
+        "formats": [
+          "GeoTIFF",
+          "NetCDF"
+        ],
+        "dimensions": [
+          "y",
+          "x"
+        ],
+        "crs": "EPSG:4326 或可靠投影网格",
+        "time": "静态",
+        "space": "覆盖 WRF 域",
+        "fields": [
+          {
+            "name": "elevation",
+            "standard_name": "surface_altitude",
+            "unit": "m",
+            "data_type": "continuous",
+            "aliases": [
+              "dem",
+              "height",
+              "value"
+            ],
+            "required": true
+          },
+          {
+            "name": "land_cover_class",
+            "standard_name": "land_cover_class",
+            "unit": "class_id",
+            "data_type": "categorical",
+            "aliases": [
+              "land_cover",
+              "landuse"
+            ],
+            "required": false
+          }
+        ]
+      },
+      {
+        "role": "meteorological_analysis",
+        "name": "气象分析场",
+        "required": true,
+        "formats": [
+          "NetCDF",
+          "CSV"
+        ],
+        "dimensions": [
+          "time",
+          "y",
+          "x"
+        ],
+        "crs": "EPSG:4326 或可靠投影网格",
+        "time": "边界覆盖模拟窗口",
+        "space": "覆盖 WRF 域",
+        "fields": [
+          {
+            "name": "air_temperature",
+            "standard_name": "air_temperature",
+            "unit": "degC",
+            "data_type": "continuous",
+            "aliases": [
+              "temperature",
+              "t2m"
+            ],
+            "required": true
+          },
+          {
+            "name": "relative_humidity",
+            "standard_name": "relative_humidity",
+            "unit": "%",
+            "data_type": "continuous",
+            "aliases": [
+              "humidity",
+              "rh"
+            ],
+            "required": true
+          },
+          {
+            "name": "wind_speed",
+            "standard_name": "wind_speed",
+            "unit": "m/s",
+            "data_type": "continuous",
+            "aliases": [
+              "wind"
+            ],
+            "required": true
+          },
+          {
+            "name": "surface_pressure",
+            "standard_name": "surface_air_pressure",
+            "unit": "hPa",
+            "data_type": "continuous",
+            "aliases": [
+              "pressure"
+            ],
+            "required": false
+          },
+          {
+            "name": "precipitation",
+            "standard_name": "precipitation_amount",
+            "unit": "mm",
+            "data_type": "continuous",
+            "aliases": [
+              "prcp"
+            ],
+            "required": false
+          }
+        ]
+      },
+      {
+        "role": "surface_pressure",
+        "name": "地面气压",
+        "required": false,
+        "formats": [
+          "NetCDF",
+          "GRIB"
+        ],
+        "dimensions": [
+          "time",
+          "y",
+          "x"
+        ],
+        "crs": "覆盖域",
+        "time": "驱动场",
+        "space": "覆盖域",
+        "fields": [
+          {
+            "name": "surface_pressure",
+            "standard_name": "surface_air_pressure",
+            "unit": "hPa",
+            "data_type": "continuous",
+            "aliases": [],
+            "required": true
+          }
+        ]
+      },
+      {
+        "role": "temperature",
+        "name": "温度",
+        "required": false,
+        "formats": [
+          "NetCDF",
+          "GRIB"
+        ],
+        "dimensions": [
+          "time",
+          "level",
+          "y",
+          "x"
+        ],
+        "crs": "覆盖域",
+        "time": "驱动场",
+        "space": "覆盖域",
+        "fields": [
+          {
+            "name": "air_temperature",
+            "standard_name": "air_temperature",
+            "unit": "K",
+            "data_type": "continuous",
+            "aliases": [
+              "t"
+            ],
+            "required": true
+          }
+        ]
+      },
+      {
+        "role": "humidity",
+        "name": "湿度",
+        "required": false,
+        "formats": [
+          "NetCDF",
+          "GRIB"
+        ],
+        "dimensions": [
+          "time",
+          "level",
+          "y",
+          "x"
+        ],
+        "crs": "覆盖域",
+        "time": "驱动场",
+        "space": "覆盖域",
+        "fields": [
+          {
+            "name": "relative_humidity",
+            "standard_name": "relative_humidity",
+            "unit": "%",
+            "data_type": "continuous",
+            "aliases": [
+              "rh"
+            ],
+            "required": true
+          }
+        ]
+      },
+      {
+        "role": "wind",
+        "name": "风场",
+        "required": false,
+        "formats": [
+          "NetCDF",
+          "GRIB"
+        ],
+        "dimensions": [
+          "time",
+          "level",
+          "y",
+          "x"
+        ],
+        "crs": "覆盖域",
+        "time": "驱动场",
+        "space": "覆盖域",
+        "fields": [
+          {
+            "name": "wind_speed",
+            "standard_name": "wind_speed",
+            "unit": "m/s",
+            "data_type": "continuous",
+            "aliases": [
+              "ws"
+            ],
+            "required": true
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "aerscreen",
+  "name": "AERSCREEN",
+  "category": "大气",
+  "reference_version": "official current EPA distribution",
+  "official_sources": [
+    "https://www.epa.gov/scram/air-quality-dispersion-modeling-screening-models"
+  ],
+  "input_formats": [
+    "interactive/keyword text",
+    "AERMET MAKEMET data"
+  ],
+  "required_variables": [
+    "source_parameters",
+    "meteorology",
+    "terrain"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "screening inputs",
+      "MAKEMET/AERMET meteorology",
+      "optional terrain"
+    ],
+    "dimensions": [
+      "source",
+      "distance",
+      "meteorological case"
+    ],
+    "special": "screening assumptions are source-type dependent"
+  },
+  "outputs": "screening concentration report",
+  "exchange_notes": "uses AERMOD components; not interchangeable with a full AERMOD run"
+}

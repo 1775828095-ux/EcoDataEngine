@@ -1,0 +1,1 @@
+仅生成aquifer.aqu含水层参数数据库，检查init名称在所给initial.aqu中存在。不生成aquifer.con、流域/HRU/河道连接、初始化学数据或file.cio。所给initial.aqu中更深层的外部引用未验证；本包不包含完整工程。

@@ -1,0 +1,2 @@
+# Preserve the supplied distribution byte-for-byte across platforms.
+* -text

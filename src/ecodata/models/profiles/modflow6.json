@@ -1,0 +1,89 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "modflow6",
+  "name": "MODFLOW 6",
+  "category": "地下水",
+  "reference_version": "6.6.0 input guide",
+  "official_sources": [
+    "https://modflow6.readthedocs.io/en/6.6.0/mf6io.html"
+  ],
+  "input_formats": [
+    "block-structured text",
+    "binary arrays",
+    "CSV observations"
+  ],
+  "required_variables": [
+    "simulation_name",
+    "time_discretization",
+    "solver",
+    "grid_discretization",
+    "initial_head",
+    "hydraulic_properties",
+    "stress_packages"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "mfsim.nam",
+      "TDIS",
+      "IMS",
+      "GWF-NAM",
+      "DIS/DISV/DISU",
+      "IC",
+      "NPF",
+      "OC",
+      "stress packages"
+    ],
+    "dimensions": [
+      "stress_period",
+      "time_step",
+      "layer",
+      "row/column or cell2d/node"
+    ],
+    "time": "TDIS periods and steps",
+    "special": "package combinations and grid type are model-specific; initial conditions and boundaries required"
+  },
+  "outputs": "binary heads/budgets, listing and optional CSV observations",
+  "exchange_notes": "GWF/GWT exchanges and package-specific data; FloPy may author files but is not itself the format"
+  ,
+  "preparation_scenario": {
+    "id": "modflow6_structured_gwf_flopy",
+    "name": "MODFLOW 6 单层结构网格 GWF 准备",
+    "status": "scoped_native_output",
+    "adapter": "modflow6_flopy",
+    "output_format": "NetCDF",
+    "target_crs": null,
+    "native_model_input": false,
+    "native_gaps": [
+      "尚未调用官方 mf6 可执行程序读取或运行",
+      "仅覆盖单层 DIS 结构网格、NPF、IC、RCHA、CHD 和 OC",
+      "不自动生成工程映射、河流、井、多层结构或率定参数"
+    ],
+    "inputs": [
+      {
+        "role": "groundwater_grid",
+        "name": "地下水结构网格与边界",
+        "required": true,
+        "formats": ["NetCDF", "HDF5-NetCDF"],
+        "dimensions": ["y", "x"],
+        "crs": "projected CRS supplied by user",
+        "time": "single stress period supplied in dataset attributes",
+        "space": "regular structured grid",
+        "depends_on": [],
+        "allow_derived": false,
+        "output_format": "NetCDF",
+        "processing": {"structure_operation": "preserve"},
+        "fields": [
+          {"name": "top", "standard_name": "model_top", "aliases": ["surface_elevation"], "unit": "m", "data_type": "continuous", "required": true},
+          {"name": "bottom", "standard_name": "model_bottom", "aliases": ["botm"], "unit": "m", "data_type": "continuous", "required": true},
+          {"name": "hydraulic_conductivity", "standard_name": "hydraulic_conductivity", "aliases": ["k", "hk"], "unit": "m/day", "data_type": "continuous", "required": true},
+          {"name": "initial_head", "standard_name": "initial_head", "aliases": ["strt"], "unit": "m", "data_type": "continuous", "required": true},
+          {"name": "recharge", "standard_name": "recharge_flux", "aliases": ["rch"], "unit": "m/day", "data_type": "continuous", "required": true},
+          {"name": "constant_head", "standard_name": "constant_head_boundary", "aliases": ["chd"], "unit": "m", "data_type": "continuous", "required": true}
+        ]
+      }
+    ]
+  }
+}

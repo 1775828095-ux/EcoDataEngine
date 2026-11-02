@@ -1,0 +1,71 @@
+{
+  "tool": "bcon",
+  "source": "D:\\EcoDataEngine\\cases\\CMAQ_20261024\\official_12NE3\\inputs\\icbc\\CCTM_BCON_v54_cb6r5_ae7_aq_12NE3_20180701.nc",
+  "source_sha256": "1065862db4234c1782e534bcd5c06f236a519001b075deb82e8f15b67c11fa5d",
+  "meteorology": "D:\\EcoDataEngine\\cases\\CMAQ_20261024\\official_12NE3\\inputs\\met\\mcipv5.4\\METBDY3D_12NE3_20180701.nc",
+  "meteorology_sha256": "cef250d23ad315be47b9afd367dd0de3ea431a46c84d74ad9ab548b52fae7139",
+  "derivation": "Time index0, arithmetic horizontal mean per original vertical layer; no missing values, zero fill, chemistry rename or temporal interpolation",
+  "scope": "Explicit first-time horizontal-mean O3 sensitivity profile from official 20180701 12NE3 CB6R5 benchmark; not observation; original other 224 species retained after native preprocessing.",
+  "report": {
+    "scope": "CMAQ 5.5 BCON/profile BC_PROFILE ASCII input; not BCON boundary NetCDF",
+    "version": "CMAQ-5.5-BCON-profile",
+    "mechanism": "CB6R5_AE7_AQ",
+    "layers": 35,
+    "variables": 4,
+    "values": 140,
+    "source_units": {
+      "PRES": "Pa",
+      "ZH": "m",
+      "ZF": "m",
+      "O3": "ppmV"
+    },
+    "target_units": {
+      "PRES": "Pa",
+      "ZH": "m",
+      "ZF": "m",
+      "O3": "ppmV"
+    },
+    "source": {
+      "kind": "derived_same_case_horizontal_mean",
+      "description": "Explicit first-time horizontal-mean O3 sensitivity profile from official 20180701 12NE3 CB6R5 benchmark; not observation; original other 224 species retained after native preprocessing.",
+      "url": "https://www.epa.gov/cmaq/cmaq-input-files"
+    },
+    "missing_policy": "reject",
+    "time": "static vertical profile; BCON controls output time separately",
+    "coordinates": "ZH metres above ground; BCON obtains target boundary grid from MET_BDY_3D_FIN",
+    "BCON_run_verified": false,
+    "complete_model_input": false,
+    "source_sha256": "7b2e908ce067915197214e71daf99b2bb5a09d90cc5da638435f99620d9530eb",
+    "configuration": {
+      "mode": "bcon_profile",
+      "version": "CMAQ-5.5-BCON-profile",
+      "mechanism": "CB6R5_AE7_AQ",
+      "layout": "long",
+      "layers": 35,
+      "fields": {
+        "variable": "variable",
+        "unit": "unit",
+        "layer": "layer",
+        "value": "value"
+      },
+      "target_units": {
+        "PRES": "Pa",
+        "ZH": "m",
+        "ZF": "m",
+        "O3": "ppmV"
+      },
+      "source": {
+        "kind": "derived_same_case_horizontal_mean",
+        "description": "Explicit first-time horizontal-mean O3 sensitivity profile from official 20180701 12NE3 CB6R5 benchmark; not observation; original other 224 species retained after native preprocessing.",
+        "url": "https://www.epa.gov/cmaq/cmaq-input-files"
+      },
+      "missing_values": [
+        -9999
+      ]
+    },
+    "output_sha256": {
+      "BC_PROFILE_CMAQ55.csv": "b7cb08c1bde7a08be6cbdfce85174403b82e61df949c81fa865b4bd17ab884a0"
+    },
+    "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "scope": "CAMx7.40 INITIAL三维浓度快照；仅用户给定物种/层/网格，不推导初始场。valid_until为用户明确提供的原生区间标签，不构造时间序列；需真实气象层和CAMx.in匹配。未执行CAMx读取或仿真。",
+  "source": {
+    "kind": "synthetic",
+    "description": "Synthetic hand-verifiable grid, not measured concentrations",
+    "license": "CC0 synthetic test values"
+  },
+  "mechanism": "CB6r5_CF3_SIMPLE_NoEvap",
+  "grid": {
+    "p_alp": 0.0,
+    "nrows": 2,
+    "xorig": 110.0,
+    "xcent": 0.0,
+    "ycell": 0.1,
+    "xcell": 0.1,
+    "yorig": 30.0,
+    "ncols": 3,
+    "p_bet": 0.0,
+    "ycent": 0.0,
+    "itzon": 0,
+    "cproj": 0,
+    "gdtyp": 1
+  },
+  "layers": 2,
+  "layer_definition": "Synthetic layer labels only; real met height fields must be supplied separately",
+  "species": [
+    "O3",
+    "PSO4"
+  ],
+  "units": {
+    "O3": "ppm",
+    "PSO4": "ug/m3"
+  },
+  "time": "2021-01-01T00:00:00+00:00",
+  "valid_until": "2021-01-01T01:00:00+00:00",
+  "time_processing": "no interpolation; explicit source validity interval",
+  "float32_max_absolute_error": {
+    "O3": 9.238719927973094e-10,
+    "PSO4": 9.536743172944284e-08
+  },
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "46ac0c517947ba08cf8e5ea69651e1634792d2a338a4ff6c1ee2f67ad00f6c29",
+  "configuration": {
+    "mode": "initial_concentrations",
+    "version": "CAMx-7.40",
+    "mechanism": "CB6r5_CF3_SIMPLE_NoEvap",
+    "grid": {
+      "projection": "LATLON",
+      "ncols": 3,
+      "nrows": 2,
+      "xorig": 110,
+      "yorig": 30,
+      "xcell": 0.1,
+      "ycell": 0.1,
+      "coordinate_units": "degree",
+      "xcent": 0,
+      "ycent": 0,
+      "p_alp": 0,
+      "p_bet": 0,
+      "itzon": 0
+    },
+    "fields": {
+      "time": "date",
+      "layer": "k",
+      "row": "j",
+      "col": "i"
+    },
+    "species": [
+      {
+        "name": "O3",
+        "column": "ozone",
+        "phase": "gas",
+        "unit": "ppbV"
+      },
+      {
+        "name": "PSO4",
+        "column": "sulfate",
+        "phase": "aerosol",
+        "unit": "ug/m^3"
+      }
+    ],
+    "index_base": 0,
+    "layer_count": 2,
+    "layer_definition": "Synthetic layer labels only; real met height fields must be supplied separately",
+    "required_species": [
+      "O3",
+      "PSO4"
+    ],
+    "valid_until": "2021-01-01T01:00:00Z",
+    "missing_values": [
+      -9999
+    ],
+    "source": {
+      "kind": "synthetic",
+      "description": "Synthetic hand-verifiable grid, not measured concentrations",
+      "license": "CC0 synthetic test values"
+    }
+  },
+  "output_sha256": {
+    "initial.CAMx7.40.nc": "dbd1947924f07345593acf31a05c096c0620116d25fb59c8b5399657d1ff0947",
+    "README_CAMx_initial.txt": "48db5871dddc94e65ba97bcb040765e3a4cc1700c0a49b98f7507d058cf4be4a"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

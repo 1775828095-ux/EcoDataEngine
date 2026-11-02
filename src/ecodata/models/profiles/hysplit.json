@@ -1,0 +1,41 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "hysplit",
+  "name": "HYSPLIT",
+  "category": "大气",
+  "reference_version": "official current NOAA distribution",
+  "official_sources": [
+    "https://www.ready.noaa.gov/HYSPLIT.php"
+  ],
+  "input_formats": [
+    "HYSPLIT meteorological binary",
+    "CONTROL text",
+    "SETUP.CFG"
+  ],
+  "required_variables": [
+    "meteorology",
+    "release_location",
+    "release_time",
+    "release_height"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "CONTROL",
+      "meteorological files",
+      "optional SETUP.CFG",
+      "emissions/deposition settings"
+    ],
+    "dimensions": [
+      "time",
+      "level",
+      "grid",
+      "trajectory/particle"
+    ],
+    "special": "meteorological file coverage and vertical coordinates must match run"
+  },
+  "outputs": "trajectory endpoints, concentration grids and diagnostics",
+  "exchange_notes": "meteorological converters are dataset-specific"
+}

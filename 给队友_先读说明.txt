@@ -1,0 +1,6 @@
+平台源码与SWAT运行程序最新快照，打包日期：2026-11-02。
+来源为当前C盘平台目录；源码逐文件SHA256列于manifest.json。保留源码原版本号，不能将旧版本字符串误认为没有包含新修复。
+本包是源码交付包，不是免安装便携版。队友需要Python 3.11以上，先运行首次安装依赖.bat，再运行启动平台.bat。
+包含当前全部src/docs/examples/tests和SWAT runtime；不含用户上传、历史runs/outputs、大型案例、Python运行环境、WSL及WRF/CMAQ/CAMx/CALMET外部环境。其他模型原生计算仍需配套环境。
+已做全部打包Python文件语法检查及压缩包CRC核验；未在队友电脑验证。
+C/D差异见BUILD_INFO.json，未擅自覆盖另一份源码；本包选择当前C盘平台快照。

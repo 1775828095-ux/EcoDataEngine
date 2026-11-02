@@ -1,0 +1,12 @@
+! NFF=0 !
+! PREVDAT=candidate.dat !
+! SURFDAT=accepted.dat !
+! RUNLST=reader.lst !
+! LCFILES=T !
+!END!
+! IBYR=1990 ! ! IBMO=1 ! ! IBDY=8 ! ! IBHR=1 !
+! IEYR=1990 ! ! IEMO=1 ! ! IEDY=15 ! ! IEHR=0 !
+! XBTZ=5 ! ! LPREV=T ! ! NBSTN=0 ! ! INFORM=2 !
+! IOFORM=2 ! ! IOPACK=0 ! ! JDAT=2 ! ! IHUSWO=1 !
+! LPCALC=F ! ! LVSRNOUT=F ! ! JTXT=1 !
+!END!

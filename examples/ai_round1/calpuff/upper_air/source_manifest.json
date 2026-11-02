@@ -1,0 +1,44 @@
+{
+  "sources": [
+    {
+      "name": "USM00072357-data-beg2026.txt.zip",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-y2d/USM00072357-data-beg2026.txt.zip",
+      "status": 200,
+      "bytes": 2733499,
+      "sha256": "61709b16754e2b04925659adeb6b89f4cfc2582204eaa83a8b659e5acc8f5e39",
+      "download_utc": "2026-10-05T07:52:04.191912+00:00"
+    },
+    {
+      "name": "igra2-station-list.txt",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/igra2-station-list.txt",
+      "status": 200,
+      "bytes": 260950,
+      "sha256": "2af0685bc4c57ef582fa352c31b860871d769e55e3985744f2d07c875463ec57",
+      "download_utc": "2026-10-05T07:52:05.693318+00:00"
+    },
+    {
+      "name": "noaa_data_policy.html",
+      "url": "https://www.noaa.gov/information-technology/open-data-dissemination",
+      "status": 200,
+      "bytes": 80979,
+      "sha256": "0839fe5b2c8651bcc55685c27b5b60b9530acbefbbec6e5c0f4b7c4a68d57f36",
+      "download_utc": "2026-10-05T07:52:06.966333+00:00"
+    }
+  ],
+  "selected_rows": 76,
+  "soundings": 2,
+  "variables": {
+    "pressure": "Pa",
+    "height": "m",
+    "temperature": "degC",
+    "wind_direction": "degree",
+    "wind_speed": "m/s"
+  },
+  "missing_count": 0,
+  "layers": [
+    38,
+    38
+  ],
+  "restriction": "Only below/equal 500hPa, not full atmospheric profile. No independent same-case UP.DAT B2 located; independent parser/source comparison is used.",
+  "raw_sha256": "8fa246b7845f48f3a3865629c156b45eeb140f790e0c783c0198902df4e62d9d"
+}

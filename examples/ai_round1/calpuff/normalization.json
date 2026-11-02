@@ -1,0 +1,18 @@
+{
+  "raw_rows_selected": 24,
+  "selection": "2020-01-01 FM-15 reports; latest report in each (hour-1,hour] interval, official SMERGE5.57 READISH hour-end convention; actual observation_time retained",
+  "quality": "Only NOAA QC 1/5 accepted; other flags become explicitly missing",
+  "variables_not_inferred": [
+    "relative humidity",
+    "ceiling unlimited flag",
+    "precipitation code"
+  ],
+  "opaque_cover": "GF1 opaque coverage 00->0,08->10 only; intermediate okta ranges preserved as missing",
+  "source_location": {
+    "station": "72503014732",
+    "latitude": 40.77944,
+    "longitude": -73.88035,
+    "elevation_m": 3.4
+  },
+  "limitations": "Partial NOAA fields; missing values remain 9999 in B, this cannot prove a runnable meteorological simulation."
+}

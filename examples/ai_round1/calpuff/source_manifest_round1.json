@@ -1,0 +1,150 @@
+{
+  "version": "CALMET5.8.5 SURF.DAT2.0 / official SMERGE5.57",
+  "sources": [
+    {
+      "name": "noaa_calpuff_2020.csv",
+      "url": "https://www.ncei.noaa.gov/data/global-hourly/access/2020/72503014732.csv",
+      "started": "2026-10-04T04:19:58.6846533Z",
+      "status": "downloaded",
+      "bytes": 8162997,
+      "sha256": "4C0DAACF5A7399959D8043B9CFA5A8D2EECDAE2E03F310EA93780592E31A4E35",
+      "error": "",
+      "publisher": "NOAA NCEI",
+      "role": "independent primary raw A",
+      "license_or_restrictions": "NOAA/NCEI公开访问科学数据；下载文件没有独立许可证文本。本轮不推断第三方数据全部属于公共领域；保留来源与质量标记，按NCEI适用使用政策使用。"
+    },
+    {
+      "name": "smerge557.zip",
+      "url": "https://www.calpuff.org/calpuff/download/EPA_Files/SMERGE_v5.57.zip",
+      "started": "2026-10-04T04:23:53.5930486Z",
+      "status": "downloaded",
+      "bytes": 1038882,
+      "sha256": "B0617D121ADC6120700A915220F7CC9EEDCC0AA2CB2E4893765A182522BBEDAB",
+      "error": "",
+      "publisher": "CALPUFF developers / EPA approved download",
+      "role": "official B2 and executable reader",
+      "license_or_restrictions": "官方公开下载；保留包内版权说明。没有发现独立数据许可证；这不等于无限制再许可。"
+    },
+    {
+      "name": "calmet585.zip",
+      "url": "https://www.calpuff.org/calpuff/download/EPA_Files/CALMET_v5.8.5.zip",
+      "started": "2026-10-04T04:23:47.8749325Z",
+      "status": "downloaded",
+      "bytes": 1024451,
+      "sha256": "F94F8E107AF424E52478FD87ECC6C28319AC93197B169F4A5B602C170BF12241",
+      "error": "",
+      "publisher": "CALPUFF developers / EPA approved download",
+      "role": "actual RDHD/RDS specification and attempted executable",
+      "license_or_restrictions": "官方公开下载；保留版权说明，未购买、申请或声称获得额外许可。"
+    }
+  ],
+  "time": "Primary:2020-01-01 FM-15 UTC observations -> hour-end. B2:1990-01-08 01 through Jan15 00 fixed LST UTC-5.",
+  "space": "Primary LaGuardia 40.77944N,-73.88035E,3.4m; B2 five station IDs retained in config, no invented station coordinates.",
+  "variables_units": {
+    "wind_speed": "m/s or km/h -> m/s",
+    "wind_direction": "degrees meteorological",
+    "ceiling": "hundred feet",
+    "opaque_cover": "tenths",
+    "temperature": "degC -> K",
+    "relative_humidity": "percent",
+    "station_pressure": "hPa/Pa -> hPa (not sea-level)",
+    "precip_code": "official integer code"
+  },
+  "missing": "NOAA encoded sentinels/QC not accepted -> NaN; explicit preserve ->9999. Four variables often unavailable, not inferred.",
+  "B2": "Official SMERGE surf.dat; A_reference_decoded is inverse serialization of B2, only a serialization/unit check, not upstream independent meteorology.",
+  "C2": null,
+  "prepared_at_utc": "2026-10-04",
+  "normalization": "normalize_sources.py and per-case normalization.json where present",
+  "files": [
+    {
+      "path": "A_noaa_surface.csv",
+      "bytes": 2158,
+      "sha256": "e8896df5e99418f1bef0318c8a895a52eb72cfcf45660e33714e0070ddac7243"
+    },
+    {
+      "path": "A_reference_decoded.csv",
+      "bytes": 78827,
+      "sha256": "0ec5ad83c36cc7156ca4a2927f32136d76d16dbd52d340408c30e1d7d1098b7e"
+    },
+    {
+      "path": "A_synthetic_complete.csv",
+      "bytes": 351,
+      "sha256": "9a135aa75b8ad2aaba82b401e22755f1da598c030faaf1002a33dd53f02b8693"
+    },
+    {
+      "path": "B2_official_smerge_SURF.DAT",
+      "bytes": 51358,
+      "sha256": "a88f71a5e2f0f13a8dd85932c113a20cb27f6279bb184303649d314d180982fa"
+    },
+    {
+      "path": "comparison.json",
+      "bytes": 2219,
+      "sha256": "132e184688b9bfa87d49b671ee4d8a8680b3520a7f89d83d5563518bd8ef149a"
+    },
+    {
+      "path": "config_noaa.json",
+      "bytes": 749,
+      "sha256": "36cedd9ba03b160d6869fab89e2104446856302330e8c87702da3c367fd630b9"
+    },
+    {
+      "path": "config_reference.json",
+      "bytes": 797,
+      "sha256": "262f68ed599feda5f50313426052e25defdce86fa7d5e423183a80ae0978f2d0"
+    },
+    {
+      "path": "config_synthetic.json",
+      "bytes": 747,
+      "sha256": "6170a4b2ef5f01174d4cdf704d45a1938e8a453891d15709d65bc41c9ce81f2d"
+    },
+    {
+      "path": "normalization.json",
+      "bytes": 785,
+      "sha256": "0ac8cb95c84f055fe8da3c11f6edc8f48c0f4f018b4e8a043f4b1ef880f860fe"
+    },
+    {
+      "path": "official_execution.json",
+      "bytes": 765,
+      "sha256": "4fc4488ba2741b41c9dcc6dabf2cdb8c30594e6070addf638f2d74b01419ed2b"
+    },
+    {
+      "path": "source_manifest_round1.json",
+      "bytes": 5806,
+      "sha256": "eb72170d038210b250bc7737a428dc92865b142ed560e0b6cbce0ced0b16eea5"
+    },
+    {
+      "path": "B_noaa/conversion_report.json",
+      "bytes": 2135,
+      "sha256": "b7ce386d6b47d08792189c58352d97bd9036f9e8c4e15e5224a6f4a0f1a4fea9"
+    },
+    {
+      "path": "B_noaa/SURF.DAT",
+      "bytes": 1959,
+      "sha256": "2439056b773ee31590c030f68487fabab2f527fce612dc3ed641aed6d61088a1"
+    },
+    {
+      "path": "B_reference/conversion_report.json",
+      "bytes": 2231,
+      "sha256": "943282f4c7454959222ac07a33275ff064be83841e3fc2e791740695f4e22cc1"
+    },
+    {
+      "path": "B_reference/SURF.DAT",
+      "bytes": 47061,
+      "sha256": "2a9ae3b56f24c81193cea5e93a516efbd3da3078848be6b4c4043af6b29a6c1e"
+    },
+    {
+      "path": "B_synthetic/conversion_report.json",
+      "bytes": 2125,
+      "sha256": "5cd7dfec6fe84e10595bfb5e3f8831ba80a29e42f82437e7002ec8c111fa6da3"
+    },
+    {
+      "path": "B_synthetic/SURF.DAT",
+      "bytes": 459,
+      "sha256": "efc7e8e4d0d22e0f110c62ed9d38b21f5f825866275b26721528deb0869e8bb2"
+    },
+    {
+      "path": "raw/noaa_isd_2020.csv",
+      "bytes": 8162997,
+      "sha256": "4c0daacf5a7399959d8043b9cfa5a8d2eecdae2e03f310ea93780592e31a4e35"
+    }
+  ]
+}

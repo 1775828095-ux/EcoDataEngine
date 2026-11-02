@@ -1,0 +1,35 @@
+# Local environments and generated files
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest_tmp*/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+output/
+outputs/
+logs/
+*.log
+
+# Credentials must never be committed
+.env
+.env.*
+!.env.example
+!.env.template
+.streamlit/secrets.toml
+*.pem
+*.key
+.netrc
+.cdsapirc
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+~$*

@@ -1,0 +1,115 @@
+{
+  "target": "SWAT+62.0.0 hru_read/hru_databases_char",
+  "hru_records": 2,
+  "reference_checks": {
+    "topo": {
+      "source": "topography.hyd",
+      "sha256": "f2c59b6d7b1e9e642f84ff247cf38600d3b34b44548d40e0a52bdf5c1d5b8b7b",
+      "status": "reference names checked only; parameter values not certified"
+    },
+    "hydro": {
+      "source": "hydrology.hyd",
+      "sha256": "53d6644019be0ff69a3afad428be623d35db57c59d75f05098859ebd8d252382",
+      "status": "reference names checked only; parameter values not certified"
+    },
+    "soil": {
+      "source": "soils.sol",
+      "sha256": "b8e6b2209aec40f11d8d7125d2c0c48ba7c8f9376ab228b565b9ff33a1e38823",
+      "status": "reference names checked only; parameter values not certified"
+    },
+    "lu_mgt": {
+      "source": "landuse.lum",
+      "sha256": "2710aa8f8190ba07e90edc9a15081d26f0a7d3035e85e5032e80cddd11469b26",
+      "status": "reference names checked only; parameter values not certified"
+    },
+    "soil_plant_init": {
+      "source": "soil_plant.ini",
+      "sha256": "f03fef778452e19389b6fe787c4451390b329455e77dd6ca1b40a885aa11f45d",
+      "status": "reference names checked only; parameter values not certified"
+    },
+    "snow": {
+      "source": "snow.sno",
+      "sha256": "c4180cda852837686b8eb3dd852653174814bd5a223e8898fe87d45fcad39dbb",
+      "status": "reference names checked only; parameter values not certified"
+    }
+  },
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Analytic disjoint 100x50 m rectangles; two adjacent same-class polygons per HRU. Official input databases used only as reference fixtures, not new measurements."
+  },
+  "generated_files": [
+    "hru-data.hru",
+    "README_HRU_attributes.txt"
+  ],
+  "scope": "用户已划分HRU与地类多边形的同投影、完整同类覆盖关联→hru-data.hru lu_mgt。无重采样、HRU划分、混合地类归并、参数推导、file.cio或完整流域工程。参考数据库仅核对直接名称，不认证深层参数。",
+  "topology_generation": "none",
+  "missing_policy": "reject",
+  "spatial_checks": [
+    {
+      "hru_id": "1",
+      "category": "C",
+      "lu_mgt": "cosy_lum",
+      "area_m2": 5000.0,
+      "uncovered_m2": 0.0
+    },
+    {
+      "hru_id": "2",
+      "category": "M",
+      "lu_mgt": "mntill_corn_lum",
+      "area_m2": 5000.0,
+      "uncovered_m2": 0.0
+    }
+  ],
+  "source_crs": "EPSG:32615",
+  "coordinate_unit": "m",
+  "geometry_relative_roundoff_tolerance": 1e-10,
+  "interpolation": "none",
+  "time_axis": "static",
+  "source_sha256": "92a39a61a5a887a6a398b4dd5ec14b2ed95a3b5632fce56a442d56f8b935e62d",
+  "configuration": {
+    "mode": "spatial_landuse",
+    "target_model_version": "62.0.0",
+    "table": "attributes.csv",
+    "fields": {
+      "id": "id",
+      "name": "name",
+      "topo": "topo",
+      "hydro": "hydro",
+      "soil": "soil",
+      "soil_plant_init": "soil_plant_init",
+      "surf_stor": "surf_stor",
+      "snow": "snow",
+      "field": "field"
+    },
+    "references": {
+      "topo": "topography.hyd",
+      "hydro": "hydrology.hyd",
+      "soil": "soils.sol",
+      "lu_mgt": "landuse.lum",
+      "soil_plant_init": "soil_plant.ini",
+      "snow": "snow.sno"
+    },
+    "source_crs": "EPSG:32615",
+    "coordinate_unit": "m",
+    "spatial_policy": "homogeneous_full_coverage",
+    "hru_geometry": "HRU.geojson",
+    "landuse_geometry": "land.geojson",
+    "hru_id_property": "id",
+    "landuse_code_property": "code",
+    "category_mapping": {
+      "C": "cosy_lum",
+      "M": "mntill_corn_lum"
+    },
+    "source": {
+      "kind": "synthetic_test",
+      "description": "Analytic disjoint 100x50 m rectangles; two adjacent same-class polygons per HRU. Official input databases used only as reference fixtures, not new measurements."
+    }
+  },
+  "output_sha256": {
+    "hru-data.hru": "03ca49a13af21d2cae87a6f4afcc928e518c136742e29b0bd391ffe3b297f36e",
+    "README_HRU_attributes.txt": "2dde83983d2993718a4e1edf45528eba4a8e41fbf6a1076983da1d052b9065ee",
+    "landuse_HRU_association.json": "2e72ccfb85c02e48aa40bf4188eb9d4dd3a803b686d329902ad0c8dfb08f15b2",
+    "README_spatial_landuse.txt": "8082a22019e595e5f6cd076ba39d8a5f4051199d1effa05c1dba13843fbd90c2"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

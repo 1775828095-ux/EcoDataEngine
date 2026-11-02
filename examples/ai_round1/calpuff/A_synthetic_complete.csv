@@ -1,0 +1,5 @@
+station_id,time,wind_speed,wind_direction,ceiling,opaque_cover,temperature,relative_humidity,station_pressure,precip_code
+12345,2020-02-29T04:00:00+00:00,3,270,20,5,20,50,1010,0
+12345,2020-02-29T05:00:00+00:00,3,270,20,5,20,50,1010,0
+12345,2020-02-29T06:00:00+00:00,3,270,20,5,20,50,1010,0
+12345,2020-02-29T07:00:00+00:00,3,270,20,5,20,50,1010,0

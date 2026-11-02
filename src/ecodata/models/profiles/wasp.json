@@ -1,0 +1,63 @@
+{
+  "adapter_status": "standardized_preprocessing_supported",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "支持将已识别真实原始数据整理为可审查的 WASP 上游标准数据包；不生成或声称验证 WIF/INP。",
+  "id": "wasp",
+  "name": "WASP",
+  "category": "水质",
+  "reference_version": "official EPA current distribution",
+  "official_sources": [
+    "https://www.epa.gov/hydrowq/wasp-model-examples"
+  ],
+  "input_formats": [
+    "WASP project/input files",
+    "linkage files"
+  ],
+  "required_variables": [
+    "segment_geometry",
+    "flow",
+    "boundary_concentrations",
+    "loads",
+    "water_quality_state",
+    "kinetic_parameters"
+  ],
+  "variable_aliases": {},
+  "preparation_scenario": {
+    "id": "wasp_raw_preparation",
+    "name": "WASP 上游数据准备（不是原生 WIF）",
+    "status": "standardized_preprocessing",
+    "adapter": "wasp_package",
+    "target_crs": null,
+    "native_model_input": false,
+    "output_format": "NetCDF",
+    "native_gaps": ["真实 EFDC hydrodynamics/linkage", "segment 和排放/边界映射", "动力学和负荷/组分参数", "WIF 原生写入与模型运行验收"],
+    "inputs": [
+      {"role":"hydrodynamics","name":"EFDC 等上游模型水动力输出","required":true,"record_only":true,"formats":["HYD"],"dimensions":[],"crs":"project-specific","time":"simulation-specific","space":"segment/network","fields":[{"name":"hydrodynamics_file","unit":"","data_type":"string_identifier"}],"source_evidence":{"source_model":["EFDC"],"data_role":["upstream_model_output"]}},
+      {"role":"segment_geometry","name":"模型分段几何","required":true,"formats":["CSV","GeoJSON","Shapefile ZIP"],"dimensions":["record"],"crs":"project-specific","time":null,"space":"segment","fields":[{"name":"segment_id","unit":"","data_type":"string_identifier"},{"name":"volume","unit":"m^3","data_type":"continuous"}],"source_evidence":{"model_use":["segment_geometry"]}},
+      {"role":"initial_conditions","name":"初始水质场（须明确指定用途）","required":true,"formats":["CSV","NetCDF"],"dimensions":["record"],"crs":"project-specific","time":"initial instant","space":"segment","fields":[{"name":"dissolved_oxygen","unit":"mg/L","data_type":"continuous","aliases":["DO"]}],"source_evidence":{"model_use":["initial_conditions"]},"depends_on":["segment_geometry"]},
+      {"role":"boundary_conditions","name":"边界条件（须边界映射）","required":true,"formats":["CSV","NetCDF"],"dimensions":["record"],"crs":"project-specific","time":"simulation-specific","space":"boundary segment","fields":[{"name":"dissolved_oxygen","unit":"mg/L","data_type":"continuous"}],"source_evidence":{"model_use":["boundary_conditions"]},"depends_on":["segment_geometry"]},
+      {"role":"tributary_inflows","name":"河流流量来源","required":true,"formats":["RDB","CSV","NetCDF"],"dimensions":["record"],"crs":"station metadata","time":"daily/instantaneous; original timezone must be retained","space":"river-to-segment mapping required for model use","fields":[{"name":"discharge","standard_name":"water_volume_flow_rate","unit":"m^3/s","data_type":"continuous","aliases":["value","flow"]}],"source_evidence":{"data_role":["tributary_inflow"]}},
+      {"role":"tributary_concentrations","name":"河流营养盐浓度来源（非负荷）","required":true,"formats":["Excel","CSV","NetCDF"],"dimensions":["record"],"crs":"station metadata","time":"sample time","space":"confirmed tributary","fields":[{"name":"ammonia_nitrogen","unit":"mg/L","data_type":"continuous"},{"name":"nitrate_nitrite_nitrogen","unit":"mg/L","data_type":"continuous"}],"source_evidence":{"model_use":["tributary_concentrations"]}},
+      {"role":"point_source_loads","name":"排放负荷（需要真实负荷或流量浓度公式）","required":true,"formats":["CSV","NetCDF"],"dimensions":["record"],"crs":"outfall metadata","time":"simulation-specific","space":"outfall segment","fields":[{"name":"ammonia_load","unit":"kg/day","data_type":"continuous"}],"source_evidence":{"model_use":["point_source_loads"]},"depends_on":["segment_geometry"]},
+      {"role":"forcing","name":"环境气象驱动来源","required":true,"formats":["CSV","ISD","GZ","NetCDF"],"dimensions":["record"],"crs":"station metadata","time":"observation time; timezone required","space":"station/model coverage","fields":[{"name":"temperature","standard_name":"air_temperature","unit":"degC","data_type":"continuous","required":false},{"name":"wind_speed","unit":"m/s","data_type":"continuous","required":false},{"name":"wind_direction","unit":"degree","data_type":"continuous","required":false},{"name":"pressure","unit":"hPa","data_type":"continuous","required":false}],"source_evidence":{"data_role":["forcing"]},"notes":"匹配已有气象变量不表示全部驱动齐全；太阳辐射等未测字段不会生成"},
+      {"role":"calibration_observations","name":"校准观测（需要确认用途）","required":false,"formats":["TXT","CSV","Excel","NetCDF"],"dimensions":["record"],"crs":"station metadata","time":"observation time","space":"monitoring station","fields":[{"name":"dissolved_oxygen","unit":"mg/L","data_type":"continuous","required":false},{"name":"water_temperature","unit":"degC","data_type":"continuous","required":false},{"name":"ammonia_nitrogen","unit":"mg/L","data_type":"continuous","required":false}],"source_evidence":{"data_role":["water_quality_observation"],"observation_purpose":["calibration"]}},
+      {"role":"validation_observations","name":"独立验证观测（需要分离与用途证据）","required":false,"formats":["TXT","CSV","Excel","NetCDF"],"dimensions":["record"],"crs":"station metadata","time":"observation time","space":"independent monitoring station","fields":[{"name":"dissolved_oxygen","unit":"mg/L","data_type":"continuous","required":false},{"name":"water_temperature","unit":"degC","data_type":"continuous","required":false},{"name":"ammonia_nitrogen","unit":"mg/L","data_type":"continuous","required":false}],"source_evidence":{"data_role":["water_quality_observation"],"observation_purpose":["validation"]}}
+    ]
+  },
+  "requirements": {
+    "files": [
+      "WASP project dataset",
+      "hydrodynamic/linkage data",
+      "boundary and load time series"
+    ],
+    "dimensions": [
+      "time",
+      "segment",
+      "state_variable"
+    ],
+    "time": "simulation-specific time series",
+    "special": "network segmentation, initial conditions, boundaries, loads and kinetics must be consistent"
+  },
+  "outputs": "segment time series and state-variable results",
+  "exchange_notes": "can consume linkage outputs from watershed/hydrodynamic models; exact schema is version/project specific"
+}

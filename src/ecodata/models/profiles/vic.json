@@ -1,0 +1,48 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "vic",
+  "name": "VIC",
+  "category": "水文",
+  "reference_version": "5.0.1 Classic Driver",
+  "official_sources": [
+    "https://vic.readthedocs.io/en/vic.5.0.1/Documentation/Drivers/Classic/ForcingData/"
+  ],
+  "input_formats": [
+    "ASCII",
+    "binary",
+    "NetCDF for image driver"
+  ],
+  "required_variables": [
+    "air_temperature",
+    "precipitation",
+    "pressure",
+    "shortwave",
+    "longwave",
+    "vapor_pressure",
+    "wind",
+    "soil_parameters",
+    "vegetation_parameters"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "global parameter",
+      "forcing",
+      "soil",
+      "vegetation library/parameters",
+      "optional state/lake"
+    ],
+    "dimensions": [
+      "time",
+      "grid_cell",
+      "soil_layer",
+      "vegetation_tile"
+    ],
+    "time": "forcing interval must match configured model/snow step",
+    "special": "driver controls format and exact requirements"
+  },
+  "outputs": "configurable ASCII/binary/NetCDF hydrologic fluxes and states",
+  "exchange_notes": "routing models consume runoff/baseflow; driver-specific schemas differ"
+}

@@ -1,0 +1,61 @@
+{
+  "scope": "CMAQ 5.5 BCON/profile BC_PROFILE ASCII input; not BCON boundary NetCDF",
+  "version": "CMAQ-5.5-BCON-profile",
+  "mechanism": "CB6R3M_AE7_KMTBR",
+  "layers": 3,
+  "variables": 3,
+  "values": 9,
+  "source_units": {
+    "ZH": "km",
+    "PRES": "hPa",
+    "O3": "ppbV"
+  },
+  "target_units": {
+    "ZH": "m",
+    "PRES": "Pa",
+    "O3": "ppmV"
+  },
+  "source": {
+    "url": "synthetic://manual-3-layer",
+    "description": "Synthetic test for renamed wide columns and explicit km/hPa/ppbV conversions"
+  },
+  "missing_policy": "reject",
+  "time": "static vertical profile; BCON controls output time separately",
+  "coordinates": "ZH metres above ground; BCON obtains target boundary grid from MET_BDY_3D_FIN",
+  "BCON_run_verified": false,
+  "complete_model_input": false,
+  "source_sha256": "27d69ccb28d8f0b9c76419eb1cb4d415ada658f14ec63a1a2e10d5996cd18bc5",
+  "configuration": {
+    "mode": "bcon_profile",
+    "version": "CMAQ-5.5-BCON-profile",
+    "mechanism": "CB6R3M_AE7_KMTBR",
+    "layout": "wide",
+    "layers": 3,
+    "fields": {
+      "variable": "species_name",
+      "unit": "input_unit",
+      "layers": [
+        "bottom",
+        "middle",
+        "top"
+      ]
+    },
+    "target_units": {
+      "ZH": "m",
+      "PRES": "Pa",
+      "O3": "ppmV"
+    },
+    "missing_values": [
+      "-9999",
+      "NA"
+    ],
+    "source": {
+      "url": "synthetic://manual-3-layer",
+      "description": "Synthetic test for renamed wide columns and explicit km/hPa/ppbV conversions"
+    }
+  },
+  "output_sha256": {
+    "BC_PROFILE_CMAQ55.csv": "0d8c1f5fba7d66b15067649210421f7f69e3a934bade8d218a71dd9f0dbf3678"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

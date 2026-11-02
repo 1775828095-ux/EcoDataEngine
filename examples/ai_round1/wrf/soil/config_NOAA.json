@@ -1,0 +1,40 @@
+{
+  "mode": "pressure_fields",
+  "version": "WPS-4.6-intermediate-v5-fields",
+  "time_basis": "UTC",
+  "crs": "EPSG:4326",
+  "coordinates": {
+    "time": "time",
+    "latitude": "lat",
+    "longitude": "lon"
+  },
+  "interval_seconds": 21600,
+  "prefix": "SOIL",
+  "required_fields": [
+    "ST000010",
+    "SM000010"
+  ],
+  "fields": {
+    "ST000010": {
+      "variable": "tmp",
+      "source_depth_cm": [
+        0,
+        10
+      ]
+    },
+    "SM000010": {
+      "variable": "soilw",
+      "source_depth_cm": [
+        0,
+        10
+      ],
+      "soil_moisture_basis": "volumetric"
+    }
+  },
+  "source": {
+    "kind": "real_reanalysis",
+    "description": "NOAA NCEP-NCAR reanalysis 4xDaily topsoil0-10cm; 2024-01-01 00/06UTC; exact2 adjacent Gaussian latitude rows and3 longitudes, no interpolation",
+    "url": "https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.html",
+    "license_note": "Public NOAA data; cite NOAA PSL/NCEP/NCAR; no separate SPDX claimed"
+  }
+}

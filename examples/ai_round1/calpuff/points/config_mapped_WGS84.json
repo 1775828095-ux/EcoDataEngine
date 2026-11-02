@@ -1,0 +1,84 @@
+{
+  "mode": "constant_points",
+  "version": "CALPUFF-5.8.4-group13",
+  "emission_time_policy": "constant_supplied",
+  "table": "points.csv",
+  "control_file": "supplied.INP",
+  "fields": {
+    "name": "custom_name",
+    "x": "custom_x",
+    "y": "custom_y",
+    "height": "custom_height",
+    "elevation": "custom_elevation",
+    "diameter": "custom_diameter",
+    "exit_velocity": "custom_exit_velocity",
+    "exit_temperature": "custom_exit_temperature",
+    "downwash": "custom_downwash",
+    "sigma_y": "custom_sigma_y",
+    "sigma_z": "custom_sigma_z",
+    "momentum_factor": "custom_momentum_factor",
+    "platform_height": "custom_platform_height"
+  },
+  "units": {
+    "x": "m",
+    "y": "m",
+    "height": "m",
+    "elevation": "m",
+    "diameter": "m",
+    "exit_velocity": "m/s",
+    "exit_temperature": "degC",
+    "downwash": "1",
+    "sigma_y": "m",
+    "sigma_z": "m",
+    "momentum_factor": "1",
+    "platform_height": "m"
+  },
+  "species": [
+    {
+      "name": "PM10",
+      "column": "rate_PM10",
+      "unit": "kg/hour"
+    },
+    {
+      "name": "NO3",
+      "column": "rate_NO3",
+      "unit": "kg/hour"
+    },
+    {
+      "name": "HNO3",
+      "column": "rate_HNO3",
+      "unit": "kg/hour"
+    },
+    {
+      "name": "NO2",
+      "column": "rate_NO2",
+      "unit": "kg/hour"
+    },
+    {
+      "name": "NO",
+      "column": "rate_NO",
+      "unit": "kg/hour"
+    },
+    {
+      "name": "SO4",
+      "column": "rate_SO4",
+      "unit": "kg/hour"
+    },
+    {
+      "name": "SO2",
+      "column": "rate_SO2",
+      "unit": "kg/hour"
+    }
+  ],
+  "missing_values": [
+    -9999
+  ],
+  "source_crs": "EPSG:32619",
+  "elevation_vertical_reference": "MSL",
+  "max_float32_error_m": 0.02,
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Explicit synthetic stack values, some matching official demo constants; sigma zeros explicitly supplied, not missing-data defaults. Mapped control datum is synthetic, not a validated real meteorology case.",
+    "license": "CC0 synthetic; official control format per official download"
+  }
+}

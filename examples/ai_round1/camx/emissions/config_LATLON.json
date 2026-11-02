@@ -1,0 +1,49 @@
+{
+  "mode": "gridded_emissions",
+  "version": "CAMx-7.40",
+  "mechanism": "CB6r5_CF3_SIMPLE_NoEvap",
+  "fields": {
+    "time": "timestamp",
+    "row": "iy",
+    "col": "ix"
+  },
+  "row_col_base": 1,
+  "species": [
+    {
+      "name": "NO",
+      "column": "nitric_oxide",
+      "phase": "gas",
+      "unit": "mol/s"
+    },
+    {
+      "name": "PEC",
+      "column": "carbon",
+      "phase": "aerosol",
+      "unit": "kg/hour"
+    }
+  ],
+  "grid": {
+    "projection": "LATLON",
+    "ncols": 3,
+    "nrows": 2,
+    "xorig": 110.0,
+    "yorig": 30.0,
+    "xcell": 0.1,
+    "ycell": 0.2,
+    "coordinate_units": "degree",
+    "xcent": 0,
+    "ycent": 0,
+    "p_alp": 0,
+    "p_bet": 0,
+    "itzon": -8
+  },
+  "missing_values": [
+    -9999
+  ],
+  "time_basis": "interval_start_hourly",
+  "source": {
+    "kind": "synthetic_test",
+    "url": "urn:ecodata:synthetic:camx-emissions",
+    "license": "CC0"
+  }
+}

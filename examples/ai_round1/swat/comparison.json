@@ -1,0 +1,35 @@
+{
+  "format_parsed": true,
+  "records": 366,
+  "dates_exact": true,
+  "leap_day_present": true,
+  "precipitation_mm": {
+    "count": 357,
+    "max_absolute_error": 0.05000000000000071,
+    "MAE": 0.012666666666666647,
+    "RMSE": 0.021377492810887605,
+    "bias": 0.003086834733893728,
+    "threshold_atol": 0.050000001,
+    "relative_error": "not used: values near zero occur",
+    "passed": true
+  },
+  "temperature_degC": {
+    "count": 732,
+    "max_absolute_error": 0.02222222222222303,
+    "MAE": 0.014981785063751286,
+    "RMSE": 0.016777610907221928,
+    "bias": 0.0012902246508802117,
+    "threshold_atol": 0.050000001,
+    "relative_error": "not used: values near zero occur",
+    "passed": true
+  },
+  "missing_p_mask_exact": true,
+  "precipitation_sum_error_mm": 1.1020000000000891,
+  "quantization_bound_mm": 17.850000001,
+  "sum_within_bound": true,
+  "missing_policy": "swat_generator",
+  "B2": null,
+  "C2": null,
+  "complete_model_run": false,
+  "boundary": "Validates numeric conversion and fixed-format dates; source daily reporting window and complete watershed run remain unverified"
+}

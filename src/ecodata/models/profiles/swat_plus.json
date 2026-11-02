@@ -1,0 +1,367 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "专项支持单站日降水、最高/最低温、可选辐射/湿度/风速及实际.cli索引；另支持62.0.0 weather-wgn.cli月统计转换。未生成随机天气，无完整流域工程；通用准备仍为标准化数据。",
+  "id": "swat_plus",
+  "name": "SWAT+",
+  "category": "水文",
+  "reference_version": "Weather text: SWAT+ 62.0.0; Editor 4.0.2; full project acceptance unverified",
+  "official_sources": [
+    "https://docs.swat.tamu.edu/input-reference/"
+  ],
+  "input_formats": [
+    "space-delimited text",
+    "CSV via editor"
+  ],
+  "required_variables": [
+    "simulation_control",
+    "weather",
+    "soil",
+    "landuse",
+    "topography",
+    "hydrologic_units"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "file.cio",
+      "time.sim",
+      "print.prt",
+      "object.cnt",
+      "weather *.cli and station files",
+      "soils.sol",
+      "plants.plt",
+      "spatial connection files"
+    ],
+    "dimensions": [
+      "time",
+      "station",
+      "HRU",
+      "channel",
+      "aquifer"
+    ],
+    "time": "daily or configured subdaily weather",
+    "special": "title/header rules, explicit column order and units per file"
+  },
+  "outputs": "plain-text object, basin, HRU, channel and water-balance outputs",
+  "exchange_notes": "file.cio indexes project inputs; exchange requires object identifiers and aggregation period",
+  "preparation_scenario": {
+    "id": "swat_plus_standardized_v1",
+    "name": "SWAT+ 标准化准备（非原生文本输出）",
+    "adapter": "standardized",
+    "status": "standardized_preprocessing",
+    "output_format": "NetCDF",
+    "native_model_input": false,
+    "format_scope": "standardized_only",
+    "target_crs": "EPSG:4326",
+    "record_only_roles": [],
+    "derivable_fields": [],
+    "native_gaps": [
+      "通用场景未调用天气文本writer；请用首轮专项转换SWAT+入口",
+      "单站天气及部分控制索引已实现，完整HRU/channel/aquifer工程未实现",
+      "未用官方SWAT+读取或运行输出"
+    ],
+    "inputs": [
+      {
+        "role": "simulation_control",
+        "name": "模拟控制",
+        "required": true,
+        "formats": [
+          "JSON",
+          "CSV",
+          "Excel"
+        ],
+        "dimensions": [
+          "record"
+        ],
+        "crs": "不适用",
+        "time": "模拟起止时间",
+        "space": "项目域",
+        "fields": [
+          {
+            "name": "simulation_start",
+            "standard_name": "simulation_start_time",
+            "unit": "ISO8601",
+            "data_type": "datetime",
+            "aliases": [
+              "start"
+            ],
+            "required": true
+          },
+          {
+            "name": "simulation_end",
+            "standard_name": "simulation_end_time",
+            "unit": "ISO8601",
+            "data_type": "datetime",
+            "aliases": [
+              "end"
+            ],
+            "required": true
+          },
+          {
+            "name": "time_step",
+            "standard_name": "time_step",
+            "unit": "day",
+            "data_type": "string_identifier",
+            "aliases": [
+              "dt"
+            ],
+            "required": false
+          }
+        ]
+      },
+      {
+        "role": "topography",
+        "name": "地形",
+        "required": true,
+        "formats": [
+          "GeoTIFF",
+          "NetCDF"
+        ],
+        "dimensions": [
+          "y",
+          "x"
+        ],
+        "crs": "EPSG:4326 或可靠投影网格",
+        "time": "静态",
+        "space": "覆盖流域",
+        "fields": [
+          {
+            "name": "elevation",
+            "standard_name": "surface_altitude",
+            "unit": "m",
+            "data_type": "continuous",
+            "aliases": [
+              "dem",
+              "height",
+              "value"
+            ],
+            "required": true
+          }
+        ]
+      },
+      {
+        "role": "landuse",
+        "name": "土地利用",
+        "required": true,
+        "formats": [
+          "GeoTIFF",
+          "NetCDF"
+        ],
+        "dimensions": [
+          "y",
+          "x"
+        ],
+        "crs": "EPSG:4326 或可靠投影网格",
+        "time": "静态",
+        "space": "覆盖流域",
+        "fields": [
+          {
+            "name": "land_cover_class",
+            "standard_name": "land_cover_class",
+            "unit": "class_id",
+            "data_type": "categorical",
+            "aliases": [
+              "land_cover",
+              "landuse",
+              "land_class"
+            ],
+            "required": true
+          }
+        ]
+      },
+      {
+        "role": "soil",
+        "name": "土壤",
+        "required": true,
+        "formats": [
+          "GeoTIFF",
+          "NetCDF"
+        ],
+        "dimensions": [
+          "y",
+          "x"
+        ],
+        "crs": "EPSG:4326 或可靠投影网格",
+        "time": "静态",
+        "space": "覆盖流域",
+        "fields": [
+          {
+            "name": "sand",
+            "standard_name": "soil_sand_content",
+            "unit": "g/kg",
+            "data_type": "continuous",
+            "aliases": [
+              "sand_content"
+            ],
+            "required": true
+          },
+          {
+            "name": "silt",
+            "standard_name": "soil_silt_content",
+            "unit": "g/kg",
+            "data_type": "continuous",
+            "aliases": [
+              "silt_content"
+            ],
+            "required": true
+          },
+          {
+            "name": "clay",
+            "standard_name": "soil_clay_content",
+            "unit": "g/kg",
+            "data_type": "continuous",
+            "aliases": [
+              "clay_content"
+            ],
+            "required": true
+          },
+          {
+            "name": "bulk_density",
+            "standard_name": "soil_bulk_density",
+            "unit": "kg/dm3",
+            "data_type": "continuous",
+            "aliases": [
+              "bdod"
+            ],
+            "required": false
+          }
+        ]
+      },
+      {
+        "role": "weather",
+        "name": "气象驱动",
+        "required": true,
+        "formats": [
+          "NetCDF",
+          "CSV"
+        ],
+        "dimensions": [
+          "time"
+        ],
+        "crs": "EPSG:4326 或可靠投影网格",
+        "time": "日或子日",
+        "space": "覆盖流域",
+        "fields": [
+          {
+            "name": "precipitation",
+            "standard_name": "precipitation_amount",
+            "unit": "mm/day",
+            "data_type": "continuous",
+            "aliases": [
+              "prcp"
+            ],
+            "required": true
+          },
+          {
+            "name": "air_temperature_max",
+            "standard_name": "air_temperature_max",
+            "unit": "degC",
+            "data_type": "continuous",
+            "aliases": [
+              "tmax"
+            ],
+            "required": true
+          },
+          {
+            "name": "air_temperature_min",
+            "standard_name": "air_temperature_min",
+            "unit": "degC",
+            "data_type": "continuous",
+            "aliases": [
+              "tmin"
+            ],
+            "required": true
+          },
+          {
+            "name": "solar_radiation",
+            "standard_name": "surface_downwelling_shortwave_flux",
+            "unit": "W/m2",
+            "data_type": "continuous",
+            "aliases": [
+              "srad"
+            ],
+            "required": false
+          },
+          {
+            "name": "relative_humidity",
+            "standard_name": "relative_humidity",
+            "unit": "%",
+            "data_type": "continuous",
+            "aliases": [
+              "rh"
+            ],
+            "required": false
+          },
+          {
+            "name": "wind_speed",
+            "standard_name": "wind_speed",
+            "unit": "m/s",
+            "data_type": "continuous",
+            "aliases": [
+              "wind"
+            ],
+            "required": false
+          }
+        ]
+      },
+      {
+        "role": "hydrologic_units",
+        "name": "流域对象",
+        "required": true,
+        "formats": [
+          "GeoJSON",
+          "Shapefile ZIP",
+          "CSV"
+        ],
+        "dimensions": [
+          "record"
+        ],
+        "crs": "EPSG:4326 或可靠投影",
+        "time": "静态",
+        "space": "流域拓扑",
+        "fields": [
+          {
+            "name": "object_id",
+            "standard_name": "watershed_object_id",
+            "unit": "",
+            "data_type": "string_identifier",
+            "aliases": [
+              "id",
+              "hru_id"
+            ],
+            "required": true
+          },
+          {
+            "name": "longitude",
+            "standard_name": "longitude",
+            "unit": "degree_east",
+            "data_type": "continuous",
+            "aliases": [
+              "lon"
+            ],
+            "required": true
+          },
+          {
+            "name": "latitude",
+            "standard_name": "latitude",
+            "unit": "degree_north",
+            "data_type": "continuous",
+            "aliases": [
+              "lat"
+            ],
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  "scoped_native_inputs": [
+    {
+      "entrypoint": "ecodata.round1 --model swat_plus",
+      "writer": "SWATPlusWriter",
+      "scope": "single-station daily pcp/tem and optional slr/hmd/wnd; target 62.0.0 weather; no WGN/topology",
+      "documentation": "docs/swat_plus_ui.md"
+    }
+  ]
+}

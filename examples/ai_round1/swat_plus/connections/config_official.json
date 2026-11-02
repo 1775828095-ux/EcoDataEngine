@@ -1,0 +1,57 @@
+{
+  "mode": "connections",
+  "target_model_version": "62.0.0",
+  "source_crs": "EPSG:4326",
+  "units": {
+    "area": "ha",
+    "elev": "m",
+    "coordinates": "degree",
+    "fraction": "1"
+  },
+  "missing_values": [
+    -9999
+  ],
+  "fraction_policy": "sum_to_one_per_hydrograph",
+  "property_files": {
+    "hru": "hru-data.hru",
+    "aqu": "aquifer.aqu",
+    "ru": "rout_unit.rtu",
+    "sdc": "channel-lte.cha"
+  },
+  "weather_stations_file": "weather-sta.cli",
+  "nodes": {
+    "table": "nodes.csv",
+    "fields": {
+      "kind": "kind",
+      "id": "id",
+      "name": "name",
+      "gis_id": "gis_id",
+      "area": "area",
+      "lat": "lat",
+      "lon": "lon",
+      "elev": "elev",
+      "props": "props",
+      "wst": "wst",
+      "cst": "cst",
+      "ovfl": "ovfl",
+      "rule": "rule"
+    }
+  },
+  "edges": {
+    "table": "edges.csv",
+    "fields": {
+      "from_kind": "from_kind",
+      "from_id": "from_id",
+      "order": "order",
+      "to_kind": "to_kind",
+      "to_id": "to_id",
+      "hyd_typ": "hyd_typ",
+      "fraction": "fraction"
+    }
+  },
+  "source": {
+    "kind": "official_input_decoded",
+    "url": "https://github.com/swat-model/swatplus/tree/62.0.0/refdata/Osu_1hru",
+    "description": "Osu complete supplied connection records decoded independently; not raw GIS-derived topology; old rev60.5.4 headers retained in B2"
+  }
+}

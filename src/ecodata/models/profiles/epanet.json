@@ -1,0 +1,39 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "epanet",
+  "name": "EPANET",
+  "category": "水质/供水管网",
+  "reference_version": "2.2",
+  "official_sources": [
+    "https://www.epa.gov/water-research/epanet"
+  ],
+  "input_formats": [
+    "INP text",
+    "binary output",
+    "report text"
+  ],
+  "required_variables": [
+    "junctions",
+    "reservoirs",
+    "tanks",
+    "pipes",
+    "demands",
+    "simulation_times"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      ".inp network sections"
+    ],
+    "dimensions": [
+      "time",
+      "node",
+      "link"
+    ],
+    "special": "network identifiers, units and hydraulic options must agree"
+  },
+  "outputs": "hydraulic/water-quality binary output and report",
+  "exchange_notes": "INP identifiers connect topology, patterns, controls and quality sources"
+}

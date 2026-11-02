@@ -1,0 +1,109 @@
+{
+  "scope": "CAMx7.40 BOUNDARY NetCDF，NCF_READBND读取完整COL×ROW×LAY后使用侧边格点。本profile要求用户给全三维逐小时浓度，不将仅外圈表扩展成虚假内部值。当前机制CB6r5_CF3_SIMPLE_NoEvap、LATLON/LCC，gas ppm、aerosol ug/m3。无时空插值、机制拆分、默认浓度，不生成气象/控制/完整工程；未运行CAMx。",
+  "grid": {
+    "ycell": 0.1,
+    "nrows": 3,
+    "p_alp": 0.0,
+    "itzon": 0,
+    "xcell": 0.1,
+    "ycent": 0.0,
+    "p_bet": 0.0,
+    "xorig": 110.0,
+    "yorig": 30.0,
+    "xcent": 0.0,
+    "ncols": 4,
+    "cproj": 0,
+    "gdtyp": 1
+  },
+  "source": {
+    "kind": "synthetic",
+    "description": "Synthetic complete 3D hourly volume, analytic values; not measurements or simulation data",
+    "license": "CC0 synthetic test values"
+  },
+  "mechanism": "CB6r5_CF3_SIMPLE_NoEvap",
+  "species": [
+    "O3",
+    "PSO4"
+  ],
+  "units": {
+    "O3": "ppm",
+    "PSO4": "ug/m3"
+  },
+  "layers": 2,
+  "start_time": "2024-02-29T23:00:00+00:00",
+  "valid_until": "2024-03-01T01:00:00+00:00",
+  "hours": 2,
+  "input_layout": "full_grid_3d",
+  "time_processing": "no interpolation; original contiguous hourly validity intervals",
+  "float32_max_absolute_error": {
+    "O3": 6.794929507947245e-09,
+    "PSO4": 3.8146972691777137e-07
+  },
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "8b73fbf07e8c95730dfc98e36eb7f49765b00b45a6fd5079f3489ffa2f08bb4f",
+  "configuration": {
+    "mode": "boundary_concentrations",
+    "version": "CAMx-7.40",
+    "mechanism": "CB6r5_CF3_SIMPLE_NoEvap",
+    "grid": {
+      "projection": "LATLON",
+      "ncols": 4,
+      "nrows": 3,
+      "xorig": 110,
+      "yorig": 30,
+      "xcell": 0.1,
+      "ycell": 0.1,
+      "coordinate_units": "degree",
+      "xcent": 0,
+      "ycent": 0,
+      "p_alp": 0,
+      "p_bet": 0,
+      "itzon": 0
+    },
+    "fields": {
+      "time": "date",
+      "layer": "k",
+      "row": "j",
+      "col": "i"
+    },
+    "species": [
+      {
+        "name": "O3",
+        "column": "ozone",
+        "phase": "gas",
+        "unit": "ppbV"
+      },
+      {
+        "name": "PSO4",
+        "column": "sulfate",
+        "phase": "aerosol",
+        "unit": "ug/m^3"
+      }
+    ],
+    "index_base": 0,
+    "layer_count": 2,
+    "layer_definition": "Synthetic layer labels only; real met height fields must be supplied separately",
+    "required_species": [
+      "O3",
+      "PSO4"
+    ],
+    "valid_until": "2024-03-01T01:00:00Z",
+    "missing_values": [
+      -9999
+    ],
+    "source": {
+      "kind": "synthetic",
+      "description": "Synthetic complete 3D hourly volume, analytic values; not measurements or simulation data",
+      "license": "CC0 synthetic test values"
+    },
+    "input_layout": "full_grid_3d",
+    "interval_seconds": 3600,
+    "start_time": "2024-02-29T23:00:00Z"
+  },
+  "output_sha256": {
+    "boundary.CAMx7.40.nc": "2926861f2a3c8a6974411dc301ac93ffbec57d174dc08b8ab7037385a84ed072",
+    "README_CAMx_boundary.txt": "30a0ea811300275d00249d298232aa796a2745a4713858fefd1f055f6bd8bda5"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

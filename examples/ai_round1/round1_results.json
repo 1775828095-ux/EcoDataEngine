@@ -1,0 +1,348 @@
+{
+  "thresholds": {
+    "declared_before_case_comparisons": true,
+    "basis": "provisional engineering thresholds, not model vendor certification",
+    "calmet_value_atol": 1e-06,
+    "calmet_missing_mask_exact": true,
+    "calmet_time_station_exact": true,
+    "swat_atol_mm_or_degC": 0.050000001,
+    "swat_daily_conservation_bound_mm": "0.05*N finite daily records (quantization upper bound)",
+    "wps_sst_atol_K": 2e-05,
+    "wps_grid_atol_degree": 1e-05,
+    "wps_earth_radius_atol_km": 0.0003,
+    "smerge_rewrite_atol": 0.000500001,
+    "camx_standardized_values_atol": 1e-12,
+    "cmaq_affine_unit_atol": 1e-10,
+    "cmaq_wind_mapping_atol_m_s": 1e-10,
+    "invalid_data_rejection": 1.0,
+    "complete_model_runs_required_for_full_workflow_claim": true
+  },
+  "cases": {
+    "calpuff": {
+      "reference": {
+        "format_parsed": true,
+        "records": 840,
+        "missing_counts": {
+          "wind_speed": 0,
+          "wind_direction": 0,
+          "ceiling": 0,
+          "opaque_cover": 168,
+          "temperature": 0,
+          "relative_humidity": 0,
+          "station_pressure": 0,
+          "precip_code": 0
+        },
+        "time_label": "hour_end",
+        "complete_model_run": false,
+        "time_station_exact": true,
+        "missing_mask_exact": true,
+        "value_metrics": {
+          "count": 6552,
+          "max_absolute_error": 0.0,
+          "MAE": 0.0,
+          "RMSE": 0.0,
+          "bias": 0.0,
+          "threshold_atol": 1e-06,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        },
+        "B2": "Official unchanged SMERGE5.57 SURF.DAT; same decoded values/configuration, validates serialization/unit inversion only"
+      },
+      "noaa": {
+        "format_parsed": true,
+        "records": 24,
+        "missing_counts": {
+          "wind_speed": 0,
+          "wind_direction": 0,
+          "ceiling": 24,
+          "opaque_cover": 24,
+          "temperature": 0,
+          "relative_humidity": 24,
+          "station_pressure": 0,
+          "precip_code": 24
+        },
+        "time_label": "hour_end",
+        "complete_model_run": false,
+        "temperature_conversion": {
+          "count": 24,
+          "max_absolute_error": 5.684341886080802e-14,
+          "MAE": 3.0790185216271006e-14,
+          "RMSE": 4.1835623516930536e-14,
+          "bias": 3.0790185216271006e-14,
+          "threshold_atol": 1e-06,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        },
+        "B2": null
+      },
+      "synthetic": {
+        "format_parsed": true,
+        "records": 4,
+        "missing_counts": {
+          "wind_speed": 0,
+          "wind_direction": 0,
+          "ceiling": 0,
+          "opaque_cover": 0,
+          "temperature": 0,
+          "relative_humidity": 0,
+          "station_pressure": 0,
+          "precip_code": 0
+        },
+        "time_label": "hour_end",
+        "complete_model_run": false,
+        "temperature_K": {
+          "count": 4,
+          "max_absolute_error": 0.0,
+          "MAE": 0.0,
+          "RMSE": 0.0,
+          "bias": 0.0,
+          "threshold_atol": 1e-06,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        }
+      }
+    },
+    "swat": {
+      "format_parsed": true,
+      "records": 366,
+      "dates_exact": true,
+      "leap_day_present": true,
+      "precipitation_mm": {
+        "count": 357,
+        "max_absolute_error": 0.05000000000000071,
+        "MAE": 0.012666666666666647,
+        "RMSE": 0.021377492810887605,
+        "bias": 0.003086834733893728,
+        "threshold_atol": 0.050000001,
+        "relative_error": "not used: values near zero occur",
+        "passed": true
+      },
+      "temperature_degC": {
+        "count": 732,
+        "max_absolute_error": 0.02222222222222303,
+        "MAE": 0.014981785063751286,
+        "RMSE": 0.016777610907221928,
+        "bias": 0.0012902246508802117,
+        "threshold_atol": 0.050000001,
+        "relative_error": "not used: values near zero occur",
+        "passed": true
+      },
+      "missing_p_mask_exact": true,
+      "precipitation_sum_error_mm": 1.1020000000000891,
+      "quantization_bound_mm": 17.850000001,
+      "sum_within_bound": true,
+      "missing_policy": "swat_generator",
+      "B2": null,
+      "C2": null,
+      "complete_model_run": false,
+      "boundary": "Validates numeric conversion and fixed-format dates; source daily reporting window and complete watershed run remain unverified"
+    },
+    "wrf": {
+      "format_parsed_by": "scipy.io.FortranFile (independent Fortran records)",
+      "sst_K": {
+        "count": 16,
+        "max_absolute_error": 1.4877319358674868e-05,
+        "MAE": 6.461143499336686e-06,
+        "RMSE": 8.557068343411232e-06,
+        "bias": 4.267692588655336e-06,
+        "threshold_atol": 2e-05,
+        "relative_error": "not used: values near zero occur",
+        "passed": true
+      },
+      "grid_coordinates": {
+        "count": 4,
+        "max_absolute_error": 0.0,
+        "MAE": 0.0,
+        "RMSE": 0.0,
+        "bias": 0.0,
+        "threshold_atol": 1e-05,
+        "relative_error": "not used: values near zero occur",
+        "passed": true
+      },
+      "earth_radius_km": {
+        "count": 1,
+        "max_absolute_error": 0.00021484374974534148,
+        "MAE": 0.00021484374974534148,
+        "RMSE": 0.00021484374974534148,
+        "bias": 0.00021484374974534148,
+        "threshold_atol": 0.0003,
+        "relative_error": "not used: values near zero occur",
+        "passed": true
+      },
+      "field_unit_level_exact": true,
+      "UTC_time": "2020-01-01_12:00:00",
+      "B2": null,
+      "C2": null,
+      "complete_model_run": false,
+      "boundary": "One SST supplemental slab; no pressure levels, winds, soil, geography, metgrid/real/WRF run",
+      "coordinate_max_error_degree": 0.0,
+      "coordinates_passed": true
+    },
+    "camx": {
+      "format_parsed_by": "independent CAMx ASCII test reader and netCDF4",
+      "native_source_shape": [
+        825,
+        23,
+        10
+      ],
+      "record_count": 189750,
+      "preserved_numbers": {
+        "count": 189750,
+        "max_absolute_error": 0.0,
+        "MAE": 0.0,
+        "RMSE": 0.0,
+        "bias": 0.0,
+        "threshold_atol": 1e-12,
+        "relative_error": "not used: values near zero occur",
+        "passed": true
+      },
+      "context_preservation": {
+        "block_id": {
+          "count": 189750,
+          "max_absolute_error": 0.0,
+          "MAE": 0.0,
+          "RMSE": 0.0,
+          "bias": 0.0,
+          "threshold_atol": 1e-12,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        },
+        "ozone_column_native": {
+          "count": 189750,
+          "max_absolute_error": 0.0,
+          "MAE": 0.0,
+          "RMSE": 0.0,
+          "bias": 0.0,
+          "threshold_atol": 1e-12,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        },
+        "albedo": {
+          "count": 189750,
+          "max_absolute_error": 0.0,
+          "MAE": 0.0,
+          "RMSE": 0.0,
+          "bias": 0.0,
+          "threshold_atol": 1e-12,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        },
+        "terrain_native": {
+          "count": 189750,
+          "max_absolute_error": 0.0,
+          "MAE": 0.0,
+          "RMSE": 0.0,
+          "bias": 0.0,
+          "threshold_atol": 1e-12,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        },
+        "height_km": {
+          "count": 189750,
+          "max_absolute_error": 0.0,
+          "MAE": 0.0,
+          "RMSE": 0.0,
+          "bias": 0.0,
+          "threshold_atol": 1e-12,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        },
+        "zenith_index": {
+          "count": 189750,
+          "max_absolute_error": 0.0,
+          "MAE": 0.0,
+          "RMSE": 0.0,
+          "bias": 0.0,
+          "threshold_atol": 1e-12,
+          "relative_error": "not used: values near zero occur",
+          "passed": true
+        }
+      },
+      "reaction_labels_exact": true,
+      "distinct_conditions": 75,
+      "unique_heights": 11,
+      "B2": null,
+      "C2": "official outputs URL exists but full archive not downloaded",
+      "complete_model_run": false,
+      "boundary": "A is official native photolysis input; B is standardized CF table, not a CAMx native input; no upstream radiation reconstruction"
+    },
+    "cmaq": {
+      "format_parsed_by": "netCDF4 for auxiliary CF; PseudoNetCDF for distinct old ICON reference",
+      "temperature_K_to_degC_and_bilinear": {
+        "count": 72,
+        "max_absolute_error": 2.842170943040401e-14,
+        "MAE": 7.302800339756585e-15,
+        "RMSE": 1.3708544702702152e-14,
+        "bias": 5.921189464667501e-16,
+        "threshold_atol": 1e-10,
+        "relative_error": "not used: values near zero occur",
+        "passed": true
+      },
+      "negative_clipping_identity": {
+        "count": 72,
+        "max_absolute_error": 0.0,
+        "MAE": 0.0,
+        "RMSE": 0.0,
+        "bias": 0.0,
+        "threshold_atol": 0,
+        "relative_error": "not used: values near zero occur",
+        "passed": true
+      },
+      "clipped_cells": 30,
+      "required_field_completeness": 1.0,
+      "time_alignment_retained": 1.0,
+      "meteorology_original_steps": 48,
+      "retained_steps": 8,
+      "B2": null,
+      "C2": null,
+      "complete_model_run": false,
+      "native_model_input": false,
+      "boundary": "NASA GEOS-CF/AirNow/USGS auxiliary case; observations constrain fusion so cannot be treated as independent C2. Old CMAQ5.0.2 ICON profile is format-only reference for different version/mechanism",
+      "old_ICON_parsed": true,
+      "candidate_missing_ioapi_attributes": [
+        "FTYPE",
+        "GDTYP",
+        "P_ALP",
+        "P_BET",
+        "P_GAM",
+        "XCENT",
+        "YCENT",
+        "XORIG",
+        "YORIG",
+        "XCELL",
+        "YCELL",
+        "NCOLS",
+        "NROWS",
+        "NLAYS",
+        "NVARS",
+        "SDATE",
+        "STIME",
+        "TSTEP",
+        "VAR-LIST",
+        "VGLVLS"
+      ],
+      "candidate_TFLAG_present": false
+    }
+  },
+  "errors": {},
+  "official_execution": {
+    "full_CALPUFF_run": false,
+    "full_CALMET_run": false,
+    "SMERGE_returncode": 0,
+    "SMERGE_output_exists": true,
+    "SMERGE_read_and_processed": true,
+    "values_after_official_processor": {
+      "count": 6720,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 0.000500001,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    },
+    "scope": "Real official SMERGE re-read/rewrite of B; does not establish full CALMET/CALPUFF simulation",
+    "CALMET_attempt_returncode": 8,
+    "CALMET_attempt_scope": "Official sample control references missing GEO1KM.DAT/upper-air files; no complete compatible case provided. Success requires outputs/log inspection, not returncode."
+  }
+}

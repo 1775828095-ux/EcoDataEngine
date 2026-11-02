@@ -1,0 +1,84 @@
+{
+  "version": "WPS4.6.0 intermediate v5 IPROJ0 SST only (WRF supplement)",
+  "sources": [
+    {
+      "name": "wrf_oisst.nc",
+      "url": "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/202001/oisst-avhrr-v02r01.20200101.nc",
+      "started": "2026-10-04T04:21:42.7520027Z",
+      "status": "downloaded",
+      "bytes": 1694564,
+      "sha256": "11F1127A120F015A1412D44CCCC5C94C364786F1F7B98615914AD5D418615EA4",
+      "error": "",
+      "publisher": "NOAA NCEI",
+      "role": "independent primary raw A, OISST2.1",
+      "license_or_restrictions": "NOAA/NCEI公开访问科学数据；下载文件没有独立许可证文本。本轮不推断第三方数据全部属于公共领域；保留来源与质量标记，按NCEI适用使用政策使用。"
+    },
+    {
+      "name": "wrf_intermediate_writer.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WPS/v4.6.0/ungrib/src/output.F",
+      "started": "2026-10-04T04:20:08.8988415Z",
+      "status": "downloaded",
+      "bytes": 12249,
+      "sha256": "D6565E7879008C25A1F2ACC2E8E76305DA11CEC6A281D333CE5527590F80AA5E",
+      "error": "",
+      "publisher": "NCAR/UCAR WPS v4.6.0",
+      "role": "official binary record specification",
+      "license_or_restrictions": "WPS official repository licensing applies; used as specification, no source routines copied into production exporter."
+    },
+    {
+      "name": "wrf_rd_intermediate.F",
+      "url": "https://raw.githubusercontent.com/wrf-model/WPS/v4.6.0/util/src/rd_intermediate.F",
+      "started": "2026-10-04T04:21:51.5943951Z",
+      "status": "downloaded",
+      "bytes": 6211,
+      "sha256": "EDE2F0055F1BEA9F19D4A7FBBB78EAEB4CCF9FFDCCDD026CCE9A837CD6E39E6F",
+      "error": "",
+      "publisher": "NCAR/UCAR WPS v4.6.0",
+      "role": "independent official reader source reference",
+      "license_or_restrictions": "WPS repository licensing applies; not compiled in this environment."
+    }
+  ],
+  "time": "Original daily analysis NetCDF label 2020-01-01T12:00 UTC, not fabricated hourly SST.",
+  "space": "30..31N,300..301E; actual4x4 centers 30.125..30.875,300.125..300.875; 0.25degree, ocean cells.",
+  "variables_units": {
+    "sst": "decoded degC -> K; source scale_factor/add_offset respected",
+    "lat_lon": "degrees north/east"
+  },
+  "missing": "NetCDF fill/masks decoded; selected ocean subset finite; exporter rejects masked gaps rather than inventing land SST.",
+  "B2": null,
+  "C2": null,
+  "prepared_at_utc": "2026-10-04",
+  "normalization": "normalize_sources.py and per-case normalization.json where present",
+  "files": [
+    {
+      "path": "A_sst_subset.nc",
+      "bytes": 62327,
+      "sha256": "34908a1da89ecf7dd70185743878514680ccf2571cb0939024da429bc9d6b40b"
+    },
+    {
+      "path": "comparison.json",
+      "bytes": 1260,
+      "sha256": "9df6b7f380b047b17713ce47e7f3b288a9a114b5ff789eb93e207f30dd055974"
+    },
+    {
+      "path": "config.json",
+      "bytes": 262,
+      "sha256": "8aaadd672bdfa7ea3b7986cda7a4897703978e38359d5ad36372071a764bf985"
+    },
+    {
+      "path": "normalization.json",
+      "bytes": 4152,
+      "sha256": "bfd5eb6ae9d84ff379d3282b87eec82eca1d0084e8f6217294399d2520233d12"
+    },
+    {
+      "path": "source_manifest_round1.json",
+      "bytes": 3460,
+      "sha256": "0c14834d888ac16ffbe753d75322489f49e4f5b44e1be532ee075ee0556478cb"
+    },
+    {
+      "path": "raw/oisst_20200101.nc",
+      "bytes": 1694564,
+      "sha256": "11f1127a120f015a1412d44cccc5c94c364786f1f7b98615914ad5d418615ea4"
+    }
+  ]
+}

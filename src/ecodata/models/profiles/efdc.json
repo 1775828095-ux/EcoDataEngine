@@ -1,0 +1,40 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "efdc",
+  "name": "EFDC/EFDC+",
+  "category": "水动力/水质",
+  "reference_version": "EFDC+ current documentation index",
+  "official_sources": [
+    "https://eemodelingsystem.atlassian.net/wiki/spaces/EEREF/pages/2328111/EFDC%2BExplorer%2BUsers%2BManual",
+    "https://www.epa.gov/system/files/documents/2023-09/EFDC_Utility_UserGuide.pdf"
+  ],
+  "input_formats": [
+    "EFDC INP text",
+    "binary hydrodynamic"
+  ],
+  "required_variables": [
+    "grid",
+    "bathymetry",
+    "boundary_conditions",
+    "initial_conditions"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "efdc.inp/control",
+      "cell/grid geometry",
+      "boundary series",
+      "optional water-quality files"
+    ],
+    "dimensions": [
+      "time",
+      "layer",
+      "cell"
+    ],
+    "special": "version compatibility and active-cell masks are essential"
+  },
+  "outputs": "binary/text hydrodynamic and water-quality outputs",
+  "exchange_notes": "linkage is version-specific; not yet adapted"
+}

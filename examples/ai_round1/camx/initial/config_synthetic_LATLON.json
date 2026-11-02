@@ -1,0 +1,56 @@
+{
+  "mode": "initial_concentrations",
+  "version": "CAMx-7.40",
+  "mechanism": "CB6r5_CF3_SIMPLE_NoEvap",
+  "grid": {
+    "projection": "LATLON",
+    "ncols": 3,
+    "nrows": 2,
+    "xorig": 110,
+    "yorig": 30,
+    "xcell": 0.1,
+    "ycell": 0.1,
+    "coordinate_units": "degree",
+    "xcent": 0,
+    "ycent": 0,
+    "p_alp": 0,
+    "p_bet": 0,
+    "itzon": 0
+  },
+  "fields": {
+    "time": "date",
+    "layer": "k",
+    "row": "j",
+    "col": "i"
+  },
+  "species": [
+    {
+      "name": "O3",
+      "column": "ozone",
+      "phase": "gas",
+      "unit": "ppbV"
+    },
+    {
+      "name": "PSO4",
+      "column": "sulfate",
+      "phase": "aerosol",
+      "unit": "ug/m^3"
+    }
+  ],
+  "index_base": 0,
+  "layer_count": 2,
+  "layer_definition": "Synthetic layer labels only; real met height fields must be supplied separately",
+  "required_species": [
+    "O3",
+    "PSO4"
+  ],
+  "valid_until": "2021-01-01T01:00:00Z",
+  "missing_values": [
+    -9999
+  ],
+  "source": {
+    "kind": "synthetic",
+    "description": "Synthetic hand-verifiable grid, not measured concentrations",
+    "license": "CC0 synthetic test values"
+  }
+}

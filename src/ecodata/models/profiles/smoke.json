@@ -1,0 +1,44 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "smoke",
+  "name": "SMOKE",
+  "category": "污染排放",
+  "reference_version": "5.0",
+  "official_sources": [
+    "https://www.cmascenter.org/smoke/documentation/5.0/USER_MANUAL.pdf"
+  ],
+  "input_formats": [
+    "inventory text",
+    "I/O API NetCDF",
+    "ancillary tables"
+  ],
+  "required_variables": [
+    "emission_inventory",
+    "temporal_profiles",
+    "spatial_surrogates",
+    "chemical_speciation",
+    "grid_definition"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "inventory files",
+      "temporal profiles",
+      "spatial surrogates",
+      "speciation profiles",
+      "run scripts/environment settings"
+    ],
+    "dimensions": [
+      "source",
+      "time",
+      "grid",
+      "layer",
+      "species"
+    ],
+    "special": "formats, units and required fields vary by source category"
+  },
+  "outputs": "model-ready gridded/point emissions",
+  "exchange_notes": "feeds CMAQ and CAMx with model-specific output settings"
+}

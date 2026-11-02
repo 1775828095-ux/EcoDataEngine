@@ -1,0 +1,107 @@
+{
+  "version": "CMAQ5.5 profile / auxiliary PM2.5 candidate; independent ICON reference5.0.2 only",
+  "sources": [
+    {
+      "publisher": "NASA GMAO,US EPA AirNow,USGS (as reported by original project)",
+      "role": "distinct packaged Los Angeles environmental case A",
+      "original_manifest": "source_manifest_original.json",
+      "download_date": "Original fetch date not independently established; files inspected2026-10-04",
+      "license_or_restrictions": "原包未附逐数据集许可，也没有其manifest列出的_sources原始响应。本輪仅证实保留文件与原manifest；公开来源归属及原下载SHA不能视为重新核验。"
+    },
+    {
+      "name": "cmaq_profile.dat",
+      "url": "https://raw.githubusercontent.com/USEPA/CMAQ/5.0.2/models/ICON/prof_data/cb05_ae6_aq/ic_profile_CB05.dat",
+      "started": "2026-10-04T04:21:41.8998325Z",
+      "status": "downloaded",
+      "bytes": 8227,
+      "sha256": "01E02E1997CFFA19799A3F960E220EF9EDB200855C22D69E56F350A9DF027A08",
+      "error": "",
+      "publisher": "US EPA official CMAQ repository5.0.2",
+      "role": "format reference ONLY, not B2",
+      "license_or_restrictions": "EPA官方公开仓库，保留署名；没有在该文件中发现独立数据许可证。"
+    },
+    {
+      "name": "cmaq_inputs.md",
+      "url": "https://raw.githubusercontent.com/USEPA/CMAQ/5.5/DOCS/Users_Guide/CMAQ_UG_ch04_model_inputs.md",
+      "started": "2026-10-04T04:19:56.8548901Z",
+      "status": "downloaded",
+      "bytes": 75361,
+      "sha256": "8035B8AFA0AD35CDAE2766D522FFAF1E2893E8D75AEF75BCEA047D7075FF386E",
+      "error": "",
+      "publisher": "US EPA CMAQ5.5",
+      "role": "model input dependency reference",
+      "license_or_restrictions": "官方文档，版权按仓库条款保留。"
+    }
+  ],
+  "time": "Packaged 2024-01-01..02; meteorology48hourly steps; PM background and observation match8time slices (centers :30).",
+  "space": "Los Angeles3x3 target grid, DEM128x128 EPSG3857,2observation stations. Actual coordinates in A files.",
+  "variables_units": {
+    "temperature": "K -> degC",
+    "wind": "m/s mapped field or explicitly chosen hypot(u,v)",
+    "humidity": "percent",
+    "PM25": "ug/m3",
+    "elevation": "m"
+  },
+  "missing": "Original auxiliary fusion clips negative values explicitly and preserves PM25_raw_fused and diagnostics; not chemical/total-mass conservation.",
+  "B2": null,
+  "C2": null,
+  "prepared_at_utc": "2026-10-04",
+  "normalization": "normalize_sources.py and per-case normalization.json where present",
+  "files": [
+    {
+      "path": "candidate_ioapi_inspection.json",
+      "bytes": 21500,
+      "sha256": "573bf138fc9ffbaa25d586f959490204c9c39d8eb64aef44e0c288c75e02452a"
+    },
+    {
+      "path": "comparison.json",
+      "bytes": 1546,
+      "sha256": "d5c2c2be0ef89c888dfb39925b7812c5f8245a2a7a31881d4cdd80b384a3254d"
+    },
+    {
+      "path": "config.json",
+      "bytes": 279,
+      "sha256": "08b01a86206a9bfa5120f032fbe90a0351e60627cde1b6717c13e116d0caf08f"
+    },
+    {
+      "path": "source_manifest_original.json",
+      "bytes": 6323,
+      "sha256": "62d5b86f5a0f7687d74c08444700523d85e1423630d0d8c1e7e9eebe1f7cc65c"
+    },
+    {
+      "path": "source_manifest_round1.json",
+      "bytes": 4331,
+      "sha256": "9cf1107dd732665ba1f011b3342bf3bba125e5394cd27b7c562959c0bbe5c38e"
+    },
+    {
+      "path": "A_existing_case/dem.tif",
+      "bytes": 135904,
+      "sha256": "f9306fa8bfd5bf8a1033d6488e01bf4e9253d67dd59344cfedd7dfdace575134"
+    },
+    {
+      "path": "A_existing_case/geos_cf_meteorology.nc",
+      "bytes": 67012,
+      "sha256": "40f8a1b62e93bf1f83497c2a5c752fbe1fca45970686f9f8548e51eabef4fd7e"
+    },
+    {
+      "path": "A_existing_case/pm25_background.nc",
+      "bytes": 15655,
+      "sha256": "7fd41f8aee076119be73464256284e092c229ff125e17a139bacd431b5076338"
+    },
+    {
+      "path": "A_existing_case/pm25_station.csv",
+      "bytes": 3261,
+      "sha256": "b85901170bea89f9d859055686e66c0f207a87a1de59305eecfc785e478adf39"
+    },
+    {
+      "path": "reference_format_only/ic_profile_CB05_CMAQ5.0.2.dat",
+      "bytes": 8227,
+      "sha256": "01e02e1997cffa19799a3f960e220ef9edb200855c22d69e56f350a9df027a08"
+    },
+    {
+      "path": "reference_format_only/pnc_read_report.json",
+      "bytes": 16746,
+      "sha256": "ea977eb7083330fe7c6eb60bcb6ee4cb58e3f715b3cce5fb1ae221863d20caa9"
+    }
+  ]
+}

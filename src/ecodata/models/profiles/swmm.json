@@ -1,0 +1,40 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "swmm",
+  "name": "SWMM",
+  "category": "水文/水动力",
+  "reference_version": "5.2.4",
+  "official_sources": [
+    "https://www.epa.gov/water-research/storm-water-management-model-swmm"
+  ],
+  "input_formats": [
+    "INP text",
+    "binary output",
+    "report text"
+  ],
+  "required_variables": [
+    "options",
+    "raingages",
+    "subcatchments",
+    "nodes",
+    "links"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      ".inp sections",
+      "optional rainfall/time series"
+    ],
+    "dimensions": [
+      "time",
+      "subcatchment",
+      "node",
+      "link"
+    ],
+    "special": "network references and units must be internally consistent"
+  },
+  "outputs": "binary results and report",
+  "exchange_notes": "INP section identifiers link hydrology, hydraulics and water quality"
+}

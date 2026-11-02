@@ -1,0 +1,29 @@
+{
+  "mode": "bcon_profile",
+  "version": "CMAQ-5.5-BCON-profile",
+  "mechanism": "CB6R3M_AE7_KMTBR",
+  "layout": "wide",
+  "layers": 3,
+  "fields": {
+    "variable": "species_name",
+    "unit": "input_unit",
+    "layers": [
+      "bottom",
+      "middle",
+      "top"
+    ]
+  },
+  "target_units": {
+    "ZH": "m",
+    "PRES": "Pa",
+    "O3": "ppmV"
+  },
+  "missing_values": [
+    "-9999",
+    "NA"
+  ],
+  "source": {
+    "url": "synthetic://manual-3-layer",
+    "description": "Synthetic test for renamed wide columns and explicit km/hPa/ppbV conversions"
+  }
+}

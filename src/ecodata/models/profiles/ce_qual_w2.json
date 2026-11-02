@@ -1,0 +1,43 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "ce_qual_w2",
+  "name": "CE-QUAL-W2",
+  "category": "水动力/水质",
+  "reference_version": "4.5.5",
+  "official_sources": [
+    "https://www.cequalw2.org/resources.html"
+  ],
+  "input_formats": [
+    "fixed/free-format text",
+    "CSV control where supported"
+  ],
+  "required_variables": [
+    "control",
+    "bathymetry",
+    "meteorology",
+    "inflows",
+    "initial_conditions",
+    "boundary_conditions"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "control",
+      "bathymetry",
+      "meteorology",
+      "inflow/outflow and constituent files"
+    ],
+    "dimensions": [
+      "time",
+      "branch",
+      "segment",
+      "layer",
+      "constituent"
+    ],
+    "special": "file set and constituents depend on enabled modules"
+  },
+  "outputs": "time series, profiles and balances",
+  "exchange_notes": "segment/branch identifiers and constituent ordering must be preserved"
+}

@@ -1,0 +1,50 @@
+{
+  "tool": "icon",
+  "source": "D:\\EcoDataEngine\\cases\\CMAQ_20261024\\official_12NE3\\inputs\\icbc\\CCTM_ICON_v54_cb6r5_ae7_aq_12NE3_20180701.nc",
+  "source_sha256": "8e94e6527738cd8cca76414943410cca33f605783cc8d111adff6cd3d8b3b0c1",
+  "meteorology": "D:\\EcoDataEngine\\cases\\CMAQ_20261024\\official_12NE3\\inputs\\met\\mcipv5.4\\METCRO3D_12NE3_20180701.nc",
+  "meteorology_sha256": "20a6fa54556cd9c985a6adc0cfb428a7c27fbba48acb5d85c85e48554406e08a",
+  "derivation": "Time index0, arithmetic horizontal mean per original vertical layer; no missing values, zero fill, chemistry rename or temporal interpolation",
+  "scope": "Explicit first-time horizontal-mean O3 sensitivity profile from official 20180701 12NE3 CB6R5 benchmark; not observation; original other 224 species retained after native preprocessing.",
+  "report": {
+    "scope": "CMAQ 5.5 ICON ICTYPE=profile IC_PROFILE ASCII candidate",
+    "rows": 4,
+    "chemical_species": 1,
+    "layers": 35,
+    "values": 140,
+    "units": {
+      "PRES": "Pa",
+      "ZH": "m",
+      "ZF": "m",
+      "O3": "ppmV"
+    },
+    "conversion_factors": {
+      "PRES": 1.0,
+      "ZH": 1.0,
+      "ZF": 1.0,
+      "O3": 1.0
+    },
+    "missing_policy": "reject; no fill or clipping",
+    "time": "static profile; source temporal averaging and applicable time must be recorded; not an hourly observation",
+    "coordinates": "PRES/Pa, ZH and ZF/m; no geographic grid; ICON supplies target grid",
+    "complete_model_input": false,
+    "ICON_run_verified": false,
+    "next_steps": "IC_PROFILE plus GRIDDESC/GRID_NAME and MET_CRO_3D_FIN with built ICON/profile; verify target chemical mechanism before CCTM use",
+    "source_sha256": "725a99a05d2c81433d0bad64f1c3eb47148cd887d6cf64616142867d83162bbf",
+    "configuration": {
+      "version": "CMAQ-5.5-ICON-profile-CB6R5_AE7_AQ",
+      "layers": 35,
+      "target_units": {
+        "PRES": "Pa",
+        "ZH": "m",
+        "ZF": "m",
+        "O3": "ppmV"
+      },
+      "source_description": "Explicit first-time horizontal-mean O3 sensitivity profile from official 20180701 12NE3 CB6R5 benchmark; not observation; original other 224 species retained after native preprocessing."
+    },
+    "output_sha256": {
+      "IC_PROFILE_CMAQ55.csv": "e8a626f8f8b895c86e6e600245ca51e7a8e44a0f805715cd6e7f1e331d91096e"
+    },
+    "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+  }
+}

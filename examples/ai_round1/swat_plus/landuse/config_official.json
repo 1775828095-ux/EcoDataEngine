@@ -1,0 +1,35 @@
+{
+  "mode": "landuse_database",
+  "target_model_version": "62.0.0",
+  "profile": "vegetated_nonurban",
+  "table": "A_landuse.csv",
+  "fields": {
+    "name": "name",
+    "cal_group": "cal_group",
+    "plnt_com": "plnt_com",
+    "mgt": "mgt",
+    "cn2": "cn2",
+    "cons_prac": "cons_prac",
+    "urban": "urban",
+    "urb_ro": "urb_ro",
+    "ov_mann": "ov_mann",
+    "tile": "tile",
+    "sep": "sep",
+    "vfs": "vfs",
+    "grww": "grww",
+    "bmp": "bmp"
+  },
+  "references": {
+    "plnt_com": "plant.ini",
+    "mgt": "management.sch",
+    "cn2": "cntable.lum",
+    "cons_prac": "cons_practice.lum",
+    "ov_mann": "ovn_table.lum"
+  },
+  "source": {
+    "kind": "format_reference",
+    "url": "https://github.com/swat-model/swatplus/tree/62.0.0/refdata/Ames_sub1",
+    "license": "LGPL2.1",
+    "description": "Exact nonurban vegetated subset of official tag62 reference input, independently decoded. Source header says editor2.3.3/rev60.5.7; output structure checked against62 reader. Not land-cover raster derivation. Selection is the exact two land-use names referenced by actual Ames12 HRUs; unused unresolved management entries are NOT silently fixed."
+  }
+}

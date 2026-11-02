@@ -1,0 +1,43 @@
+{
+  "mode": "gridded_emissions",
+  "version": "CAMx-7.40",
+  "mechanism": "CB6r5_CF3_SIMPLE_NoEvap",
+  "fields": {
+    "time": "clock",
+    "row": "rowid",
+    "col": "colid"
+  },
+  "row_col_base": 0,
+  "species": [
+    {
+      "name": "NO",
+      "column": "NO_rate",
+      "phase": "gas",
+      "unit": "mol/s"
+    }
+  ],
+  "grid": {
+    "projection": "LCC",
+    "ncols": 1,
+    "nrows": 1,
+    "xorig": -6000,
+    "yorig": -6000,
+    "xcell": 12000,
+    "ycell": 12000,
+    "coordinate_units": "m",
+    "xcent": -97,
+    "ycent": 40,
+    "p_alp": 30,
+    "p_bet": 60,
+    "itzon": 0
+  },
+  "missing_values": [
+    -9999
+  ],
+  "time_basis": "interval_start_hourly",
+  "source": {
+    "kind": "synthetic_test",
+    "url": "urn:ecodata:synthetic:camx-emissions",
+    "license": "CC0"
+  }
+}

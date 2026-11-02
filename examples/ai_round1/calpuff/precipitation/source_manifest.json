@@ -1,0 +1,17 @@
+{
+  "source_sha256": "b1c389b5f45c7312d243b06cc1f8cca5dd971687d6a0c79defee9f1a1ed9aa11",
+  "records": 24,
+  "missing_count": 0,
+  "min_max_mm": [
+    0.0,
+    12.7
+  ],
+  "total_mm": 26.299999999999997,
+  "station_id": 94075,
+  "coordinates_lon_lat": [
+    -105.54,
+    40.04
+  ],
+  "readme_column": "P_CALC=column13; previous60-minute accumulated mm; UTC end hour; no separate QC flag",
+  "selection": "Exact UTC interval, no missing-value filtering, filling or interpolation"
+}

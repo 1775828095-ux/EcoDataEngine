@@ -1,0 +1,31 @@
+{
+  "mode": "hru_attributes",
+  "target_model_version": "62.0.0",
+  "table": "A_HRU.csv",
+  "fields": {
+    "id": "id",
+    "name": "name",
+    "topo": "topo",
+    "hydro": "hydro",
+    "soil": "soil",
+    "lu_mgt": "lu_mgt",
+    "soil_plant_init": "soil_plant_init",
+    "surf_stor": "surf_stor",
+    "snow": "snow",
+    "field": "field"
+  },
+  "references": {
+    "topo": "topography.hyd",
+    "hydro": "hydrology.hyd",
+    "soil": "soils.sol",
+    "lu_mgt": "landuse.lum",
+    "soil_plant_init": "soil_plant.ini",
+    "snow": "snow.sno"
+  },
+  "source": {
+    "kind": "format_reference",
+    "description": "Official Ames reference upstream HRU database, independently decoded to CSV. Not HRU derivation from DEM/land-use",
+    "url": "https://github.com/swat-model/swatplus/tree/62.0.0/refdata/Ames_sub1",
+    "license": "LGPL2.1 repository reference files"
+  }
+}

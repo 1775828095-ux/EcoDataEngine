@@ -1,0 +1,41 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "hec_ras",
+  "name": "HEC-RAS",
+  "category": "水动力",
+  "reference_version": "7.0.1",
+  "official_sources": [
+    "https://www.hec.usace.army.mil/software/hec-ras/documentation.aspx"
+  ],
+  "input_formats": [
+    "HEC-RAS project text",
+    "HDF5",
+    "GeoTIFF",
+    "Shapefile"
+  ],
+  "required_variables": [
+    "geometry",
+    "flow_boundary_conditions",
+    "plan"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "project",
+      "geometry",
+      "steady/unsteady flow",
+      "plan",
+      "terrain/land cover"
+    ],
+    "dimensions": [
+      "time",
+      "river_station or mesh_cell",
+      "profile"
+    ],
+    "special": "1D/2D geometry and boundary requirements differ"
+  },
+  "outputs": "plan HDF5, profiles, hydrographs and optional rasters",
+  "exchange_notes": "hydrographs from HEC-HMS; modern output stored in HDF5"
+}

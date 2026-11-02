@@ -1,0 +1,35 @@
+{
+  "mode": "pressure_fields",
+  "version": "WPS-4.6-intermediate-v5-fields",
+  "time_basis": "UTC",
+  "crs": "EPSG:4326",
+  "coordinates": {
+    "time": "valid_time",
+    "pressure": "isobaric",
+    "latitude": "north",
+    "longitude": "east"
+  },
+  "interval_seconds": 21600,
+  "fields": {
+    "TT": {
+      "variable": "temperature"
+    },
+    "PSFC": {
+      "variable": "surface_pressure"
+    },
+    "LANDSEA": {
+      "variable": "mask"
+    }
+  },
+  "prefix": "SYNTH",
+  "required_fields": [
+    "TT",
+    "PSFC",
+    "LANDSEA"
+  ],
+  "landsea_convention": "land=1,water=0",
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Synthetic mixed surface/pressure fields, reversed axes, changed dimension names and variable dimension order; not real weather"
+  }
+}

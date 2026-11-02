@@ -1,0 +1,8 @@
+{
+  "official_records": 21,
+  "selected_vegetated_nonurban_records": 2,
+  "selection": "Exact land-use names in actual hru-data.hru of Ames12-HRU project; nonurban vegetation; no changed fields or invented references",
+  "rejected_negative_case": "All20 nonurban rows include AGRR_rot/OATS_rot/SOYB_rot/WWHT_rot absent from supplied management.sch; preserved and rejected, not repaired or ignored",
+  "B2": "same exact official field rows, independently selected; validates configuration format, not geospatial processing",
+  "source_header": "Editor2.3.3 rev60.5.7 in tag62.0.0 reference; target structure checked against62.0.0 reading code"
+}

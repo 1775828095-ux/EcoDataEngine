@@ -1,0 +1,58 @@
+{
+  "mode": "soil",
+  "target_model_version": "62.0.0",
+  "source_format": "csv",
+  "depth_basis": "bottom",
+  "fields": {
+    "soil": "soil",
+    "layer": "layer",
+    "hyd_grp": "hyd_grp",
+    "zmx": "zmx",
+    "anion_excl": "anion_excl",
+    "crk": "crk",
+    "texture": "texture",
+    "depth": "depth",
+    "bd": "bd",
+    "awc": "awc",
+    "k": "k",
+    "cbn": "cbn",
+    "clay": "clay",
+    "silt": "silt",
+    "sand": "sand",
+    "rock": "rock",
+    "alb": "alb",
+    "usle_k": "usle_k",
+    "ec": "ec",
+    "cal": "cal",
+    "ph": "ph"
+  },
+  "units": {
+    "zmx": "mm",
+    "anion_excl": "1",
+    "crk": "1",
+    "depth": "mm",
+    "bd": "Mg/m3",
+    "awc": "1",
+    "k": "mm/h",
+    "cbn": "%",
+    "clay": "%",
+    "silt": "%",
+    "sand": "%",
+    "rock": "%",
+    "alb": "1",
+    "usle_k": "SWAT_USLE_K",
+    "ec": "dS/m",
+    "cal": "%",
+    "ph": "pH"
+  },
+  "missing_values": [
+    -99,
+    -9999
+  ],
+  "source": {
+    "kind": "format_reference",
+    "description": "Independent decoding of official Ames soil database; NOT upstream raw soil measurements",
+    "url": "https://github.com/swat-model/swatplus/blob/62.0.0/refdata/Ames_sub1/soils.sol",
+    "license": "SWAT+ repository license; see evidence/LICENSE"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "aermod",
+  "name": "AERMOD",
+  "category": "大气",
+  "reference_version": "26135",
+  "official_sources": [
+    "https://www.epa.gov/scram/air-quality-dispersion-modeling-preferred-and-recommended-models"
+  ],
+  "input_formats": [
+    "keyword text",
+    "AERMET surface/profile",
+    "AERMAP terrain"
+  ],
+  "required_variables": [
+    "source_parameters",
+    "receptors",
+    "meteorology",
+    "terrain"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "AERMOD control file",
+      "surface meteorology",
+      "profile meteorology",
+      "terrain/receptor data"
+    ],
+    "dimensions": [
+      "hour",
+      "source",
+      "receptor"
+    ],
+    "special": "source type determines mandatory keywords and units"
+  },
+  "outputs": "main report plus optional concentration/deposition files",
+  "exchange_notes": "AERMET and AERMAP preprocessors"
+}

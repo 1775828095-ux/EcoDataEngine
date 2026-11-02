@@ -1,0 +1,1 @@
+CAMx7.40 BOUNDARY NetCDF，NCF_READBND读取完整COL×ROW×LAY后使用侧边格点。本profile要求用户给全三维逐小时浓度，不将仅外圈表扩展成虚假内部值。当前机制CB6r5_CF3_SIMPLE_NoEvap、LATLON/LCC，gas ppm、aerosol ug/m3。无时空插值、机制拆分、默认浓度，不生成气象/控制/完整工程；未运行CAMx。

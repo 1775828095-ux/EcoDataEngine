@@ -1,0 +1,62 @@
+{
+  "mode": "gridded_emissions",
+  "version": "CMAQ-5.5",
+  "mechanism": "cb6r3_ae7_aq",
+  "layer_mode": "surface",
+  "axes": {
+    "time": "when",
+    "x": "easting",
+    "y": "northing"
+  },
+  "coordinate_units": "m",
+  "time_mode": "hourly",
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Synthetic multi-species LCC/reversed-y/year-boundary hourly regression; not real emissions"
+  },
+  "grid": {
+    "GDTYP": 2,
+    "P_ALP": 30,
+    "P_BET": 60,
+    "P_GAM": -97,
+    "XCENT": -97,
+    "YCENT": 40,
+    "XORIG": -18000,
+    "YORIG": -12000,
+    "XCELL": 12000,
+    "YCELL": 12000,
+    "NCOLS": 3,
+    "NROWS": 2,
+    "GDNAM": "SYNTH_LCC"
+  },
+  "vertical": {
+    "VGTYP": 7,
+    "VGTOP": 10000,
+    "VGLVLS": [
+      1,
+      0.99
+    ]
+  },
+  "fields": {
+    "NO2": {
+      "source": "nitrogen_dioxide",
+      "source_units": "kg/hour",
+      "basis": "cell_rate",
+      "type": "gas",
+      "molecular_weight_g_mol": 46,
+      "molecular_weight_source": "official nominal NO2 molecular weight in cb6r3_ae7_aq GC species table"
+    },
+    "ASO4J": {
+      "source": "sulfate_J",
+      "source_units": "g/hour",
+      "basis": "cell_rate",
+      "type": "aerosol_mass"
+    }
+  },
+  "missing_values": [
+    -9999
+  ],
+  "source_crs": "+proj=lcc +lat_1=30 +lat_2=60 +lat_0=40 +lon_0=-97 +R=6370000 +units=m",
+  "earth_radius_m": 6370000,
+  "source_timezone": "UTC"
+}

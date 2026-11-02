@@ -1,0 +1,20 @@
+{
+  "full_CALPUFF_run": false,
+  "full_CALMET_run": false,
+  "SMERGE_returncode": 0,
+  "SMERGE_output_exists": true,
+  "SMERGE_read_and_processed": true,
+  "values_after_official_processor": {
+    "count": 6720,
+    "max_absolute_error": 0.0,
+    "MAE": 0.0,
+    "RMSE": 0.0,
+    "bias": 0.0,
+    "threshold_atol": 0.000500001,
+    "relative_error": "not used: values near zero occur",
+    "passed": true
+  },
+  "scope": "Real official SMERGE re-read/rewrite of B; does not establish full CALMET/CALPUFF simulation",
+  "CALMET_attempt_returncode": 8,
+  "CALMET_attempt_scope": "Official sample control references missing GEO1KM.DAT/upper-air files; no complete compatible case provided. Success requires outputs/log inspection, not returncode."
+}

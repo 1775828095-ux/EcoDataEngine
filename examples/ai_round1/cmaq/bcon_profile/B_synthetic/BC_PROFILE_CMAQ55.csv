@@ -1,0 +1,5 @@
+# EcoDataEngine CMAQ 5.5 BCON/profile static input; no geographic grid or timestamps
+VNAME,UNITS,LAYER01,LAYER02,LAYER03
+"ZH","m",50.00,150.00,300.0
+"PRES","Pa",100000,90000,80000
+"O3","ppmV",0.020,0.030,0.040

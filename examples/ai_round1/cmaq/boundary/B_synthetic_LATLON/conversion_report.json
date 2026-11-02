@@ -1,0 +1,124 @@
+{
+  "scope": "CMAQ5.5 BNDARY3显式外圈浓度，NTHIK=1；用户须已给目标网格/垂直层/UTC小时全部浓度与位置。这不是BC_PROFILE，也不从静态剖面推算三维边界；需匹配MCIP与项目完整机制，未执行BCON/CCTM。",
+  "source": {
+    "kind": "synthetic",
+    "description": "Synthetic external perimeter, no real boundary observations",
+    "license": "CC0 synthetic values"
+  },
+  "grid": {
+    "GDTYP": 1,
+    "P_ALP": 0.0,
+    "P_BET": 0.0,
+    "P_GAM": 0.0,
+    "XCENT": 0.0,
+    "YCENT": 0.0,
+    "XORIG": 110.0,
+    "YORIG": 30.0,
+    "XCELL": 0.1,
+    "YCELL": 0.1,
+    "NCOLS": 3,
+    "NROWS": 2,
+    "GDNAM": "TEST_BOUNDARY"
+  },
+  "vertical": {
+    "VGTYP": 7,
+    "VGTOP": 10000.0,
+    "VGLVLS": [
+      1,
+      0.5,
+      0
+    ]
+  },
+  "perimeter_count": 14,
+  "fields": [
+    "O3",
+    "ASO4J"
+  ],
+  "units": {
+    "O3": "ppmV",
+    "ASO4J": "ug m-3"
+  },
+  "float32_max_absolute_error": {
+    "O3": 7.033348070617507e-09,
+    "ASO4J": 1.0490417468034252e-07
+  },
+  "time_processing": "none; preserve UTC hours",
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "af37fd9691ebc870775ee608e454de0eea94f2e81b76e883592cebdf98c60a2c",
+  "configuration": {
+    "mode": "boundary_concentrations",
+    "version": "CMAQ-5.5",
+    "mechanism": "cb6r3_ae7_aq",
+    "grid": {
+      "GDTYP": 1,
+      "P_ALP": 0,
+      "P_BET": 0,
+      "P_GAM": 0,
+      "XCENT": 0,
+      "YCENT": 0,
+      "XORIG": 110,
+      "YORIG": 30,
+      "XCELL": 0.1,
+      "YCELL": 0.1,
+      "NCOLS": 3,
+      "NROWS": 2,
+      "GDNAM": "TEST_BOUNDARY"
+    },
+    "vertical": {
+      "VGTYP": 7,
+      "VGTOP": 10000.0,
+      "VGLVLS": [
+        1,
+        0.5,
+        0
+      ]
+    },
+    "axes": {
+      "time": "time",
+      "layer": "layer",
+      "perimeter": "perim",
+      "x": "x",
+      "y": "y"
+    },
+    "time_mode": "hourly",
+    "source_timezone": "UTC",
+    "coordinate_units": "degree",
+    "perimeter_mapping": {
+      "column": "bc",
+      "row": "br",
+      "x": "px",
+      "y": "py"
+    },
+    "fields": {
+      "O3": {
+        "source": "ozone",
+        "type": "gas",
+        "source_units": "ppbV"
+      },
+      "ASO4J": {
+        "source": "sulfate",
+        "type": "aerosol_mass",
+        "source_units": "ug/m^3"
+      }
+    },
+    "required_species": [
+      "O3",
+      "ASO4J"
+    ],
+    "missing_values": [
+      -9999
+    ],
+    "source": {
+      "kind": "synthetic",
+      "description": "Synthetic external perimeter, no real boundary observations",
+      "license": "CC0 synthetic values"
+    }
+  },
+  "output_sha256": {
+    "boundary.CMAQ55.nc": "03ebec4260690f8ab13ed5ee76aa8beb1a7db0501456f186591bc6155347198a",
+    "GRIDDESC": "25e91a0c98ee13863bc62661dde7329e4084190bdffc847112fa4479f25d7e92",
+    "README_CMAQ_boundary.txt": "a7a311715e54404cc5099e1fb40e258ebe906d043a6f0ad02d71963a2d512d04"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

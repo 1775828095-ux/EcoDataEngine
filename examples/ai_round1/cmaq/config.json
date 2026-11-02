@@ -1,0 +1,9 @@
+{
+  "profile": "cmaq",
+  "version": "CMAQ5.5 auxiliary only",
+  "observation_temporal_semantics": "mean",
+  "spatial_method": "bilinear",
+  "residual_method": "nearest",
+  "negative_policy": "clip",
+  "reference_profile_version": "5.0.2 - FORMAT REFERENCE ONLY, not B2"
+}

@@ -1,0 +1,5 @@
+{
+  "incomplete_precipitation_flags_count": 9,
+  "policy": "Only 24-hour coverage D/F/G accepted; other flags -> NaN, mapped explicitly to -99.0 generator by user config",
+  "window_warning": "GSOD maximum/minimum and precipitation reporting windows can differ from midnight calendar day; no timezone shift is made. Project acceptance remains required."
+}

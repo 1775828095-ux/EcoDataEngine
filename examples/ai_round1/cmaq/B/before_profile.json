@@ -1,0 +1,146 @@
+{
+  "dimensions": {
+    "time": 8,
+    "lat": 3,
+    "lon": 3,
+    "bnds": 2
+  },
+  "variables": {
+    "PM25": {
+      "dtype": "float64",
+      "count": 72,
+      "missing": 0,
+      "NaN_ratio": 0.0,
+      "valid_ratio": 1.0,
+      "unit": "ug/m3",
+      "min": 4.3647165,
+      "max": 103.64812,
+      "dimensions": [
+        "time",
+        "lat",
+        "lon"
+      ],
+      "semantic_type": "continuous",
+      "mean": 30.628682583333337,
+      "std": 24.412406280410497,
+      "sum": 2205.265146,
+      "valid_pixel_count": 72,
+      "metadata": {
+        "source_variable": "pm25_rh35_gcc",
+        "source_url": "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/assim/aqc_tavg_1hr_g1440x721_v1",
+        "data_kind": "continuous",
+        "temporal_semantics": "mean",
+        "cell_methods": "time: mean",
+        "units": "ug/m3",
+        "physical_variable": "PM2.5",
+        "reference_humidity": "35 percent"
+      },
+      "temporal_semantics": "mean",
+      "spatial_semantics": null
+    },
+    "time_bnds": {
+      "dtype": "datetime64[ns]",
+      "count": 16,
+      "missing": 0,
+      "NaN_ratio": 0.0,
+      "valid_ratio": 1.0,
+      "unit": null,
+      "min": null,
+      "max": null,
+      "dimensions": [
+        "time",
+        "bnds"
+      ],
+      "semantic_type": "datetime",
+      "mean": null,
+      "std": null,
+      "sum": null,
+      "valid_pixel_count": 16,
+      "metadata": {},
+      "temporal_semantics": "mean",
+      "spatial_semantics": null
+    }
+  },
+  "CRS": "EPSG:4326",
+  "resolution_km": null,
+  "extent": [
+    -118.25,
+    34.0,
+    -117.75,
+    34.5
+  ],
+  "time_resolution": "0 days 06:00:00",
+  "time_range": [
+    "2024-01-01T00:30:00",
+    "2024-01-02T18:30:00"
+  ],
+  "record_count": 72,
+  "variable_count": 2,
+  "field_names": [
+    "PM25",
+    "time_bnds"
+  ],
+  "coordinate_metadata": {
+    "time": {
+      "dtype": "datetime64[ns]",
+      "dimensions": [
+        "time"
+      ],
+      "metadata": {
+        "standard_name": "time",
+        "bounds": "time_bnds"
+      }
+    },
+    "lat": {
+      "dtype": "float64",
+      "dimensions": [
+        "lat"
+      ],
+      "metadata": {
+        "units": "degrees_north",
+        "standard_name": "latitude"
+      }
+    },
+    "lon": {
+      "dtype": "float64",
+      "dimensions": [
+        "lon"
+      ],
+      "metadata": {
+        "units": "degrees_east",
+        "standard_name": "longitude"
+      }
+    }
+  },
+  "metadata": {
+    "crs": "EPSG:4326",
+    "spatial_x": "lon",
+    "spatial_y": "lat",
+    "source": "NASA GEOS-CF replay",
+    "Conventions": "CF-1.8",
+    "temporal_semantics": "mean",
+    "source_file": "pm25_background.nc",
+    "source_sha256": "7fd41f8aee076119be73464256284e092c229ff125e17a139bacd431b5076338",
+    "user_confirmations": "{}"
+  },
+  "structure": "grid",
+  "time_coordinate": "time",
+  "source": {
+    "source": "NASA GEOS-CF replay",
+    "source_file": "pm25_background.nc",
+    "source_sha256": "7fd41f8aee076119be73464256284e092c229ff125e17a139bacd431b5076338",
+    "user_confirmations": "{}"
+  },
+  "quality_flags": {},
+  "invalid_time_count": 0,
+  "time_coverage": [
+    "2024-01-01T00:00:00",
+    "2024-01-02T19:00:00"
+  ],
+  "pixel_extent": [
+    -118.375,
+    33.875,
+    -117.625,
+    34.625
+  ]
+}

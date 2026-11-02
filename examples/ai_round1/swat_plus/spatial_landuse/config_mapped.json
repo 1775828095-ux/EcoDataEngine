@@ -1,0 +1,39 @@
+{
+  "mode": "spatial_landuse",
+  "target_model_version": "62.0.0",
+  "table": "attributes.csv",
+  "fields": {
+    "id": "custom_id",
+    "name": "custom_name",
+    "topo": "custom_topo",
+    "hydro": "custom_hydro",
+    "soil": "custom_soil",
+    "soil_plant_init": "custom_soil_plant_init",
+    "surf_stor": "custom_surf_stor",
+    "snow": "custom_snow",
+    "field": "custom_field"
+  },
+  "references": {
+    "topo": "topography.hyd",
+    "hydro": "hydrology.hyd",
+    "soil": "soils.sol",
+    "lu_mgt": "landuse.lum",
+    "soil_plant_init": "soil_plant.ini",
+    "snow": "snow.sno"
+  },
+  "source_crs": "EPSG:32632",
+  "coordinate_unit": "m",
+  "spatial_policy": "homogeneous_full_coverage",
+  "hru_geometry": "HRU.geojson",
+  "landuse_geometry": "land.geojson",
+  "hru_id_property": "HRU_no",
+  "landuse_code_property": "class",
+  "category_mapping": {
+    "C": "cosy_lum",
+    "M": "mntill_corn_lum"
+  },
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Analytic disjoint 100x50 m rectangles; two adjacent same-class polygons per HRU. Official input databases used only as reference fixtures, not new measurements."
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "wrf_chem",
+  "name": "WRF-Chem",
+  "category": "大气/气象",
+  "reference_version": "4.4 User Guide",
+  "official_sources": [
+    "https://ruc.noaa.gov/wrf/wrf-chem/Users_guide.pdf"
+  ],
+  "input_formats": [
+    "WRF NetCDF",
+    "emission NetCDF",
+    "text tables"
+  ],
+  "required_variables": [
+    "wrf_initial_boundary",
+    "anthropogenic_emissions",
+    "biogenic_emissions",
+    "chemical_initial_boundary"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "wrfinput",
+      "wrfbdy",
+      "wrfchemi",
+      "chemistry tables"
+    ],
+    "dimensions": [
+      "Time",
+      "bottom_top",
+      "south_north",
+      "west_east",
+      "species"
+    ],
+    "special": "chem_opt and emission/species mappings must match"
+  },
+  "outputs": "WRF-style NetCDF meteorology and chemistry",
+  "exchange_notes": "coupled WRF meteorology; emissions require mechanism-aware preprocessing"
+}

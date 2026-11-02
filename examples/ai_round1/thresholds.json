@@ -1,0 +1,18 @@
+{
+  "declared_before_case_comparisons": true,
+  "basis": "provisional engineering thresholds, not model vendor certification",
+  "calmet_value_atol": 1e-06,
+  "calmet_missing_mask_exact": true,
+  "calmet_time_station_exact": true,
+  "swat_atol_mm_or_degC": 0.050000001,
+  "swat_daily_conservation_bound_mm": "0.05*N finite daily records (quantization upper bound)",
+  "wps_sst_atol_K": 2e-05,
+  "wps_grid_atol_degree": 1e-05,
+  "wps_earth_radius_atol_km": 0.0003,
+  "smerge_rewrite_atol": 0.000500001,
+  "camx_standardized_values_atol": 1e-12,
+  "cmaq_affine_unit_atol": 1e-10,
+  "cmaq_wind_mapping_atol_m_s": 1e-10,
+  "invalid_data_rejection": 1.0,
+  "complete_model_runs_required_for_full_workflow_claim": true
+}

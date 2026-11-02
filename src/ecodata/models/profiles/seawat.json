@@ -1,0 +1,42 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "模型需求已按官方资料建立索引；原生文件导出器尚未通过对应版本样例验收。",
+  "id": "seawat",
+  "name": "SEAWAT",
+  "category": "地下水",
+  "reference_version": "4.00.05 family",
+  "official_sources": [
+    "https://www.usgs.gov/software/seawat-a-computer-program-simulation-three-dimensional-variable-density-ground-water-flow"
+  ],
+  "input_formats": [
+    "MODFLOW/MT3D package text",
+    "binary arrays"
+  ],
+  "required_variables": [
+    "flow_model",
+    "transport_model",
+    "density_parameters",
+    "initial_head",
+    "initial_concentration"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "MODFLOW packages",
+      "MT3D packages",
+      "VDF/VSC coupling packages"
+    ],
+    "dimensions": [
+      "stress_period",
+      "time_step",
+      "layer",
+      "row",
+      "column",
+      "species"
+    ],
+    "special": "flow-transport grids and units must be coupled consistently"
+  },
+  "outputs": "heads, concentrations, budgets and mass balances",
+  "exchange_notes": "built on MODFLOW/MT3DMS structures"
+}

@@ -1,0 +1,89 @@
+{
+  "mode": "pressure_fields",
+  "version": "WPS-4.6-intermediate-v5-fields",
+  "time_basis": "UTC",
+  "crs": "EPSG:4326",
+  "coordinates": {
+    "time": "valid_time",
+    "latitude": "y",
+    "longitude": "x"
+  },
+  "interval_seconds": 21600,
+  "prefix": "SYNTHSOIL",
+  "required_fields": [
+    "ST000010",
+    "SM000010",
+    "ST010040",
+    "SM010040",
+    "ST040100",
+    "SM040100",
+    "ST100200",
+    "SM100200"
+  ],
+  "fields": {
+    "ST000010": {
+      "variable": "temp_0",
+      "source_depth_cm": [
+        0,
+        10
+      ]
+    },
+    "SM000010": {
+      "variable": "water_0",
+      "source_depth_cm": [
+        0,
+        10
+      ],
+      "soil_moisture_basis": "volumetric"
+    },
+    "ST010040": {
+      "variable": "temp_1",
+      "source_depth_cm": [
+        10,
+        40
+      ]
+    },
+    "SM010040": {
+      "variable": "water_1",
+      "source_depth_cm": [
+        10,
+        40
+      ],
+      "soil_moisture_basis": "volumetric"
+    },
+    "ST040100": {
+      "variable": "temp_2",
+      "source_depth_cm": [
+        40,
+        100
+      ]
+    },
+    "SM040100": {
+      "variable": "water_2",
+      "source_depth_cm": [
+        40,
+        100
+      ],
+      "soil_moisture_basis": "volumetric"
+    },
+    "ST100200": {
+      "variable": "temp_3",
+      "source_depth_cm": [
+        100,
+        200
+      ]
+    },
+    "SM100200": {
+      "variable": "water_3",
+      "source_depth_cm": [
+        100,
+        200
+      ],
+      "soil_moisture_basis": "volumetric"
+    }
+  },
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Synthetic4-depth layers, reversed3x2 axes, single leap-day snapshot, Celsius/percent inputs; not measured soil data"
+  }
+}

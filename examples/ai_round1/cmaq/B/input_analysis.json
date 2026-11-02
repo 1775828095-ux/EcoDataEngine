@@ -1,0 +1,455 @@
+[
+  {
+    "filename": "dem.tif",
+    "format": "GeoTIFF",
+    "structure": "grid",
+    "variables": [
+      "elevation"
+    ],
+    "units": {
+      "elevation": "m"
+    },
+    "semantic_types": {
+      "elevation": "continuous"
+    },
+    "time_coordinate": null,
+    "temporal_resolution": null,
+    "x_coordinate": "x",
+    "y_coordinate": "y",
+    "crs": "PROJCS[\"WGS 84 / Pseudo-Mercator\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Mercator_1SP\"],PARAMETER[\"central_meridian\",0],PARAMETER[\"scale_factor\",1],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH],EXTENSION[\"PROJ4\",\"+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs\"],AUTHORITY[\"EPSG\",\"3857\"]]",
+    "dimensions": {
+      "y": 128,
+      "x": 128
+    },
+    "confirmations_required": [],
+    "spatial_resolution_km": 0.7891116685317829,
+    "pixel_width_km": 0.7891116685308516,
+    "pixel_height_km": 0.7891116685327143,
+    "spatial_resolution_reason": null,
+    "geometry_types": [],
+    "extent": [
+      -13186203.060392367,
+      4012029.904335449,
+      -13085196.766820183,
+      4113036.1979076364
+    ],
+    "field_types": {
+      "elevation": "float64"
+    },
+    "rasterizable_fields": [],
+    "missing_values": {
+      "elevation": 0
+    },
+    "cf_metadata": {
+      "backend": "cf-xarray",
+      "axes": {
+        "X": [
+          "x"
+        ],
+        "Y": [
+          "y"
+        ]
+      },
+      "coordinates": {},
+      "bounds": {},
+      "standard_names": {
+        "projection_y_coordinate": [
+          "y"
+        ],
+        "projection_x_coordinate": [
+          "x"
+        ]
+      },
+      "ambiguities": [],
+      "grid_mappings": [],
+      "crs": null
+    },
+    "sha256": "f9306fa8bfd5bf8a1033d6488e01bf4e9253d67dd59344cfedd7dfdace575134",
+    "source_metadata": {
+      "structure": "grid",
+      "crs": "PROJCS[\"WGS 84 / Pseudo-Mercator\",GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]],PROJECTION[\"Mercator_1SP\"],PARAMETER[\"central_meridian\",0],PARAMETER[\"scale_factor\",1],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH],EXTENSION[\"PROJ4\",\"+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs\"],AUTHORITY[\"EPSG\",\"3857\"]]",
+      "spatial_x": "x",
+      "spatial_y": "y",
+      "raster_tags": "{\"ecodata_metadata\": \"{\\\"attributes\\\": {\\\"structure\\\": \\\"grid\\\", \\\"crs\\\": \\\"PROJCS[\\\\\\\"WGS 84 / Pseudo-Mercator\\\\\\\",GEOGCS[\\\\\\\"WGS 84\\\\\\\",DATUM[\\\\\\\"WGS_1984\\\\\\\",SPHEROID[\\\\\\\"WGS 84\\\\\\\",6378137,298.257223563,AUTHORITY[\\\\\\\"EPSG\\\\\\\",\\\\\\\"7030\\\\\\\"]],AUTHORITY[\\\\\\\"EPSG\\\\\\\",\\\\\\\"6326\\\\\\\"]],PRIMEM[\\\\\\\"Greenwich\\\\\\\",0,AUTHORITY[\\\\\\\"EPSG\\\\\\\",\\\\\\\"8901\\\\\\\"]],UNIT[\\\\\\\"degree\\\\\\\",0.0174532925199433,AUTHORITY[\\\\\\\"EPSG\\\\\\\",\\\\\\\"9122\\\\\\\"]],AUTHORITY[\\\\\\\"EPSG\\\\\\\",\\\\\\\"4326\\\\\\\"]],PROJECTION[\\\\\\\"Mercator_1SP\\\\\\\"],PARAMETER[\\\\\\\"central_meridian\\\\\\\",0],PARAMETER[\\\\\\\"scale_factor\\\\\\\",1],PARAMETER[\\\\\\\"false_easting\\\\\\\",0],PARAMETER[\\\\\\\"false_northing\\\\\\\",0],UNIT[\\\\\\\"metre\\\\\\\",1,AUTHORITY[\\\\\\\"EPSG\\\\\\\",\\\\\\\"9001\\\\\\\"]],AXIS[\\\\\\\"Easting\\\\\\\",EAST],AXIS[\\\\\\\"Northing\\\\\\\",NORTH],EXTENSION[\\\\\\\"PROJ4\\\\\\\",\\\\\\\"+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs\\\\\\\"],AUTHORITY[\\\\\\\"EPSG\\\\\\\",\\\\\\\"3857\\\\\\\"]]\\\", \\\"spatial_x\\\": \\\"x\\\", \\\"spatial_y\\\": \\\"y\\\", \\\"raster_tags\\\": \\\"{\\\\\\\"DataType\\\\\\\": \\\\\\\"Generic\\\\\\\", \\\\\\\"AREA_OR_POINT\\\\\\\": \\\\\\\"Area\\\\\\\"}\\\", \\\"raster_transform\\\": \\\"[789.1116685325978, 0.0, -13186203.060392369, 0.0, -789.1116685325906, 4113036.1979076364]\\\", \\\"pixel_width\\\": 789.1116685325978, \\\"pixel_height\\\": 789.1116685325906, \\\"pixel_coordinate_unit\\\": \\\"metre\\\", \\\"pixel_width_km\\\": 0.7891116685325978, \\\"pixel_height_km\\\": 0.7891116685325905, \\\"grid_resolution_km\\\": 0.7891116685325942, \\\"spatial_resolution_method\\\": \\\"transform 像元宽高按 CRS 线性单位换算；宽高相差不超过0.1%时取均值\\\", \\\"original_band_descriptions\\\": \\\"[null]\\\", \\\"source_file\\\": \\\"dem.tif\\\", \\\"source_sha256\\\": \\\"101a2a2414e0c63218c9bb741e52b6fa6a5369cf6ab2965e8d098c5d03bff3f6\\\", \\\"source\\\": \\\"https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer\\\", \\\"export_variable\\\": \\\"elevation\\\", \\\"acquisition_note\\\": \\\"Static current 3DEP mosaic; not asserted contemporaneous with January 2024\\\"}, \\\"variables\\\": {\\\"elevation\\\": {\\\"units\\\": \\\"m\\\", \\\"long_name\\\": \\\"USGS 3DEP bare-earth elevation\\\", \\\"data_kind\\\": \\\"continuous\\\"}, \\\"y\\\": {\\\"units\\\": \\\"metre\\\", \\\"standard_name\\\": \\\"projection_y_coordinate\\\"}, \\\"x\\\": {\\\"units\\\": \\\"metre\\\", \\\"standard_name\\\": \\\"projection_x_coordinate\\\"}}, \\\"dimensions\\\": {\\\"y\\\": 128, \\\"x\\\": 128}, \\\"scalar_coordinates\\\": {}, \\\"export_variable\\\": \\\"elevation\\\"}\", \"AREA_OR_POINT\": \"Area\"}",
+      "raster_transform": "[789.1116685327142, 0.0, -13186203.060392369, 0.0, -789.1116685327142, 4113036.1979076364]",
+      "pixel_width": 789.1116685327142,
+      "pixel_height": 789.1116685327142,
+      "pixel_coordinate_unit": "metre",
+      "pixel_width_km": 0.7891116685327142,
+      "pixel_height_km": 0.7891116685327142,
+      "grid_resolution_km": 0.7891116685327142,
+      "spatial_resolution_method": "transform 像元宽高按 CRS 线性单位换算；宽高相差不超过0.1%时取均值",
+      "original_band_descriptions": "[\"elevation\"]",
+      "source_file": "dem.tif",
+      "source_sha256": "f9306fa8bfd5bf8a1033d6488e01bf4e9253d67dd59344cfedd7dfdace575134",
+      "source": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+      "export_variable": "elevation",
+      "acquisition_note": "Static current 3DEP mosaic; not asserted contemporaneous with January 2024",
+      "user_confirmations": "{}"
+    }
+  },
+  {
+    "filename": "geos_cf_meteorology.nc",
+    "format": "NetCDF",
+    "structure": "grid",
+    "variables": [
+      "temperature",
+      "u10m",
+      "v10m",
+      "humidity",
+      "wind",
+      "time_bnds"
+    ],
+    "units": {
+      "temperature": "K",
+      "u10m": "m/s",
+      "v10m": "m/s",
+      "humidity": "%",
+      "wind": "m/s",
+      "time_bnds": ""
+    },
+    "semantic_types": {
+      "temperature": "continuous",
+      "u10m": "continuous",
+      "v10m": "continuous",
+      "humidity": "continuous",
+      "wind": "continuous",
+      "time_bnds": "datetime"
+    },
+    "time_coordinate": "time",
+    "temporal_resolution": "0 days 01:00:00",
+    "x_coordinate": "lon",
+    "y_coordinate": "lat",
+    "crs": "EPSG:4326",
+    "dimensions": {
+      "time": 48,
+      "lat": 4,
+      "lon": 5,
+      "bnds": 2
+    },
+    "confirmations_required": [],
+    "spatial_resolution_km": null,
+    "pixel_width_km": null,
+    "pixel_height_km": null,
+    "spatial_resolution_reason": null,
+    "geometry_types": [],
+    "extent": [
+      -119.0,
+      33.5,
+      -117.0,
+      35.0
+    ],
+    "field_types": {
+      "temperature": "float64",
+      "u10m": "float64",
+      "v10m": "float64",
+      "humidity": "float64",
+      "wind": "float64",
+      "time_bnds": "datetime64[ns]"
+    },
+    "rasterizable_fields": [],
+    "missing_values": {
+      "temperature": 0,
+      "u10m": 0,
+      "v10m": 0,
+      "humidity": 0,
+      "wind": 0,
+      "time_bnds": 0
+    },
+    "cf_metadata": {
+      "backend": "cf-xarray",
+      "axes": {
+        "T": [
+          "time"
+        ]
+      },
+      "coordinates": {
+        "longitude": [
+          "lon"
+        ],
+        "latitude": [
+          "lat"
+        ],
+        "time": [
+          "time"
+        ]
+      },
+      "bounds": {
+        "time": [
+          "time_bnds"
+        ],
+        "T": [
+          "time_bnds"
+        ]
+      },
+      "standard_names": {
+        "time": [
+          "time"
+        ],
+        "latitude": [
+          "lat"
+        ],
+        "longitude": [
+          "lon"
+        ]
+      },
+      "ambiguities": [],
+      "grid_mappings": [],
+      "crs": null
+    },
+    "sha256": "40f8a1b62e93bf1f83497c2a5c752fbe1fca45970686f9f8548e51eabef4fd7e",
+    "source_metadata": {
+      "actual_product": "NASA GEOS-CF; NOT ERA5 (requested example filename only)",
+      "crs": "EPSG:4326",
+      "spatial_x": "lon",
+      "spatial_y": "lat",
+      "source": "NASA GEOS-CF replay; 0.5 degree subsample of native 0.25 degree grid",
+      "Conventions": "CF-1.8",
+      "temporal_semantics": "mean",
+      "source_file": "geos_cf_meteorology.nc",
+      "source_sha256": "40f8a1b62e93bf1f83497c2a5c752fbe1fca45970686f9f8548e51eabef4fd7e",
+      "user_confirmations": "{}"
+    },
+    "time_range": [
+      "2024-01-01 00:30:00",
+      "2024-01-02 23:30:00"
+    ]
+  },
+  {
+    "filename": "pm25_background.nc",
+    "format": "NetCDF",
+    "structure": "grid",
+    "variables": [
+      "PM25",
+      "time_bnds"
+    ],
+    "units": {
+      "PM25": "ug/m3",
+      "time_bnds": ""
+    },
+    "semantic_types": {
+      "PM25": "continuous",
+      "time_bnds": "datetime"
+    },
+    "time_coordinate": "time",
+    "temporal_resolution": "0 days 06:00:00",
+    "x_coordinate": "lon",
+    "y_coordinate": "lat",
+    "crs": "EPSG:4326",
+    "dimensions": {
+      "time": 8,
+      "lat": 3,
+      "lon": 3,
+      "bnds": 2
+    },
+    "confirmations_required": [],
+    "spatial_resolution_km": null,
+    "pixel_width_km": null,
+    "pixel_height_km": null,
+    "spatial_resolution_reason": null,
+    "geometry_types": [],
+    "extent": [
+      -118.25,
+      34.0,
+      -117.75,
+      34.5
+    ],
+    "field_types": {
+      "PM25": "float64",
+      "time_bnds": "datetime64[ns]"
+    },
+    "rasterizable_fields": [],
+    "missing_values": {
+      "PM25": 0,
+      "time_bnds": 0
+    },
+    "cf_metadata": {
+      "backend": "cf-xarray",
+      "axes": {
+        "T": [
+          "time"
+        ]
+      },
+      "coordinates": {
+        "longitude": [
+          "lon"
+        ],
+        "latitude": [
+          "lat"
+        ],
+        "time": [
+          "time"
+        ]
+      },
+      "bounds": {
+        "time": [
+          "time_bnds"
+        ],
+        "T": [
+          "time_bnds"
+        ]
+      },
+      "standard_names": {
+        "time": [
+          "time"
+        ],
+        "latitude": [
+          "lat"
+        ],
+        "longitude": [
+          "lon"
+        ]
+      },
+      "ambiguities": [],
+      "grid_mappings": [],
+      "crs": null
+    },
+    "sha256": "7fd41f8aee076119be73464256284e092c229ff125e17a139bacd431b5076338",
+    "source_metadata": {
+      "crs": "EPSG:4326",
+      "spatial_x": "lon",
+      "spatial_y": "lat",
+      "source": "NASA GEOS-CF replay",
+      "Conventions": "CF-1.8",
+      "temporal_semantics": "mean",
+      "source_file": "pm25_background.nc",
+      "source_sha256": "7fd41f8aee076119be73464256284e092c229ff125e17a139bacd431b5076338",
+      "user_confirmations": "{}"
+    },
+    "time_range": [
+      "2024-01-01 00:30:00",
+      "2024-01-02 18:30:00"
+    ]
+  },
+  {
+    "filename": "pm25_station.csv",
+    "format": "CSV",
+    "structure": "table",
+    "variables": [
+      "station_id",
+      "station_name",
+      "latitude",
+      "longitude",
+      "time",
+      "PM25",
+      "time_start",
+      "time_end",
+      "unit",
+      "crs",
+      "qc_flag",
+      "source_quality",
+      "agency",
+      "source_file"
+    ],
+    "units": {
+      "station_id": "",
+      "station_name": "",
+      "latitude": "",
+      "longitude": "",
+      "time": "",
+      "PM25": "ug/m3",
+      "time_start": "",
+      "time_end": "",
+      "unit": "",
+      "crs": "",
+      "qc_flag": "",
+      "source_quality": "",
+      "agency": "",
+      "source_file": ""
+    },
+    "semantic_types": {
+      "station_id": "string_identifier",
+      "station_name": "categorical",
+      "latitude": "continuous",
+      "longitude": "continuous",
+      "time": "datetime",
+      "PM25": "continuous",
+      "time_start": "string_identifier",
+      "time_end": "string_identifier",
+      "unit": "string_identifier",
+      "crs": "string_identifier",
+      "qc_flag": "quality_metadata",
+      "source_quality": "quality_metadata",
+      "agency": "string_identifier",
+      "source_file": "quality_metadata"
+    },
+    "time_coordinate": "time",
+    "temporal_resolution": "0 days 06:00:00",
+    "x_coordinate": "longitude",
+    "y_coordinate": "latitude",
+    "crs": "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AXIS[\"Latitude\",NORTH],AXIS[\"Longitude\",EAST],AUTHORITY[\"EPSG\",\"4326\"]]",
+    "dimensions": {
+      "__row__": 16
+    },
+    "confirmations_required": [],
+    "spatial_resolution_km": null,
+    "pixel_width_km": null,
+    "pixel_height_km": null,
+    "spatial_resolution_reason": null,
+    "geometry_types": [],
+    "extent": [
+      -118.226755,
+      34.066429,
+      -117.8508,
+      34.1439
+    ],
+    "field_types": {
+      "station_id": "object",
+      "station_name": "object",
+      "latitude": "float64",
+      "longitude": "float64",
+      "time": "object",
+      "PM25": "float64",
+      "time_start": "object",
+      "time_end": "object",
+      "unit": "object",
+      "crs": "object",
+      "qc_flag": "object",
+      "source_quality": "object",
+      "agency": "object",
+      "source_file": "object"
+    },
+    "rasterizable_fields": [],
+    "missing_values": {
+      "station_id": 0,
+      "station_name": 0,
+      "latitude": 0,
+      "longitude": 0,
+      "time": 0,
+      "PM25": 0,
+      "time_start": 0,
+      "time_end": 0,
+      "unit": 0,
+      "crs": 0,
+      "qc_flag": 0,
+      "source_quality": 0,
+      "agency": 0,
+      "source_file": 0
+    },
+    "cf_metadata": {
+      "backend": "cf-xarray",
+      "axes": {},
+      "coordinates": {},
+      "bounds": {},
+      "standard_names": {},
+      "ambiguities": [],
+      "grid_mappings": [],
+      "crs": null
+    },
+    "sha256": "b85901170bea89f9d859055686e66c0f207a87a1de59305eecfc785e478adf39",
+    "source_metadata": {
+      "structure": "table",
+      "row_dimension": "__row__",
+      "source_file": "pm25_station.csv",
+      "source_sha256": "b85901170bea89f9d859055686e66c0f207a87a1de59305eecfc785e478adf39",
+      "crs": "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AXIS[\"Latitude\",NORTH],AXIS[\"Longitude\",EAST],AUTHORITY[\"EPSG\",\"4326\"]]",
+      "user_confirmations": "{\"temporal_semantics\": \"mean\"}",
+      "source_temporal_semantics_declared": "",
+      "temporal_semantics": "mean"
+    },
+    "time_range": [
+      "2024-01-01 00:30:00",
+      "2024-01-02 18:30:00"
+    ]
+  }
+]

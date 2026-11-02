@@ -1,0 +1,22 @@
+{
+  "version": "CAMx-7.40-CB6r5-photolysis",
+  "units": {
+    "ozone_column_native": "DU",
+    "albedo": "1",
+    "terrain_native": "km",
+    "height_km": "km",
+    "photolysis_native_value": "min^-1"
+  },
+  "zenith_degrees": [
+    0,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    78,
+    86
+  ]
+}

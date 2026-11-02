@@ -1,0 +1,11 @@
+{
+  "project_name": "monocacy_2021_complete_weather",
+  "start": "2021-01-01",
+  "end": "2021-12-31",
+  "station": {
+    "name": "monocacy",
+    "latitude": 39.6791,
+    "longitude": -77.2345,
+    "elevation": 115.0
+  }
+}

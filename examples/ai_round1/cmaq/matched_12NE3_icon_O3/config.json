@@ -1,0 +1,11 @@
+{
+  "version": "CMAQ-5.5-ICON-profile-CB6R5_AE7_AQ",
+  "layers": 35,
+  "target_units": {
+    "PRES": "Pa",
+    "ZH": "m",
+    "ZF": "m",
+    "O3": "ppmV"
+  },
+  "source_description": "Explicit first-time horizontal-mean O3 sensitivity profile from official 20180701 12NE3 CB6R5 benchmark; not observation; original other 224 species retained after native preprocessing."
+}

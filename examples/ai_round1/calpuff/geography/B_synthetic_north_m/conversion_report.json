@@ -1,0 +1,138 @@
+{
+  "scope": "CALMET5.8.5 GEO.DAT 2.0 / WGS84 UTM方格静态资料；八字段全部来自用户，无土地参数默认值。需已有CALMET.INP网格/投影完全匹配；不生成气象场、控制文件或CALPUFF工程。",
+  "shape_y_x": [
+    2,
+    3
+  ],
+  "crs": "EPSG:32631",
+  "origin_km": [
+    500.0,
+    1000.0
+  ],
+  "grid_spacing_km": 1.0,
+  "units": {
+    "landuse": "1",
+    "elevation": "m",
+    "roughness": "m",
+    "albedo": "1",
+    "bowen": "1",
+    "soil_heat_flux": "1",
+    "anthropogenic_heat": "W/m^2",
+    "leaf_area_index": "1"
+  },
+  "transformations": {
+    "landuse": {
+      "source_units": "1",
+      "target_units": "1",
+      "scale": 1.0,
+      "offset": 0.0
+    },
+    "elevation": {
+      "source_units": "m",
+      "target_units": "m",
+      "scale": 1.0,
+      "offset": 0.0
+    },
+    "roughness": {
+      "source_units": "m",
+      "target_units": "m",
+      "scale": 1.0,
+      "offset": 0.0
+    },
+    "albedo": {
+      "source_units": "1",
+      "target_units": "1",
+      "scale": 1.0,
+      "offset": 0.0
+    },
+    "bowen": {
+      "source_units": "1",
+      "target_units": "1",
+      "scale": 1.0,
+      "offset": 0.0
+    },
+    "soil_heat_flux": {
+      "source_units": "1",
+      "target_units": "1",
+      "scale": 1.0,
+      "offset": 0.0
+    },
+    "anthropogenic_heat": {
+      "source_units": "W/m^2",
+      "target_units": "W/m^2",
+      "scale": 1.0,
+      "offset": 0.0
+    },
+    "leaf_area_index": {
+      "source_units": "1",
+      "target_units": "1",
+      "scale": 1.0,
+      "offset": 0.0
+    }
+  },
+  "source": {
+    "kind": "synthetic",
+    "description": "Synthetic eight-parameter UTM grid, not a real geographical case"
+  },
+  "time_processing": "static; no time axis",
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "dd5b18661ffcaaae4723531084f6b4ac8988c57a1bd2e2e119473802bbee5c50",
+  "configuration": {
+    "mode": "geography",
+    "target_version": "CALMET-5.8.5-GEO.DAT-2.0",
+    "coordinate_location": "cell_center",
+    "elevation_vertical_reference": "MSL",
+    "source": {
+      "kind": "synthetic",
+      "description": "Synthetic eight-parameter UTM grid, not a real geographical case"
+    },
+    "missing_values": [
+      -9999
+    ],
+    "crs": "EPSG:32631",
+    "coordinates": {
+      "x": "x",
+      "y": "y"
+    },
+    "fields": {
+      "landuse": {
+        "variable": "landuse"
+      },
+      "elevation": {
+        "variable": "elevation"
+      },
+      "roughness": {
+        "variable": "roughness"
+      },
+      "albedo": {
+        "variable": "albedo"
+      },
+      "bowen": {
+        "variable": "bowen"
+      },
+      "soil_heat_flux": {
+        "variable": "soil_heat_flux"
+      },
+      "anthropogenic_heat": {
+        "variable": "anthropogenic_heat"
+      },
+      "leaf_area_index": {
+        "variable": "leaf_area_index"
+      }
+    },
+    "landuse_categories": [
+      10,
+      11
+    ],
+    "water_category_range": [
+      50,
+      59
+    ]
+  },
+  "output_sha256": {
+    "GEO.DAT": "651452b91056f0712c22ada3d9097a56b922ec78375312cb21ac4351e0ae3749",
+    "README_GEO.txt": "ddbfba7a89f17eda6928cce217284724ce40a697f1f611e63575c067807fb46a"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

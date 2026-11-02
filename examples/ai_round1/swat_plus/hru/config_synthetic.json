@@ -1,0 +1,50 @@
+{
+  "mode": "hru_attributes",
+  "target_model_version": "62.0.0",
+  "table": "A_custom.csv",
+  "fields": {
+    "id": "source_id",
+    "name": "source_name",
+    "topo": "source_topo",
+    "hydro": "source_hydro",
+    "soil": "source_soil",
+    "lu_mgt": "source_lu_mgt",
+    "soil_plant_init": "source_soil_plant_init",
+    "surf_stor": "source_surf_stor",
+    "snow": "source_snow",
+    "field": "source_field"
+  },
+  "references": {
+    "topo": "topography.hyd",
+    "hydro": "hydrology.hyd",
+    "soil": "soils.sol",
+    "lu_mgt": "landuse.lum",
+    "soil_plant_init": "soil_plant.ini",
+    "snow": "snow.sno"
+  },
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Synthetic 3-HRU attributes and 2 topographies; full official parameter databases used ONLY as reference fixtures, not new measurements"
+  },
+  "topography": {
+    "table": "raw_topography.csv",
+    "fields": {
+      "name": "name",
+      "slp": "slope_percent",
+      "slp_len": "erosion_km",
+      "lat_len": "lateral_m",
+      "dist_cha": "distance_m",
+      "depos": "coefficient"
+    },
+    "units": {
+      "slp": "%",
+      "slp_len": "km",
+      "lat_len": "m",
+      "dist_cha": "m",
+      "depos": "1"
+    },
+    "missing_values": [
+      -9999
+    ]
+  }
+}

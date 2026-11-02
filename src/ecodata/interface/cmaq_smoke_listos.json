@@ -1,0 +1,49 @@
+{
+  "reference": "smoke_native_jobs/a9edc52da3e9411bbff0148cc2ccd2d1",
+  "raw": "smoke_inventory_trial_quoted/raw_inventory.csv",
+  "raw_sha256": "61aaebd21adef7d04e2689ca3bf8e84c75331f909484e7662f69957f231390e6",
+  "steps": [
+    {
+      "name": "inventory",
+      "subdir": ".",
+      "exe": "smkinven",
+      "exe_sha256": "30e1fd110b3a519dbad92629a238cad441179e82f902d53783ec83cb228328c7",
+      "environment_sha256": "5b6dab6b8640f87d8e663dc1ba23d0766bb2c78edfe223b3a8331b862615ad09"
+    },
+    {
+      "name": "speciation",
+      "subdir": "speciation_59dd8d99e8b340d4aae6d8724f96f652",
+      "exe": "spcmat",
+      "exe_sha256": "12031d3147986f1f0c934d481ad6e90346928bcdb5f597f026d2ff0a002d391a",
+      "environment_sha256": "a7ef98082ec25fed8b663761009f920e9435988885bf1b8182e8b959e37f1c20"
+    },
+    {
+      "name": "gridding",
+      "subdir": "gridding_3211ec95961f4dac82e611488ead3199",
+      "exe": "grdmat",
+      "exe_sha256": "e9d865ccdd9c2eb13b576678e438e77c13cd0ad685da4c42218c79bd6b8d5635",
+      "environment_sha256": "569a748edd41b01d2ac4c95602d0d33273a5053c97b4911c5f78c4a2f2d7ac85"
+    },
+    {
+      "name": "temporal",
+      "subdir": "temporal_77d06373d7f149109a1f4a322c0ca085",
+      "exe": "temporal",
+      "exe_sha256": "87a3374db4e0072a4c22d6f547046cb635b2bd4faae9aa577bd88fbb480c2388",
+      "environment_sha256": "96aa01754893afb926f1c122b7c698fc3ab33cd0e48b837bc49a110c38c4bcf2"
+    },
+    {
+      "name": "elevpoint",
+      "subdir": "elevpoint_4562b34eb42041cab7edb7abe03f32bc",
+      "exe": "elevpoint",
+      "exe_sha256": "ce75c1058fa4b90cb380f974442b19c60fb8b11ef8d75398380b156303b80c79",
+      "environment_sha256": "959a5e398c05da6ca6b791c49eccd3ad26e2504a8707d3ae3d925ed06d5eedf7"
+    },
+    {
+      "name": "merge",
+      "subdir": "merge_0effa60c57864f6099662c10b046b864",
+      "exe": "smkmerge",
+      "exe_sha256": "6f34b6c0bffe43855e7266cd7c257d4cdc74589612adb9eabfd94124292d4390",
+      "environment_sha256": "78f13a69bcb95ff1eca803e2f15607a51d4f05eb3f0595ef1ccc4dd1d90f357d"
+    }
+  ]
+}

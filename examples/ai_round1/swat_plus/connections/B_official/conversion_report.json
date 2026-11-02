@@ -1,0 +1,90 @@
+{
+  "scope": "SWAT+62显式对象连接；直接属性ID/天气站/网络端点已校验，不划分流域或HRU，不校验属性库内部深层引用，不生成file.cio；非0高级引用与循环网络暂不支持。",
+  "nodes": 4,
+  "edges": 3,
+  "node_types": [
+    "aqu",
+    "hru",
+    "ru",
+    "sdc"
+  ],
+  "source": {
+    "kind": "official_input_decoded",
+    "url": "https://github.com/swat-model/swatplus/tree/62.0.0/refdata/Osu_1hru",
+    "description": "Osu complete supplied connection records decoded independently; not raw GIS-derived topology; old rev60.5.4 headers retained in B2"
+  },
+  "units": {
+    "area": "ha",
+    "coordinates": "degree EPSG:4326",
+    "elev": "m",
+    "fraction": "1"
+  },
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "09a21e09309ae6b16a05c2df178fe91e34353ab7d10325d558c46d40f7a7728a",
+  "configuration": {
+    "mode": "connections",
+    "target_model_version": "62.0.0",
+    "source_crs": "EPSG:4326",
+    "units": {
+      "area": "ha",
+      "elev": "m",
+      "coordinates": "degree",
+      "fraction": "1"
+    },
+    "missing_values": [
+      -9999
+    ],
+    "fraction_policy": "sum_to_one_per_hydrograph",
+    "property_files": {
+      "hru": "hru-data.hru",
+      "aqu": "aquifer.aqu",
+      "ru": "rout_unit.rtu",
+      "sdc": "channel-lte.cha"
+    },
+    "weather_stations_file": "weather-sta.cli",
+    "nodes": {
+      "table": "nodes.csv",
+      "fields": {
+        "kind": "kind",
+        "id": "id",
+        "name": "name",
+        "gis_id": "gis_id",
+        "area": "area",
+        "lat": "lat",
+        "lon": "lon",
+        "elev": "elev",
+        "props": "props",
+        "wst": "wst",
+        "cst": "cst",
+        "ovfl": "ovfl",
+        "rule": "rule"
+      }
+    },
+    "edges": {
+      "table": "edges.csv",
+      "fields": {
+        "from_kind": "from_kind",
+        "from_id": "from_id",
+        "order": "order",
+        "to_kind": "to_kind",
+        "to_id": "to_id",
+        "hyd_typ": "hyd_typ",
+        "fraction": "fraction"
+      }
+    },
+    "source": {
+      "kind": "official_input_decoded",
+      "url": "https://github.com/swat-model/swatplus/tree/62.0.0/refdata/Osu_1hru",
+      "description": "Osu complete supplied connection records decoded independently; not raw GIS-derived topology; old rev60.5.4 headers retained in B2"
+    }
+  },
+  "output_sha256": {
+    "aquifer.con": "7f3e3f0a984b68cdea72987b3fbf5a3663595c177c084cc651402c1da2b5b9d6",
+    "hru.con": "3de9fb073f0cb21504a35bac2c48bca0c151351e10a15cbcabf4285db0ee9499",
+    "rout_unit.con": "9795523f56c330ca97d6b197b2f9f29e493f2abb059615f234f8f8543525d279",
+    "chandeg.con": "c6e5926357e1e26b95f440abbaa7193d10a273b950d73332c6b06e9eea242047",
+    "README_connections.txt": "37d91e7cd3cacc4b997d6b34774c7bfadeca8d5149ea206686f1bb421323f0cf"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

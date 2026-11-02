@@ -1,0 +1,26 @@
+{
+  "mode": "precipitation",
+  "version": "CALMET-5.8.5-PRECIP-2.0",
+  "station_ids": [
+    94075
+  ],
+  "timezone_west_hours": 7,
+  "time_label": "hour_end",
+  "quantity": "one_hour_amount",
+  "accumulation_seconds": 3600,
+  "source_units": "mm",
+  "fields": {
+    "station": "station",
+    "time": "end_utc",
+    "precipitation": "rain_previous_hour_mm"
+  },
+  "missing_values": [
+    -9999
+  ],
+  "source": {
+    "kind": "real_observation",
+    "url": "https://www.ncei.noaa.gov/pub/data/uscrn/products/hourly02/2021/CRNH0203-2021-CO_Boulder_14_W.txt",
+    "description": "NOAA USCRN CO Boulder14W; exact UTC hourly ending labels 2021-07-01T01 through 2021-07-02T00",
+    "usage": "US government public data; cite NOAA, no endorsement"
+  }
+}

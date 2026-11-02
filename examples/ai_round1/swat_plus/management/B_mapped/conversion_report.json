@@ -1,0 +1,66 @@
+{
+  "scope": "SWAT+62 management.sch固定月日fert/manu日程及已提供材料/施用数据库；无自动规则、热量触发、轮作、灌溉或其他管理操作，不生成file.cio。只核对已使用材料、施用方式及粪肥有机属性名称，不认证整个数据库物理参数或完整工程。",
+  "schedules": [
+    "field_a",
+    "field_b"
+  ],
+  "operations": 3,
+  "amount_unit": "kg/ha",
+  "time_processing": "fixed month/day, original operation order; no interpolation",
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Explicit synthetic application dates/amounts; official databases are format/reference fixtures, not measured management records",
+    "license": "CC0 synthetic records; official source license per existing provenance"
+  },
+  "complete_model_input": false,
+  "source_sha256": "656c2a4a94965ed66ac6a66c2d529b5b41cc51d19320f788df1c1dc05a6e60a2",
+  "configuration": {
+    "mode": "management_schedule",
+    "target_model_version": "62.0.0",
+    "profile": "calendar_fert_manure",
+    "automatic_operations": [],
+    "table": "operations.csv",
+    "fields": {
+      "schedule": "custom_schedule",
+      "order": "custom_order",
+      "operation": "custom_operation",
+      "month": "custom_month",
+      "day": "custom_day",
+      "hu_sch": "custom_hu_sch",
+      "material": "custom_material",
+      "application": "custom_application",
+      "amount": "custom_amount",
+      "amount_unit": "custom_amount_unit"
+    },
+    "operation_mapping": {
+      "fertilize": "fert",
+      "organic": "manu"
+    },
+    "units": {
+      "hu_sch": "1"
+    },
+    "missing_values": [
+      -9999
+    ],
+    "references": {
+      "fertilizer": "fertilizer.frt",
+      "manure": "manure_db.frt",
+      "manure_om": "manure_om.frt",
+      "chem_app": "chem_app.ops"
+    },
+    "source": {
+      "kind": "synthetic_test",
+      "description": "Explicit synthetic application dates/amounts; official databases are format/reference fixtures, not measured management records",
+      "license": "CC0 synthetic records; official source license per existing provenance"
+    }
+  },
+  "output_sha256": {
+    "chem_app.ops": "de87773f04a334de4812167b18084debfef1df49613468557577063c80bea036",
+    "fertilizer.frt": "edf793432d526ef41e6029eef5e9758cb0b156aa3664f9d7254ba021429e2ced",
+    "manure_db.frt": "67da54002b6157e6caa28be3be73facf3f138d07f03b5479c66032c7e2cf1dab",
+    "manure_om.frt": "d9cec8f742e8486f3ec2b1b365791c367c573294bae98f8047b4e129152b7f61",
+    "management.sch": "610eaf018b3d97c63bcebe0ed1f9ea4c075b7fb8df7f8190aaea46c5e7cdf4fe",
+    "README_management.txt": "37080bfb2594e5e2aae39abdf9a35aed254fd60dc7e5b6c372b77ce0bd70e4b1"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

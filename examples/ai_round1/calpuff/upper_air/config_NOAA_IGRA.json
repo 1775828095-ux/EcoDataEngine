@@ -1,0 +1,48 @@
+{
+  "mode": "upper_air",
+  "version": "CALMET-5.8.5-UP-2.0",
+  "projection": "NONE",
+  "height_reference": "MSL",
+  "wind_direction_reference": "meteorological_from_true_north",
+  "sounding_interval_hours": 12,
+  "missing_values": [
+    -8888,
+    -9999
+  ],
+  "top_pressure_hpa": 500,
+  "stations": [
+    {
+      "id": 72357,
+      "name": "OUN",
+      "latitude": 35.1808,
+      "longitude": -97.4378,
+      "elevation_m": 345
+    }
+  ],
+  "station_column": "station_id",
+  "time_column": "time",
+  "level_column": "level",
+  "columns": {
+    "pressure": "pressure_pa",
+    "height": "height_m_msl",
+    "temperature": "temperature_c",
+    "wind_direction": "wind_from_degree",
+    "wind_speed": "wind_speed_ms"
+  },
+  "units": {
+    "pressure": "Pa",
+    "height": "m",
+    "temperature": "degC",
+    "wind_direction": "degree",
+    "wind_speed": "m/s"
+  },
+  "source": {
+    "institution": "NOAA NCEI",
+    "product": "IGRA v2.2",
+    "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-y2d/USM00072357-data-beg2026.txt.zip",
+    "license": "US government public data; NOAA use policy; no NOAA endorsement",
+    "selection": "Both nominal 00/12 UTC soundings on 2026-01-01; all original pressure levels >=50000 Pa, no missing-value filtering, filling or interpolation",
+    "time_basis": "IGRA nominal sounding hour, not balloon release minute",
+    "coordinates": "NOAA header; datum not asserted, therefore NONE header and external CALMET.INP location configuration"
+  }
+}

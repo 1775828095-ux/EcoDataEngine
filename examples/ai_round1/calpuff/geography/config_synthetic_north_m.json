@@ -1,0 +1,52 @@
+{
+  "mode": "geography",
+  "target_version": "CALMET-5.8.5-GEO.DAT-2.0",
+  "coordinate_location": "cell_center",
+  "elevation_vertical_reference": "MSL",
+  "source": {
+    "kind": "synthetic",
+    "description": "Synthetic eight-parameter UTM grid, not a real geographical case"
+  },
+  "missing_values": [
+    -9999
+  ],
+  "crs": "EPSG:32631",
+  "coordinates": {
+    "x": "x",
+    "y": "y"
+  },
+  "fields": {
+    "landuse": {
+      "variable": "landuse"
+    },
+    "elevation": {
+      "variable": "elevation"
+    },
+    "roughness": {
+      "variable": "roughness"
+    },
+    "albedo": {
+      "variable": "albedo"
+    },
+    "bowen": {
+      "variable": "bowen"
+    },
+    "soil_heat_flux": {
+      "variable": "soil_heat_flux"
+    },
+    "anthropogenic_heat": {
+      "variable": "anthropogenic_heat"
+    },
+    "leaf_area_index": {
+      "variable": "leaf_area_index"
+    }
+  },
+  "landuse_categories": [
+    10,
+    11
+  ],
+  "water_category_range": [
+    50,
+    59
+  ]
+}

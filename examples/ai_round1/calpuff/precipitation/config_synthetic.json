@@ -1,0 +1,24 @@
+{
+  "mode": "precipitation",
+  "version": "CALMET-5.8.5-PRECIP-2.0",
+  "station_ids": [
+    92,
+    91
+  ],
+  "timezone_west_hours": -8,
+  "time_label": "hour_end",
+  "quantity": "hour_mean_rate",
+  "source_units": "mm/s",
+  "fields": {
+    "time": "小时结束",
+    "station": "编号",
+    "precipitation": "每秒毫米"
+  },
+  "missing_values": [
+    -9999
+  ],
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Synthetic two-station reversed rows, rate unit mm/s, east timezone, leap-day/year-day crossing"
+  }
+}

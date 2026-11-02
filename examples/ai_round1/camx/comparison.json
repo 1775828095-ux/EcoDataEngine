@@ -1,0 +1,88 @@
+{
+  "format_parsed_by": "independent CAMx ASCII test reader and netCDF4",
+  "native_source_shape": [
+    825,
+    23,
+    10
+  ],
+  "record_count": 189750,
+  "preserved_numbers": {
+    "count": 189750,
+    "max_absolute_error": 0.0,
+    "MAE": 0.0,
+    "RMSE": 0.0,
+    "bias": 0.0,
+    "threshold_atol": 1e-12,
+    "relative_error": "not used: values near zero occur",
+    "passed": true
+  },
+  "context_preservation": {
+    "block_id": {
+      "count": 189750,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 1e-12,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    },
+    "ozone_column_native": {
+      "count": 189750,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 1e-12,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    },
+    "albedo": {
+      "count": 189750,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 1e-12,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    },
+    "terrain_native": {
+      "count": 189750,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 1e-12,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    },
+    "height_km": {
+      "count": 189750,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 1e-12,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    },
+    "zenith_index": {
+      "count": 189750,
+      "max_absolute_error": 0.0,
+      "MAE": 0.0,
+      "RMSE": 0.0,
+      "bias": 0.0,
+      "threshold_atol": 1e-12,
+      "relative_error": "not used: values near zero occur",
+      "passed": true
+    }
+  },
+  "reaction_labels_exact": true,
+  "distinct_conditions": 75,
+  "unique_heights": 11,
+  "B2": null,
+  "C2": "official outputs URL exists but full archive not downloaded",
+  "complete_model_run": false,
+  "boundary": "A is official native photolysis input; B is standardized CF table, not a CAMx native input; no upstream radiation reconstruction"
+}

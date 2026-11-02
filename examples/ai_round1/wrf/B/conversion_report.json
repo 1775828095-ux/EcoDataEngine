@@ -1,0 +1,35 @@
+{
+  "scope": "WPS4.6 intermediate v5 IPROJ0 SST supplement only",
+  "records": 1,
+  "shape": [
+    4,
+    4
+  ],
+  "complete_model_input": false,
+  "native_model_input_verified": false,
+  "float32_max_error_K": 1.4877319358674868e-05,
+  "format_source": "NCAR WPS guide; WPS v4.6.0 ungrib/output.F",
+  "required_next_steps": [
+    "On WPS host rename SST_YYYY-MM-DD_HH.wps to SST:YYYY-MM-DD_HH",
+    "Use constants_name/fg_name as appropriate; GEOGRID and complete atmospheric forcing required",
+    "metgrid.exe -> real.exe -> wrf.exe; this SST field alone cannot initialize WRF"
+  ],
+  "source_sha256": "34908a1da89ecf7dd70185743878514680ccf2571cb0939024da429bc9d6b40b",
+  "configuration": {
+    "version": "WPS-4.6-intermediate-v5-SST",
+    "variable": "sst",
+    "latitude": "lat",
+    "longitude": "lon",
+    "time": "time",
+    "squeeze_dimensions": [
+      "zlev"
+    ],
+    "crs": "EPSG:4326",
+    "time_basis": "UTC",
+    "map_source": "NOAA OISST v2.1"
+  },
+  "output_sha256": {
+    "SST_2020-01-01_12.wps": "13971f78622105d03c5f2a5f52fc1326fcb8dcf32f85a42dbcb498d59dea6311"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

@@ -1,0 +1,86 @@
+{
+  "version": "CAMx7.40 CB6r5 official 2016 benchmark specific inputs, generic intermediate only",
+  "sources": [
+    {
+      "name": "camx_specific.tgz",
+      "url": "https://www.camx.com/getmedia/v7.40.specific.inputs.260801.tgz",
+      "started": "2026-10-04T04:23:59.7157214Z",
+      "status": "downloaded",
+      "bytes": 1456932,
+      "sha256": "09FD3DD27F4FF435B82FE4BE0BC0472E70CFDC024C1492FEE60D227D5CF7D2D3",
+      "error": "",
+      "publisher": "Ramboll CAMx",
+      "role": "distinct official native photolysis reference A",
+      "license_or_restrictions": "CAMx软件许可随附 CAMx_LICENSE.txt；保留版权及声明，衍生代码条款见原文。示例数据没有另外的独立许可证声明。"
+    },
+    {
+      "name": "camx_LICENSE.txt",
+      "url": "https://www.camx.com/Files/LICENSE.txt",
+      "status": "downloaded",
+      "bytes": 9905,
+      "sha256": "e52082863d63bbbd775526fc22c95ea2b11f7ccbbedf5e67f221b52dc2dea45d",
+      "completed_file_timestamp_utc": "2026-10-04T04:34:54.379475+00:00",
+      "timestamp_basis": "Retained file timestamp; original request start was not logged",
+      "publisher": "Ramboll",
+      "role": "license notice",
+      "license_or_restrictions": "随包保留全文；本轮未改写CAMx源代码。"
+    }
+  ],
+  "time": "2016-06-10..11 benchmark; TUV conditional lookup table, not a time series of observations.",
+  "space": "Official example nested36/12km Eastern US; Lambert-97/40,true33/45. Table75conditions x11height levels; spatial field not reconstructed.",
+  "variables_units": {
+    "height": "km above surface",
+    "albedo": "dimensionless",
+    "ozone_column_native": "official numeric convention retained, physical unit not independently certified",
+    "terrain_native": "official numeric convention retained",
+    "photolysis_native_value": "native values preserved; no guessed rate unit",
+    "zenith_index": "0..9 original position, not inferred angular degrees"
+  },
+  "missing": "No missing/negative photolysis numbers found; condition/height/reaction keys retained.",
+  "B2": null,
+  "C2": "Official reference outputs link exists, but large full benchmark archives not downloaded; no compatible C comparison.",
+  "prepared_at_utc": "2026-10-04",
+  "normalization": "normalize_sources.py and per-case normalization.json where present",
+  "files": [
+    {
+      "path": "A_photolysis_table.csv",
+      "bytes": 8390122,
+      "sha256": "90d09d867675859f5d6d3f9c7ecdbd834e70ec0d934371584d6ad857338d2edb"
+    },
+    {
+      "path": "CAMx_LICENSE.txt",
+      "bytes": 9905,
+      "sha256": "e52082863d63bbbd775526fc22c95ea2b11f7ccbbedf5e67f221b52dc2dea45d"
+    },
+    {
+      "path": "comparison.json",
+      "bytes": 2375,
+      "sha256": "338bad5ddc62bb26ec4214aa5105b42be2f9e442c2d6963e0e037c4d28765513"
+    },
+    {
+      "path": "normalization.json",
+      "bytes": 771,
+      "sha256": "4319c1037645872fb6d92a063472f7e3ddee6b76d4a463d258d65da7ff5042eb"
+    },
+    {
+      "path": "source_manifest_round1.json",
+      "bytes": 3367,
+      "sha256": "8d3569ee60d25858ec76b5bde1d799c0557bef7a2f891b67a11e60e5fa5da035"
+    },
+    {
+      "path": "raw/CAMx_official_job.txt",
+      "bytes": 6203,
+      "sha256": "d842cf0fdc454c5df700922fde4135d8ca84ff6167e1d8d936a5308cb93da131"
+    },
+    {
+      "path": "raw/README_official.txt",
+      "bytes": 4478,
+      "sha256": "7fbe30e8d27ba91dbecb9111fb1c2904658ecfb001c6df50f24cd3843310e3c9"
+    },
+    {
+      "path": "raw/tuv.do_CB6r5.20160610",
+      "bytes": 3120021,
+      "sha256": "2998873680a07959ecacc5ebf6e84349db88c488152b508ab883e68f862019ac"
+    }
+  ]
+}

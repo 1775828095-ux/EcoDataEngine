@@ -1,0 +1,49 @@
+{
+  "target": "WPS4.6 metgrid intermediate-v5",
+  "scope": "WPS4.6 v5已有场检查与组包，保留每场原生五记录的逐字节内容。只接受IPROJ0/3同网格、earth-relative风；不插值、不补字段/层/日期，不生成geo_em/met_em/wrfinput，不认证物理方案完整输入。在WPS主机将PREFIX_YYYY-MM-DD_HH.wps改名PREFIX:YYYY-MM-DD_HH，合入已有metgrid fg_name；仍需目标域geo_em、METGRID.TBL和项目全部必要驱动。",
+  "input_sha256": {
+    "slice_1.wps": "0605bbdcd1c2520a296c109963bad68f3c985ee8b1f40d38363ea4118a83e5b9",
+    "slice_0.wps": "31ef017a17a9f1dfa7d8545ff3d0f4e0facd3a674a8f6e852e722a06e02f2844"
+  },
+  "records_per_file": {
+    "COMBINED_2024-02-29_00.wps": 3,
+    "COMBINED_2024-02-29_06.wps": 3
+  },
+  "interpolation": "none",
+  "grid_shape_y_x": [
+    2,
+    3
+  ],
+  "iproj": 0,
+  "native_model_read_verified": false,
+  "source_sha256": "e973ed433fd02777c5a32be2680bbc6d13eb93e6aa07b441c968df43217470e8",
+  "configuration": {
+    "mode": "input_package",
+    "version": "WPS-4.6-intermediate-v5-package",
+    "time_basis": "UTC",
+    "expected_times_utc": [
+      "2024-02-29T00:00:00Z",
+      "2024-02-29T06:00:00Z"
+    ],
+    "interval_seconds": 21600,
+    "required_levels": {
+      "TT": [
+        85000,
+        50000
+      ],
+      "SST": [
+        200100
+      ]
+    },
+    "missing_values": [
+      -9999
+    ],
+    "prefix": "COMBINED"
+  },
+  "output_sha256": {
+    "COMBINED_2024-02-29_00.wps": "d5a056200a9c2d54e1ba38fd44e958b48baf7741771049d73244afef7a22cece",
+    "COMBINED_2024-02-29_06.wps": "29b6c4a7972d60339eedc4c130e2ef498853005ea41f48b736f2237d5618a137",
+    "README_WPS_package.txt": "0dc5bea02c4012e2f9509901cc2607ec39432b2332ba39e5a83a93bb7fa0735e"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

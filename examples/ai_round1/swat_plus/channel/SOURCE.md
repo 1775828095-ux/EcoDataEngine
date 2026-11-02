@@ -1,0 +1,1 @@
+两组原始A为CC0合成工程参数，不是独立实测资料，不存在可比B2。标准组1条；映射组2条、倒序列和多单位。格式依据SWAT+官方62.0.0/src/sd_channel_module.f90、sd_hydsed_read.f90、sd_hydsed_init.f90、sd_channel_sediment3.f90。bankfull_flo实际乘rating curve flow，不能采用旧样例bed_load列名/错误流量单位。chss保持用户明确的SWAT62原生约定，源码几何公式存在不一致，不猜测坡比。输出无工程引用或时间坐标。

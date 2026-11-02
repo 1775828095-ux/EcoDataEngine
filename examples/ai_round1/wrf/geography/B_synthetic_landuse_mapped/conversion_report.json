@@ -1,0 +1,91 @@
+{
+  "scope": "WPS4.6 geogrid上游LANDUSEF数据集（index与原始整数瓦片），规则经纬度单瓦片；未生成geo_em。需把ZIP解压至独立地理目录，并在已有GEOGRID.TBL对应LANDUSEF节配置绝对路径/分辨率及有依据的插值规则。需完整域覆盖及其他必需地理数据；本平台不运行geogrid，不填出界格，不改变土地分类或推导物理参数。量化最大绝对误差=0.0，源缺测策略=拒绝。",
+  "field": "LANDUSEF",
+  "source": {
+    "kind": "synthetic",
+    "description": "Synthetic static grid, not real topography or land classification",
+    "license": "CC0 synthetic values"
+  },
+  "shape_y_x": [
+    3,
+    2
+  ],
+  "index": {
+    "type": "categorical",
+    "signed": "yes",
+    "projection": "regular_ll",
+    "dx": 0.09999999999999432,
+    "dy": 0.10000000000000142,
+    "known_x": 1.0,
+    "known_y": 1.0,
+    "known_lat": 30.0,
+    "known_lon": 110.0,
+    "wordsize": 2,
+    "endian": "little",
+    "row_order": "bottom_top",
+    "tile_x": 2,
+    "tile_y": 3,
+    "tile_z": 1,
+    "tile_bdr": 0,
+    "scale_factor": 1.0,
+    "missing_value": -9999,
+    "category_min": 1,
+    "category_max": 4,
+    "mminlu": "SYNTH_TEST",
+    "iswater": 1,
+    "islake": 2,
+    "isice": 3,
+    "isurban": 4
+  },
+  "native_tile": "00001-00002.00001-00003",
+  "unit_conversion": {
+    "source": "1",
+    "target": "category",
+    "scale": 1.0,
+    "offset": 0.0
+  },
+  "max_absolute_quantization_error": 0.0,
+  "time_processing": "static; no time axis",
+  "coordinate_processing": "axis sorting only; no regridding",
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "976af3a737deaf5f4e919088c3d6d11c979fec007ac452e67b3df8e14b1e3701",
+  "configuration": {
+    "mode": "geogrid_tiles",
+    "version": "WPS-4.6-geogrid-tile",
+    "crs": "EPSG:4326",
+    "field": "LANDUSEF",
+    "elevation_vertical_reference": "MSL",
+    "coordinates": {
+      "latitude": "north",
+      "longitude": "east"
+    },
+    "variable": "raster",
+    "wordsize": 2,
+    "endian": "little",
+    "scale_factor": 1.0,
+    "max_absolute_quantization_error": 0.0,
+    "missing_values": [
+      -9999
+    ],
+    "source": {
+      "kind": "synthetic",
+      "description": "Synthetic static grid, not real topography or land classification",
+      "license": "CC0 synthetic values"
+    },
+    "landuse": {
+      "category_min": 1,
+      "category_max": 4,
+      "mminlu": "SYNTH_TEST",
+      "iswater": 1,
+      "islake": 2,
+      "isice": 3,
+      "isurban": 4
+    }
+  },
+  "output_sha256": {
+    "geogrid_LANDUSEF.zip": "a10a331530356da68f62d498cbd54d0e6fa126c4f24f319af540f7a232f6f347",
+    "README_geogrid.txt": "8418d6805037c2b2bc6b87c4e3ad28340c3a5ebda7d144c4892b2c0efe2b7696"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

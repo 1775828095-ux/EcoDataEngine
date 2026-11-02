@@ -1,0 +1,40 @@
+{
+  "mode": "management_schedule",
+  "target_model_version": "62.0.0",
+  "profile": "calendar_fert_manure",
+  "automatic_operations": [],
+  "table": "operations.csv",
+  "fields": {
+    "schedule": "custom_schedule",
+    "order": "custom_order",
+    "operation": "custom_operation",
+    "month": "custom_month",
+    "day": "custom_day",
+    "hu_sch": "custom_hu_sch",
+    "material": "custom_material",
+    "application": "custom_application",
+    "amount": "custom_amount",
+    "amount_unit": "custom_amount_unit"
+  },
+  "operation_mapping": {
+    "fertilize": "fert",
+    "organic": "manu"
+  },
+  "units": {
+    "hu_sch": "1"
+  },
+  "missing_values": [
+    -9999
+  ],
+  "references": {
+    "fertilizer": "fertilizer.frt",
+    "manure": "manure_db.frt",
+    "manure_om": "manure_om.frt",
+    "chem_app": "chem_app.ops"
+  },
+  "source": {
+    "kind": "synthetic_test",
+    "description": "Explicit synthetic application dates/amounts; official databases are format/reference fixtures, not measured management records",
+    "license": "CC0 synthetic records; official source license per existing provenance"
+  }
+}

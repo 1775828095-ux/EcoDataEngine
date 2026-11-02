@@ -1,0 +1,277 @@
+{
+  "adapter_status": "index_only",
+  "requirements_status": "official_document_indexed",
+  "adapter_note": "通用PM2.5融合结果仍非CMAQ原生I/O API；专项页/CLI另提供CMAQ5.5 ICON/profile ASCII IC_PROFILE候选，尚未实跑ICON。",
+  "id": "cmaq",
+  "name": "CMAQ",
+  "category": "大气",
+  "reference_version": "5.5",
+  "official_sources": [
+    "https://github.com/USEPA/CMAQ/blob/main/DOCS/Users_Guide/CMAQ_UG_ch04_model_inputs.md"
+  ],
+  "input_formats": [
+    "I/O API NetCDF",
+    "ASCII"
+  ],
+  "required_variables": [
+    "meteorology",
+    "emissions",
+    "initial_concentrations",
+    "boundary_concentrations",
+    "grid_definition"
+  ],
+  "variable_aliases": {},
+  "requirements": {
+    "files": [
+      "GRIDDESC",
+      "INIT_CONC_1",
+      "BNDY_CONC_1",
+      "GRID_CRO_2D",
+      "GRID_BDY_2D",
+      "GRID_DOT_2D",
+      "MET_BDY_3D",
+      "emission streams"
+    ],
+    "dimensions": [
+      "TSTEP",
+      "LAY",
+      "ROW",
+      "COL",
+      "PERIM",
+      "VAR"
+    ],
+    "time": "time-varying inputs no coarser than hourly recommended",
+    "special": "mechanism-specific species, I/O API metadata, initial and boundary conditions required"
+  },
+  "outputs": "I/O API NetCDF concentration, deposition, visibility and diagnostic files",
+  "exchange_notes": "MCIP/WRF meteorology; SMOKE emissions; ICON/BCON initial and boundary conditions",
+  "preparation_scenario": {
+    "id": "cmaq_pm25_auxiliary",
+    "adapter": "cmaq_auxiliary",
+    "record_only_roles": [
+      "boundary"
+    ],
+    "format_scope": "standardized_only",
+    "derivable_fields": [
+      "wind"
+    ],
+    "advanced_options": [
+      {
+        "name": "spatial_method",
+        "label": "气象空间转换",
+        "key": "spatial",
+        "values": [
+          "bilinear",
+          "nearest",
+          "conservative"
+        ]
+      },
+      {
+        "name": "residual_method",
+        "label": "站点残差插值",
+        "key": "residual",
+        "values": [
+          "nearest",
+          "linear"
+        ]
+      },
+      {
+        "name": "negative_policy",
+        "label": "负浓度处理",
+        "key": "negative",
+        "values": [
+          "clip",
+          "reject"
+        ],
+        "labels": {
+          "clip": "显式截为0，保留原值及质量标记",
+          "reject": "阻止输出"
+        }
+      }
+    ],
+    "name": "PM2.5 初始浓度辅助数据准备",
+    "status": "standardized_preprocessing",
+    "output_format": "NetCDF",
+    "native_model_input": false,
+    "target_grid": "background",
+    "target_crs": "EPSG:4326",
+    "time_policy": "共同实际时段；平均值必须有相同时间边界，不伪造瞬时初始场",
+    "inputs": [
+      {
+        "role": "background",
+        "name": "初始浓度辅助背景场",
+        "required": true,
+        "formats": [
+          "NetCDF",
+          "HDF5-NetCDF"
+        ],
+        "dimensions": [
+          "time",
+          "y",
+          "x"
+        ],
+        "crs": "EPSG:4326，其他可靠规则投影网格可重投影",
+        "time": "明确时间及时间语义；mean需time_bnds",
+        "space": "至少2×2规则网格，作为辅助输出目标网格",
+        "fields": [
+          {
+            "name": "PM25",
+            "aliases": [
+              "PM2.5",
+              "pm25_rh35_gcc"
+            ],
+            "unit": "ug/m3",
+            "data_type": "continuous"
+          }
+        ]
+      },
+      {
+        "role": "meteorology",
+        "name": "气象场",
+        "required": true,
+        "formats": [
+          "NetCDF",
+          "HDF5-NetCDF"
+        ],
+        "dimensions": [
+          "time",
+          "y",
+          "x"
+        ],
+        "crs": "明确CRS，支持规则网格重投影",
+        "time": "与背景有共同时间；平均窗口一致",
+        "space": "覆盖目标网格",
+        "fields": [
+          {
+            "name": "temperature",
+            "aliases": [
+              "t2m",
+              "T2M",
+              "air_temperature"
+            ],
+            "unit": "degC",
+            "data_type": "continuous"
+          },
+          {
+            "name": "wind",
+            "aliases": [
+              "wind_speed"
+            ],
+            "unit": "m/s",
+            "data_type": "continuous"
+          },
+          {
+            "name": "humidity",
+            "aliases": [
+              "rh",
+              "RH",
+              "relative_humidity"
+            ],
+            "unit": "%",
+            "data_type": "continuous"
+          }
+        ]
+      },
+      {
+        "role": "terrain",
+        "name": "地形数据",
+        "required": true,
+        "formats": [
+          "GeoTIFF",
+          "NetCDF",
+          "HDF5-NetCDF"
+        ],
+        "dimensions": [
+          "y",
+          "x"
+        ],
+        "crs": "明确CRS，重投影至目标网格",
+        "time": "静态；保留来源年代",
+        "space": "覆盖目标网格",
+        "fields": [
+          {
+            "name": "elevation",
+            "aliases": [
+              "value",
+              "dem",
+              "height"
+            ],
+            "unit": "m",
+            "data_type": "continuous"
+          }
+        ]
+      },
+      {
+        "role": "observation",
+        "name": "观测约束数据",
+        "required": true,
+        "formats": [
+          "CSV",
+          "Excel",
+          "Parquet"
+        ],
+        "dimensions": [
+          "record"
+        ],
+        "crs": "明确CRS，点坐标可转EPSG:4326",
+        "time": "与背景同窗口；不能把小时平均冒称瞬时值",
+        "space": "有效站点在背景网格中心域内",
+        "fields": [
+          {
+            "name": "PM25",
+            "aliases": [
+              "PM2.5",
+              "value"
+            ],
+            "unit": "ug/m3",
+            "data_type": "continuous"
+          }
+        ]
+      },
+      {
+        "role": "boundary",
+        "name": "边界条件",
+        "required": false,
+        "required_for_native": true,
+        "formats": [
+          "I/O API NetCDF"
+        ],
+        "dimensions": [
+          "TSTEP",
+          "LAY",
+          "PERIM"
+        ],
+        "crs": "目标CMAQ网格一致",
+        "time": "模拟边界时序",
+        "space": "目标模型侧边界和垂直层",
+        "fields": [
+          {
+            "name": "mechanism_species",
+            "unit": "species-specific",
+            "data_type": "continuous"
+          }
+        ],
+        "processing": "本阶段只记录依赖，不生成或伪造边界场"
+      }
+    ],
+    "native_gaps": [
+      "对应版本/化学机制的三维物种初始场及垂直网格",
+      "I/O API维度、TFLAG和投影/网格元数据",
+      "WRF/MCIP完整气象与模型地形一致性",
+      "真实边界条件和排放等运行依赖",
+      "对应版本官方工具的原生读取验收",
+      "观测误差及独立验证；地形/气象尚未参与融合权重或物理约束"
+    ]
+  },
+  "scoped_native_inputs": [
+    {
+      "component": "ICON",
+      "version": "5.5",
+      "mode": "profile",
+      "logical_file": "IC_PROFILE",
+      "scope": "44-layer CB6R3M_AE7_KMTBR official sample repacking",
+      "documentation": "docs/cmaq_icon_profile.md",
+      "CCTM_input": false
+    }
+  ]
+}

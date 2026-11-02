@@ -1,0 +1,974 @@
+{
+  "backend": "PseudoNetCDF",
+  "version": "3.5.0",
+  "input_format": "icon_profile",
+  "attributes": {
+    "NVARS": 101,
+    "VAR-LIST": "NO2             NO              O3              NO3             OH              HO2             N2O5            HNO3            HONO            PNA             H2O2            CO              SO2             SULF            PAN             FACD            AACD            PACD            MEPX            MGLY            OPEN            CRES            FORM            ALD2            PAR             OLE             TOL             ISOP            ETH             XYL             ETHA            IOLE            ROOH            NTR             C2O3            PANX            BENZENE         HG              HGIIGAS         NH3             MACR            MVK             ASO4I           ASO4J           NUMATKN         NUMACC          ASOIL           ACORS           NUMCOR          ANIJ            ACR_IIIJ        ACR_VIJ         APBJ            APBK            ACDJ            AMN_HAPSJ       AMN_HAPSK       SRFATKN         SRFACC          SRFCOR          APHGJ           AALKJ           AXYL1J          AXYL2J          AXYL3J          ATOL1J          ATOL2J          ATOL3J          ABNZ1J          ABNZ2J          ABNZ3J          AOLGAJ          ATRP1J          ATRP2J          AISO1J          AISO2J          AISO3J          ASQTJ           AOLGBJ          AORGPAJ         AORGPAI         SV_ALK          SV_XYL1         SV_XYL2         SV_TOL1         SV_TOL2         SV_BNZ1         SV_BNZ2         SV_TRP1         SV_TRP2         SV_ISO1         SV_ISO2         SV_SQT          SGTOT_ALK       SGTOT_XYL_1     SGTOT_XYL_2     SGTOT_TOL_1     SGTOT_TOL_2     SGTOT_TRP_1     SGTOT_TRP_2     SGTOT_CSL       ",
+    "WDATE": 2026277,
+    "WTIME": 125434,
+    "VGLVLS": [
+      1.0,
+      0.9800000190734863,
+      0.9300000071525574,
+      0.8399999737739563,
+      0.6000000238418579,
+      0.30000001192092896,
+      0.0
+    ],
+    "VGTOP": 5000.0
+  },
+  "variables": {
+    "sigma": {
+      "dimensions": [
+        "sigma"
+      ],
+      "shape": [
+        7
+      ],
+      "units": "sigma"
+    },
+    "LAY": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "sigma"
+    },
+    "NO2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "NO": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "O3": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "NO3": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "OH": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "HO2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "N2O5": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "HNO3": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "HONO": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "PNA": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "H2O2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "CO": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SO2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SULF": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "PAN": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "FACD": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "AACD": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "PACD": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "MEPX": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "MGLY": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "OPEN": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "CRES": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "FORM": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "ALD2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "PAR": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "OLE": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "TOL": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "ISOP": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "ETH": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "XYL": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "ETHA": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "IOLE": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "ROOH": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "NTR": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "C2O3": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "PANX": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "BENZENE": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "HG": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "HGIIGAS": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "NH3": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "MACR": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "MVK": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "ASO4I": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ASO4J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "NUMATKN": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "#/m**3"
+    },
+    "NUMACC": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "#/m**3"
+    },
+    "ASOIL": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "ACORS": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "NUMCOR": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "#/m**3"
+    },
+    "ANIJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ACR_IIIJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ACR_VIJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "APBJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "APBK": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ACDJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AMN_HAPSJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AMN_HAPSK": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "SRFATKN": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "m**2/m**3"
+    },
+    "SRFACC": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "m**2/m**3"
+    },
+    "SRFCOR": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "m**2/m**3"
+    },
+    "APHGJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AALKJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AXYL1J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AXYL2J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AXYL3J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ATOL1J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ATOL2J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ATOL3J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ABNZ1J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ABNZ2J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ABNZ3J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AOLGAJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ATRP1J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ATRP2J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AISO1J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AISO2J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AISO3J": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "ASQTJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AOLGBJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AORGPAJ": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "AORGPAI": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "micrograms/m**3"
+    },
+    "SV_ALK": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_XYL1": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_XYL2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_TOL1": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_TOL2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_BNZ1": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_BNZ2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_TRP1": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_TRP2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_ISO1": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_ISO2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SV_SQT": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SGTOT_ALK": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SGTOT_XYL_1": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SGTOT_XYL_2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SGTOT_TOL_1": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SGTOT_TOL_2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SGTOT_TRP_1": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SGTOT_TRP_2": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    },
+    "SGTOT_CSL": {
+      "dimensions": [
+        "LAY"
+      ],
+      "shape": [
+        6
+      ],
+      "units": "ppmV"
+    }
+  },
+  "times": [],
+  "missing_ioapi_attributes": [
+    "FTYPE",
+    "GDTYP",
+    "P_ALP",
+    "P_BET",
+    "P_GAM",
+    "XCENT",
+    "YCENT",
+    "XORIG",
+    "YORIG",
+    "XCELL",
+    "YCELL",
+    "NCOLS",
+    "NROWS",
+    "NLAYS",
+    "SDATE",
+    "STIME",
+    "TSTEP"
+  ],
+  "tflag_present": false,
+  "reader_diagnostics": "",
+  "native_model_input_verified": false,
+  "scope": "真实库读取与 I/O API 关键属性检查，不等于对应版本 CMAQ 运行验证"
+}

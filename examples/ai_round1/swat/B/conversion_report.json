@@ -1,0 +1,65 @@
+{
+  "scope": "traditional SWAT 2012 single gauge daily weather only",
+  "records": 366,
+  "missing_counts": {
+    "precipitation": 9,
+    "tmax": 0,
+    "tmin": 0
+  },
+  "missing_policy": "swat_generator",
+  "date_semantics": "reported_daily_date",
+  "station_source": {
+    "id": "72405013743",
+    "latitude": 38.84721,
+    "longitude": -77.03454,
+    "elevation_m": 4.1,
+    "crs": "EPSG:4326"
+  },
+  "station_header_rounding": {
+    "pcp_degrees": 0.05,
+    "tmp_degrees": 5e-05,
+    "elevation_m": 0.5
+  },
+  "rounding_max": {
+    "precipitation": 0.05000000000000071,
+    "tmax": 0.022222222222225696,
+    "tmin": 0.022222222222225696
+  },
+  "native_model_input_verified": false,
+  "complete_model_input": false,
+  "warning": "-99.0 explicitly invokes SWAT weather generation; NOAA GSOD reporting windows require project review",
+  "format_source": "SWAT Input/Output Documentation 2012 Chapters 6 and 7",
+  "required_next_steps": [
+    "file.cio NRGAGE/NRGFIL NTGAGE/NTGFIL and file names",
+    "watershed soil/landuse/HRU/project inputs and SWAT executable"
+  ],
+  "source_sha256": "7b41ea1c7471b6a1fd9217daeeba53ab3c679f0c60d9567a7c2643363db34d62",
+  "configuration": {
+    "version": "SWAT-2012-daily-single-gauge",
+    "date_column": "date",
+    "date_semantics": "reported_daily_date",
+    "missing_policy": "swat_generator",
+    "columns": {
+      "precipitation": "precipitation",
+      "tmax": "tmax",
+      "tmin": "tmin"
+    },
+    "units": {
+      "precipitation": "inch",
+      "tmax": "degF",
+      "tmin": "degF"
+    },
+    "station": {
+      "id": "72405013743",
+      "latitude": 38.84721,
+      "longitude": -77.03454,
+      "elevation_m": 4.1,
+      "crs": "EPSG:4326"
+    }
+  },
+  "output_sha256": {
+    "weather.pcp": "73e5f577b13c5645d1cb042cb4d16a1d153feaa740690c2b0b6b71f51251d19f",
+    "weather.tmp": "beeec36f26d844229ad195bed557a919801de17f8fb88f520e9b694ef5386dba"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}

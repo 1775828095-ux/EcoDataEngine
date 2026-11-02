@@ -1,0 +1,23 @@
+{
+  "version": "SWAT-2012-daily-single-gauge",
+  "date_column": "date",
+  "date_semantics": "reported_daily_date",
+  "missing_policy": "swat_generator",
+  "columns": {
+    "precipitation": "precipitation",
+    "tmax": "tmax",
+    "tmin": "tmin"
+  },
+  "units": {
+    "precipitation": "inch",
+    "tmax": "degF",
+    "tmin": "degF"
+  },
+  "station": {
+    "id": "72405013743",
+    "latitude": 38.84721,
+    "longitude": -77.03454,
+    "elevation_m": 4.1,
+    "crs": "EPSG:4326"
+  }
+}

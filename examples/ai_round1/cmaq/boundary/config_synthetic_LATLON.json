@@ -1,0 +1,69 @@
+{
+  "mode": "boundary_concentrations",
+  "version": "CMAQ-5.5",
+  "mechanism": "cb6r3_ae7_aq",
+  "grid": {
+    "GDTYP": 1,
+    "P_ALP": 0,
+    "P_BET": 0,
+    "P_GAM": 0,
+    "XCENT": 0,
+    "YCENT": 0,
+    "XORIG": 110,
+    "YORIG": 30,
+    "XCELL": 0.1,
+    "YCELL": 0.1,
+    "NCOLS": 3,
+    "NROWS": 2,
+    "GDNAM": "TEST_BOUNDARY"
+  },
+  "vertical": {
+    "VGTYP": 7,
+    "VGTOP": 10000.0,
+    "VGLVLS": [
+      1,
+      0.5,
+      0
+    ]
+  },
+  "axes": {
+    "time": "time",
+    "layer": "layer",
+    "perimeter": "perim",
+    "x": "x",
+    "y": "y"
+  },
+  "time_mode": "hourly",
+  "source_timezone": "UTC",
+  "coordinate_units": "degree",
+  "perimeter_mapping": {
+    "column": "bc",
+    "row": "br",
+    "x": "px",
+    "y": "py"
+  },
+  "fields": {
+    "O3": {
+      "source": "ozone",
+      "type": "gas",
+      "source_units": "ppbV"
+    },
+    "ASO4J": {
+      "source": "sulfate",
+      "type": "aerosol_mass",
+      "source_units": "ug/m^3"
+    }
+  },
+  "required_species": [
+    "O3",
+    "ASO4J"
+  ],
+  "missing_values": [
+    -9999
+  ],
+  "source": {
+    "kind": "synthetic",
+    "description": "Synthetic external perimeter, no real boundary observations",
+    "license": "CC0 synthetic values"
+  }
+}

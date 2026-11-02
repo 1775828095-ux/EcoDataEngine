@@ -1,0 +1,54 @@
+{
+  "scope": "CALPUFF5.8.4离散受体group17接入用户已有控制文件；X/Y=km、地面海拔MSL和地上高度=m。原控制文件在NREC之前保持，原受体替换；不生成排放/气象/其它控制参数，不检查其外部文件引用是否可用，未运行CALPUFF。",
+  "source": {
+    "kind": "synthetic_with_official_template",
+    "description": "Synthetic receptors in official control domain; not real receptors or a full engineering test",
+    "license": "Synthetic CC0; official template used for interface testing"
+  },
+  "receptors": 2,
+  "source_crs": "EPSG:32619",
+  "external_id_order": [
+    "s1",
+    "s2"
+  ],
+  "max_float32_error_m": 0.0,
+  "source_control_sha256": "d9b7f3278a5c5836aab5280317babb9c9d18492df83cae08d15ff06e64c56a75",
+  "complete_model_input": false,
+  "model_run_verified": false,
+  "source_sha256": "210f28ab5a31b965250fd6836f775fa37bec2372754d47721c1a52114025c7f3",
+  "configuration": {
+    "mode": "receptors",
+    "version": "CALPUFF-5.8.4-group17",
+    "table": "receptors.csv",
+    "control_file": "CPUF.INP",
+    "fields": {
+      "id": "site",
+      "x": "east",
+      "y": "north",
+      "elevation": "base",
+      "height_agl": "above"
+    },
+    "units": {
+      "x": "km",
+      "y": "km",
+      "elevation": "km",
+      "height_agl": "km"
+    },
+    "source_crs": "EPSG:32619",
+    "elevation_vertical_reference": "MSL",
+    "missing_values": [
+      -9999
+    ],
+    "max_float32_error_m": 0.1,
+    "source": {
+      "kind": "synthetic_with_official_template",
+      "description": "Synthetic receptors in official control domain; not real receptors or a full engineering test",
+      "license": "Synthetic CC0; official template used for interface testing"
+    }
+  },
+  "output_sha256": {
+    "CALPUFF.INP": "08b214e42784a788426f00bf87932e4462323a1998d157993a0102df3211b440",
+    "README_receptors.txt": "c7bbc41f55b0c5c4b14dc84ea3131aacd5e520a2ece19953fec0be10b1601166"
+  },
+  "evidence_level": "conversion candidate; independent checks are in test report, not self-certified model acceptance"
+}
