@@ -1,0 +1,2 @@
+# Optional research task dependency; install after the project's main requirements.
+mgwr==2.2.1

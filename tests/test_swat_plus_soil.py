@@ -17,15 +17,6 @@ def load():
 
 def raw(df):return df.to_csv(index=False).encode()
 
-def test_documented_particle_exception_is_explicit_and_never_normalizes():
-    df,cfg=load();column=cfg['fields']['sand'];df.loc[0,column]=float(df.loc[0,column])-.23
-    with pytest.raises(SchemaError):convert('swat_plus',raw(df),cfg)
-    cfg['particle_sum_policy']='preserve_documented_source';cfg['source']['kind']='derived_parameters';cfg['source']['url']='https://swat.tamu.edu/'
-    files,report=convert('swat_plus',raw(df),cfg)
-    assert report['particle_sum_policy']=='preserve_documented_source'
-    assert any('未归一化' in w for w in report['warnings'])
-    assert float(parse(files['soils.sol'])[df.iloc[0][cfg['fields']['soil']]][1][0][7])==float(df.loc[0,column])
-
 def parse(content):
     # Independent shlex/Decimal parser, no imports from soil writer.
     lines=content.decode('ascii').splitlines()[2:];i=0;result={}

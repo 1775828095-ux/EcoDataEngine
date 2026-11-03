@@ -1,0 +1,4 @@
+# Independent readers and numerical cross-checks used by the complete test suite.
+pytest>=8,<10
+PseudoNetCDF==3.4.1
+geographiclib==2.1

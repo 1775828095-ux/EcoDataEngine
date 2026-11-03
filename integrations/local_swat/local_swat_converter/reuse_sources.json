@@ -1,0 +1,16 @@
+[
+  {
+    "source": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\SWATplus操作界面_20261020\\platform\\src\\ecodata\\models\\swat_weather_project.py",
+    "source_sha256": "c9b8a9928d5bb2118aaf9bd52185878493f30c42f92b6ddd94ad114a8aade9db",
+    "snapshot": "weather_attachment.py",
+    "snapshot_sha256": "5d382a15c5b5401a9487b4bb1144b152f298be9d353cba0e20e21567b737f517",
+    "change": "only package-local dependency imports"
+  },
+  {
+    "source": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\SWATplus操作界面_20261020\\platform\\src\\ecodata\\models\\swat_project_dependencies.py",
+    "source_sha256": "4c2ef7b0bc1d00e1927ddefceb2fe37380b87951bcedd13c55b2e59ae19a40e3",
+    "snapshot": "project_dependencies.py",
+    "snapshot_sha256": "c8e489ec1298a577e76d0c474084abcc900019e12ced752d95ef142e260c143a",
+    "change": "only package-local dependency imports"
+  }
+]

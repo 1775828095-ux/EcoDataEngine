@@ -11,6 +11,34 @@ from ecodata.core.exceptions import SchemaError
 from ecodata.core.schemas import EcoDataBundle, TransformRecord
 
 
+def fit_affine_source(prediction: np.ndarray, reference: np.ndarray) -> tuple[float, float]:
+    """Shared existing source-calibration component; callers enforce fit isolation."""
+    valid = np.isfinite(prediction) & np.isfinite(reference)
+    if valid.sum() < 3:
+        raise SchemaError("至少需要3条有效训练配对拟合偏差校正")
+    design = np.column_stack([prediction[valid], np.ones(valid.sum())])
+    if np.linalg.matrix_rank(design) != 2:
+        raise SchemaError("偏差校正训练背景无变化，无法识别斜率")
+    slope, intercept = np.linalg.lstsq(design, reference[valid], rcond=None)[0]
+    return float(slope), float(intercept)
+
+
+def fit_affine_frames(prediction, reference):
+    """Vectorized OLS over time x retained station pairs; unidentified dates use identity.
+
+    Returns the number of such dates so the caller must expose that fallback.
+    This is the same affine model as fit_affine_source, not a learned preference.
+    """
+    valid=np.isfinite(prediction)&np.isfinite(reference);count=valid.sum(axis=1,keepdims=True)
+    xm=np.divide(np.where(valid,prediction,0).sum(axis=1,keepdims=True),count,out=np.zeros_like(count,dtype=float),where=count>0)
+    ym=np.divide(np.where(valid,reference,0).sum(axis=1,keepdims=True),count,out=np.zeros_like(count,dtype=float),where=count>0)
+    xx=np.where(valid,prediction-xm,0);yy=np.where(valid,reference-ym,0);den=(xx*xx).sum(axis=1,keepdims=True)
+    okay=(count>=3)&(den>np.finfo(float).eps)
+    slope=np.divide((xx*yy).sum(axis=1,keepdims=True),den,out=np.ones_like(den),where=okay)
+    intercept=np.where(okay,ym-slope*xm,0.)
+    return slope,intercept,int((~okay).sum())
+
+
 class QualityAwareFusionPlugin:
     """Bias-correct gridded sources and weight them using held-out validation observations."""
 
@@ -125,8 +153,7 @@ class QualityAwareFusionPlugin:
             valid = np.isfinite(train_prediction) & np.isfinite(train.value.to_numpy(float))
             if valid.sum() < 3:
                 raise SchemaError("某来源与训练观测有效重叠不足3条")
-            design = np.column_stack([train_prediction[valid], np.ones(valid.sum())])
-            slope, intercept = np.linalg.lstsq(design, train.value.to_numpy(float)[valid], rcond=None)[0]
+            slope, intercept = fit_affine_source(train_prediction[valid], train.value.to_numpy(float)[valid])
             corrected = slope * field + intercept
             validation_raw = self._metrics(self._sample(field, validation), validation.value.to_numpy(float))
             validation_corrected = self._metrics(self._sample(corrected, validation), validation.value.to_numpy(float))

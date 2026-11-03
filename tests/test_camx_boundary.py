@@ -11,22 +11,6 @@ def case(label='LATLON'):
     return pd.read_csv(BASE/f'A_synthetic_{label}.csv'),json.loads((BASE/f'config_{label}.json').read_text(encoding='utf8'))
 def export(frame,cfg):return convert('camx',frame.to_csv(index=False).encode(),cfg)
 
-def test_six_hour_source_intervals_preserve_values_and_reject_gaps():
-    frame,cfg=case();col=cfg['fields']['time']
-    times=frame[col].unique();start=pd.Timestamp(times[0])
-    frame[col]=frame[col].replace({times[1]:(start+pd.Timedelta(hours=6)).isoformat()})
-    cfg.update(interval_seconds=21600,valid_until=(start+pd.Timedelta(hours=12)).isoformat())
-    files,report=export(frame,cfg)
-    with netcdf_file(io.BytesIO(files['boundary.CAMx7.40.nc']),'r',mmap=False) as nc:
-        assert nc.TSTEP==60000 and nc.NSTEPS==2
-        assert nc.variables['O3'].shape[0]==2
-        np.testing.assert_array_equal(nc.variables['ETFLAG'].data[0],nc.variables['TFLAG'].data[1])
-    assert report['hours']==12 and report['intervals']==2
-    cfg['valid_until']=(start+pd.Timedelta(hours=18)).isoformat()
-    with pytest.raises(SchemaError,match='缺时刻'):export(frame,cfg)
-    cfg['valid_until']=(start+pd.Timedelta(hours=13)).isoformat()
-    with pytest.raises(SchemaError,match='整除'):export(frame,cfg)
-
 @pytest.mark.parametrize('label,nx,ny,nl,dates,hours',[('LATLON',4,3,2,[2024060,2024061],[230000,0]),('LCC',3,4,3,[2024060,2024060],[170000,180000])])
 def test_independent_full_array_and_edge_value_read(label,nx,ny,nl,dates,hours):
     frame,cfg=case(label);files,r=export(frame,cfg)

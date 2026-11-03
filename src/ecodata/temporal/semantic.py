@@ -18,6 +18,7 @@ SUPPORTED_SEMANTICS = {"instantaneous", "mean", "accumulation"}
 class SemanticTimeConfig:
     frequency: str
     variable: str = "value"
+    interpolation: str = "linear"
 
 
 class SemanticTimeResampler:
@@ -27,6 +28,8 @@ class SemanticTimeResampler:
         self.config = config
 
     def validate_input(self, data: EcoDataBundle) -> None:
+        if self.config.interpolation not in {"linear","nearest"}:
+            raise SemanticError("Instantaneous interpolation must be linear or nearest")
         dataset = data.dataset
         if self.config.variable not in dataset:
             raise SchemaError(f"Variable '{self.config.variable}' is missing")
@@ -91,7 +94,7 @@ class SemanticTimeResampler:
         )
         if target.empty:
             raise SchemaError("Source range contains no target timestamps")
-        output = dataset[[self.config.variable]].interp(time=target)
+        output = dataset[[self.config.variable]].interp(time=target,method=self.config.interpolation)
         output["time_qc"] = ("time", np.full(target.size, "INTERPOLATED", dtype=str))
         output["time_qc"].attrs["long_name"] = "temporal processing quality flag"
         return output
@@ -106,6 +109,14 @@ class SemanticTimeResampler:
         target_bounds = np.column_stack(
             [edges[:-1].to_numpy(dtype="datetime64[ns]"), edges[1:].to_numpy(dtype="datetime64[ns]")]
         )
+        if np.array_equal(source_bounds,target_bounds):
+            # Identity intervals preserve missing values locally and need no
+            # quadratic overlap matrix. Native labels remain interval-end.
+            output=dataset[[self.config.variable,'time_bounds']].copy(deep=True)
+            output=output.assign_coords(time=target_bounds[:,1])
+            output['time_qc']=('time',np.full(len(target_bounds),'AGGREGATED'))
+            output['time_qc'].attrs['long_name']='temporal processing quality flag'
+            return output
         overlap = _overlap_seconds(source_bounds, target_bounds)
         source_seconds = _duration_seconds(source_bounds)
         target_seconds = _duration_seconds(target_bounds)
@@ -121,7 +132,10 @@ class SemanticTimeResampler:
             time_qc = "AGGREGATED" if len(source_bounds) >= len(target_bounds) else "REDISTRIBUTED"
 
         source = dataset[self.config.variable].transpose("time", ...)
-        values = np.tensordot(weights.T, source.values, axes=(1, 0))
+        finite=np.isfinite(source.values)
+        values = np.tensordot(weights.T, np.where(finite,source.values,0), axes=(1, 0))
+        unknown=np.tensordot((weights.T>0).astype(np.int64),(~finite).astype(np.int64),axes=(1,0))>0
+        values=np.where(unknown,np.nan,values)
         dims = ("time",) + source.dims[1:]
         coords = {name: source.coords[name] for name in source.dims[1:]}
         coords["time"] = target_bounds[:, 1]

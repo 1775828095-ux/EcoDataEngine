@@ -41,6 +41,7 @@ class DataDescriptor:
     rasterizable_fields: tuple[str, ...] = ()
     missing_values: dict[str, int] | None = None
     cf_metadata: dict | None = None
+    location_metadata: dict | None = None
 
     def as_dict(self):
         return asdict(self)
@@ -238,6 +239,7 @@ def inspect_dataset(filename: str, dataset: xr.Dataset) -> DataDescriptor:
         rasterizable_fields=rasterizable,
         missing_values={name: int(pd.isna(dataset[name].values).sum()) for name in variables},
         cf_metadata=cf,
+        location_metadata=__import__("ecodata.location_metadata", fromlist=["declared_location"]).declared_location(dataset),
     )
 
 
@@ -263,4 +265,6 @@ def recognise_file(filename: str, content: bytes, **read_options) -> tuple[xr.Da
                 dataset.attrs["crs"] = CRS.from_user_input(unique[0]).to_wkt()
             except Exception:
                 pass
+    from ecodata.location_metadata import recognise_location
+    dataset = recognise_location(dataset)
     return dataset, inspect_dataset(filename, dataset)

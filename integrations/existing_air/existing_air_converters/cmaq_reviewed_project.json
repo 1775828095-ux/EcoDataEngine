@@ -1,0 +1,30 @@
+{
+  "schema": "ecodata.reviewed-cmaq-binding.v1",
+  "archive_bytes": 2545310515,
+  "archive_sha256": "12fb63727a00a42a059747a413b964dd8d476df3baad4471984ef8db708b0bf6",
+  "reviewed_control_prefixes": {
+    "CMAQ_case_20180701/case_configuration/bldit_cctm.csh": "a52b09ed71de4b643a88e0957040b6fe4b4a49ed9e5ce03e8ff9bf2ffb1c0c9f",
+    "CMAQ_case_20180701/case_configuration/bldit_cctm_CRACMM2_STAGE.csh": "6cd0bef257bd15929e335f866af74d7cd3c3ca03fbb2900769aa8fd742f75433",
+    "CMAQ_case_20180701/case_configuration/run_cctm_Bench_2018_12NE3_CRACMM2.csh": "a033414936323fbb258482031c9b725d67c823835382db92d60e1d11132c1c64",
+    "CMAQ_case_20180701/case_configuration/run_cctm_Bench_2018_12NE3_CRACMM2_1day.csh": "478cbebf7dcf4d024a817359d8069de2dde0be6cbc389a5cecd8c0baeaea2d3f",
+    "CMAQ_case_20180701/case_input/2018_12NE3/icbc/run_bcon_2018_108NHEMI.csh": "bffb0af9a3f2f6217a906196190a2c9d8cb4b576e2b14a83482130916e439781"
+  },
+  "meteorology": "CMAQ_case_20180701/case_input/2018_12NE3/met/mcipv5.4/METCRO2D_12NE3_20180701.nc",
+  "grid": "CMAQ_case_20180701/case_input/2018_12NE3/met/mcipv5.4/GRIDCRO2D_12NE3_20180701.nc",
+  "satellite": "CMAQ_case_20180701/fusion_lai/MCD15A3H_LAI_20180630_4day_Pennsylvania.nc",
+  "temporal_policy": "Four-day composite covering the simulation day is an explicitly approved static vegetation reference; application snapshot at MCIP start, static increment applied while retaining original hourly variation. Not hourly satellite observations.",
+  "approval_evidence": "User explicitly accepted this static-reference chain-test approximation in the current chat on 2026-11-02.",
+  "mechanism": "cracmm2",
+  "deposition": "stage",
+  "version": "v55",
+  "science_accuracy_evaluated": false,
+  "native_shape": [
+    25,
+    1,
+    105,
+    100
+  ],
+  "interval_seconds": 3600,
+  "start": "2018-07-01T00:00:00",
+  "end": "2018-07-02T00:00:00"
+}

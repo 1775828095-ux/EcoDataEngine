@@ -85,41 +85,6 @@ def test_noaa_raw_independent_numeric(case):
     assert report['interpolation'] == 'none' and not report['native_model_input_verified']
 
 
-def test_preserve_variable_specific_missing_without_unit_conversion_of_codes(case):
-    frame, cfg = case
-    frame.loc[1, 'temperature_c'] = -9999
-    frame.loc[2, 'wind_from_degree'] = np.nan
-    frame.loc[3, 'wind_speed_ms'] = np.nan
-    cfg['missing_policy'] = 'preserve'
-    files, report = export_upper_air(frame, cfg)
-    parsed, _, _, _ = read_up_independently(files['UP1.DAT'])
-    assert len(parsed) == len(frame)
-    assert parsed.temperature.iloc[1] == 999.9
-    assert parsed.wind_direction.iloc[2] == 999
-    assert parsed.wind_speed.iloc[3] == 999
-    assert parsed.wind_speed.iloc[2] == frame.wind_speed_ms.iloc[2]
-    assert report['missing_counts']['temperature'] == 1
-    assert report['missing_counts']['wind_direction'] == 1
-    assert report['missing_counts']['wind_speed'] == 1
-    assert report['missing_policy'] == 'preserve' and report['interpolation'] == 'none'
-
-
-@pytest.mark.parametrize('change', ['pressure','height','all_temperature','all_wind','surface','top','infinity','unknown_marker','invalid_policy'])
-def test_preserve_does_not_hide_required_data_or_invalid_values(case, change):
-    frame, cfg = case
-    cfg['missing_policy'] = 'preserve'
-    if change == 'pressure': frame.loc[1,'pressure_pa'] = np.nan
-    elif change == 'height': frame.loc[1,'height_m_msl'] = np.nan
-    elif change == 'all_temperature': frame['temperature_c'] = np.nan
-    elif change == 'all_wind': frame['wind_speed_ms'] = np.nan
-    elif change == 'surface': frame.loc[0,'temperature_c'] = np.nan
-    elif change == 'top': frame.loc[37,'wind_speed_ms'] = np.nan
-    elif change == 'infinity': frame.loc[1,'temperature_c'] = np.inf
-    elif change == 'unknown_marker': frame.loc[1,'temperature_c'] = 32767
-    elif change == 'invalid_policy': cfg['missing_policy'] = 'fill'
-    with pytest.raises(SchemaError): export_upper_air(frame,cfg)
-
-
 def test_multiple_stations_units_columns_ll(case):
     frame, cfg = case
     second = frame[(frame.time == frame.time.iloc[0]) & frame.level.isin([1, 38])].copy()

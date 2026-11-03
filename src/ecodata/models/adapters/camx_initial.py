@@ -11,11 +11,11 @@ import pandas as pd
 from netCDF4 import Dataset
 from ecodata.core.exceptions import SchemaError
 from ecodata.models.adaptation import unit_transform
-from ecodata.models.adapters.camx_emissions import _grid,_number,GASES,AEROSOLS,SUPPORTED_MECHANISMS
+from ecodata.models.adapters.camx_emissions import _grid,_number,GASES,AEROSOLS,MECHANISM
 
 
 def export_initial(frame,cfg):
-    if cfg.get('version')!='CAMx-7.40' or not isinstance(cfg.get('mechanism'),str) or cfg['mechanism'] not in SUPPORTED_MECHANISMS:raise SchemaError('仅支持CAMx7.40的CB6r5_CF3_SIMPLE_NoEvap或CB6r5_CF3_COMPLX INITIAL；必须与项目CHEMPARAM一致，不进行机制互换')
+    if cfg.get('version')!='CAMx-7.40' or cfg.get('mechanism')!=MECHANISM:raise SchemaError('仅核对CAMx7.40/CB6r5_CF3_SIMPLE_NoEvap INITIAL格式')
     source=cfg.get('source')
     if not isinstance(source,dict) or not all(source.get(k) for k in ('kind','description','license')):raise SchemaError('source需kind/description/license，合成数据须如实声明')
     fields=cfg.get('fields');species=cfg.get('species');markers=cfg.get('missing_values')
@@ -100,6 +100,6 @@ def export_initial(frame,cfg):
         if nc is not None:nc.close()
         temporary.cleanup()
     scope='CAMx7.40 INITIAL三维浓度快照；仅用户给定物种/层/网格，不推导初始场。valid_until为用户明确提供的原生区间标签，不构造时间序列；需真实气象层和CAMx.in匹配。未执行CAMx读取或仿真。'
-    return {'initial.CAMx7.40.nc':raw,'README_CAMx_initial.txt':scope.encode('utf8')},dict(scope=scope,source=source,mechanism=cfg['mechanism'],
+    return {'initial.CAMx7.40.nc':raw,'README_CAMx_initial.txt':scope.encode('utf8')},dict(scope=scope,source=source,mechanism=MECHANISM,
         grid=g,layers=layers,layer_definition=cfg['layer_definition'],species=names,units=dict(zip(names,units)),time=start.isoformat(),valid_until=end.isoformat(),
         time_processing='no interpolation; explicit source validity interval',float32_max_absolute_error=errors,complete_model_input=False,model_run_verified=False)

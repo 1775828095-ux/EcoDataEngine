@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecodata-local-swat-converter"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[project.entry-points."ecodata.model_converters"]
+swat_plus = "local_swat_converter:convert"
+
+[tool.setuptools]
+packages = ["local_swat_converter"]
+
+[tool.setuptools.package-data]
+local_swat_converter = ["binding.json", "reuse_sources.json"]

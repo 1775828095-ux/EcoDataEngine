@@ -1,0 +1,5 @@
+# Optional official model-preprocessing environment, not the main application.
+PseudoNetCDF==3.4.1
+emiproc==2.10.0
+aqmbc @ git+https://github.com/barronh/aqmbc@9da3eb028817fc3a454fb296c9c0f1cff93c6d21
+# S2S runs the pinned MIT source/input bundle, not an unofficial pip substitute.

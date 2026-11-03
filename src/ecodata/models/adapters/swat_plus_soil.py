@@ -50,11 +50,6 @@ def export_soils(content, config):
     source = config.get('source', {})
     if not isinstance(source, dict) or source.get('kind') not in {'measured', 'derived_parameters', 'format_reference', 'synthetic_test'} or not isinstance(source.get('description'), str) or not source.get('description'):
         raise SchemaError('必须提供source.kind和source.description，区分实测/格式参考/合成数据')
-    particle_policy=config.get('particle_sum_policy','strict_100')
-    if particle_policy not in {'strict_100','preserve_documented_source'}:
-        raise SchemaError('未知particle_sum_policy；默认strict_100，不归一化')
-    if particle_policy=='preserve_documented_source' and (source.get('kind') not in {'format_reference','derived_parameters'} or not source.get('url')):
-        raise SchemaError('保留粒径合计异常需明确参数/格式来源及URL，不可把异常实测当作已校验土壤')
     fmt = config.get('source_format', 'csv')
     try:
         if fmt == 'csv':
@@ -132,12 +127,8 @@ def export_soils(content, config):
             if upper is not None and (v > upper).any():
                 raise SchemaError(f'{soil}/{field}超过{upper}{UNITS[field]}')
         # Provisional engineering input consistency tolerance, fixed before comparison.
-        sums=group.clay + group.silt + group.sand
-        invalid=abs(sums-100)>.1
-        if invalid.any():
-            if particle_policy=='strict_100':
-                raise SchemaError(f'{soil}clay+silt+sand应为100%，本次固定容差0.1百分点；不归一化')
-            warnings.append(f'{soil}: 显式preserve_documented_source保留原资料粒径合计异常，层号={group.layer[invalid].tolist()}，合计%={sums[invalid].tolist()}；未归一化，未认证物理正确性，须另做原生和科学适用性检查')
+        if (abs(group.clay + group.silt + group.sand - 100) > .1).any():
+            raise SchemaError(f'{soil}clay+silt+sand应为100%，本次固定容差0.1百分点；不归一化')
         if depths[0] < 20:
             warnings.append(f'{soil}: 官方62读取器可能调整首层深度；本转换保留原始层底深度')
         if (group.alb < .1).any() or first.anion_excl <= 1e-6 or first.anion_excl >= 1:
@@ -154,6 +145,6 @@ def export_soils(content, config):
     return {'soils.sol': ('\n'.join(lines)+'\n').encode('ascii'), 'README_soils_only.txt': notes.encode('utf-8')}, {
         'target': 'SWAT+ 62.0.0 soil_db_read', 'soils': counts, 'layer_records': len(data),
         'output_units': UNITS, 'depth_basis': 'bottom', 'missing_policy': 'reject',
-        'texture_sum_tolerance_percentage_points': .1, 'particle_sum_policy':particle_policy,'warnings': warnings,
+        'texture_sum_tolerance_percentage_points': .1, 'warnings': warnings,
         'scope': notes, 'unmapped_source_columns': [str(c) for c in frame.columns if c not in mapping.values()],
         'hru_reference_check': 'not_supplied; must be checked in target project'}

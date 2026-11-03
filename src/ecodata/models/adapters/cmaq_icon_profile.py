@@ -5,16 +5,14 @@ import pandas as pd
 from ecodata.core.exceptions import SchemaError
 
 VERSION='CMAQ-5.5-ICON-profile-CB6R3M_AE7_KMTBR'
-MATCHED_VERSION='CMAQ-5.5-ICON-profile-CB6R5_AE7_AQ'
 UNITS={'ppmV','ug m-3','m-3','m2 m-3','Pa','m'}
 FACTORS={('ppbV','ppmV'):0.001,('hPa','Pa'):100.0,('km','m'):1000.0}
 
 def export_icon_profile(frame,config):
-    if set(config)!={'version','layers','target_units','source_description'} or config.get('version') not in {VERSION,MATCHED_VERSION}:
+    if set(config)!={'version','layers','target_units','source_description'} or config.get('version')!=VERSION:
         raise SchemaError('仅支持CMAQ5.5 ICON/profile CB6R3M_AE7_KMTBR；需明确版本、层数、目标单位和来源')
-    layers=config['layers']
-    if type(layers) is not int or (layers!=44 if config['version']==VERSION else layers!=35):
-        raise SchemaError('CB6R3M登记剖面需44层；CB6R5登记12NE3剖面需35层，不猜测或插值垂直层')
+    if type(config['layers']) is not int or config['layers']!=44:
+        raise SchemaError('本专项仅支持已核对的44层剖面，不猜测或插值垂直层')
     target=config['target_units']
     if (not isinstance(target,dict) or not 4<=len(target)<=251
             or any(not re.fullmatch(r'[A-Z][A-Z0-9_]{0,15}',n) or u not in UNITS for n,u in target.items())
@@ -34,9 +32,9 @@ def export_icon_profile(frame,config):
     if not np.isfinite(data[['layer','value']].to_numpy(dtype=float)).all():
         raise SchemaError('存在缺失或非有限值，不填零')
     if (data.value<0).any():raise SchemaError('负值不允许静默截断')
-    if set(data.layer)!=set(range(1,layers+1)) or data.duplicated(['variable','layer']).any():
-        raise SchemaError(f'层号需1..{layers}完整整数且无重复')
-    index=pd.MultiIndex.from_product([list(target),range(1,layers+1)],names=['variable','layer'])
+    if set(data.layer)!=set(range(1,45)) or data.duplicated(['variable','layer']).any():
+        raise SchemaError('层号需1..44完整整数且无重复')
+    index=pd.MultiIndex.from_product([list(target),range(1,45)],names=['variable','layer'])
     arranged=data.set_index(['variable','layer']).reindex(index)
     if len(data)!=len(index) or arranged.isna().any().any():raise SchemaError('剖面有缺失记录或单位，禁止补造')
     arrays={};factors={}
@@ -55,14 +53,14 @@ def export_icon_profile(frame,config):
             or not (arrays['ZH'][1:]>arrays['ZF'][:-1]).all()):
         raise SchemaError('压力应随层递减；层中心/顶面高度需递增且中心位于相邻层顶之间')
     lines=['# EcoData ICON profile candidate; no CCTM grid or timestamps', '# '+desc,
-           'VNAME,UNITS,'+','.join(f'LAYER{i:02d}' for i in range(1,layers+1))]
+           'VNAME,UNITS,'+','.join(f'LAYER{i:02d}' for i in range(1,45))]
     # Fortran list-directed reading needs quoted character fields, especially units containing spaces.
     for name,unit in target.items():
         lines.append(f'"{name}","{unit}",'+','.join(repr(float(v)) for v in arrays[name]))
     report={'scope':'CMAQ 5.5 ICON ICTYPE=profile IC_PROFILE ASCII candidate',
-            'rows':len(target),'chemical_species':len(target)-3,'layers':layers,'values':len(data),
+            'rows':len(target),'chemical_species':len(target)-3,'layers':44,'values':len(data),
             'units':target,'conversion_factors':factors,'missing_policy':'reject; no fill or clipping',
-            'time':'static profile; source temporal averaging and applicable time must be recorded; not an hourly observation',
+            'time':'static profile; source annual 2016 average is not an hourly initial observation',
             'coordinates':'PRES/Pa, ZH and ZF/m; no geographic grid; ICON supplies target grid',
             'complete_model_input':False,'ICON_run_verified':False,
             'next_steps':'IC_PROFILE plus GRIDDESC/GRID_NAME and MET_CRO_3D_FIN with built ICON/profile; verify target chemical mechanism before CCTM use'}

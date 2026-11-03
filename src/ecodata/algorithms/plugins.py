@@ -9,7 +9,7 @@ import xarray as xr
 from scipy.spatial.distance import cdist
 
 from ecodata.algorithms.contracts import AlgorithmContext, AlgorithmResult, AlgorithmSpec, Compatibility
-from ecodata.core.exceptions import SchemaError
+from ecodata.core.exceptions import SchemaError, SemanticError
 from ecodata.core.schemas import EcoDataBundle, TransformRecord
 
 
@@ -49,6 +49,7 @@ class RegridPlugin:
             semantic_types=semantic_types, physical_constraints=("coordinate_monotonicity",),
             compute="low", license="BSD-3-Clause", backend=f"xarray-regrid {version('xarray-regrid')}",
             source_url="https://github.com/xarray-contrib/xarray-regrid",
+            input_contract=dict(source_arity=1),
         )
 
     def compatibility(self, context):
@@ -58,6 +59,13 @@ class RegridPlugin:
             reasons.append("缺少目标网格")
         elif context.sources and context.variable not in context.sources[0].dataset:
             reasons.append("目标变量不存在")
+        elif context.sources:
+            from ecodata.spatial.regridding import GridRegridder, RegridConfig, normalize_grid_axes
+            try:
+                normalized, _ = normalize_grid_axes(context.sources[0].dataset)
+                GridRegridder(RegridConfig(self.method, context.target_lat, context.target_lon, context.variable)).validate_input(EcoDataBundle(normalized))
+            except (SchemaError, SemanticError) as exc:
+                reasons.append(str(exc))
         return Compatibility(not reasons, tuple(reasons), result.warnings)
 
     def run(self, context):
@@ -81,11 +89,14 @@ class ResidualFusionPlugin:
         reasons = list(result.reasons)
         if len(context.sources) < 2:
             reasons.append("需要背景场和观测 EcoDataBundle")
+        elif "variable" not in context.sources[1].dataset:
+            reasons.append("第二来源必须为标准化观测表，不能把另一网格误当站点观测")
         return Compatibility(not reasons, tuple(reasons))
 
     def run(self, context):
         from ecodata.fusion.residual import ResidualFieldFusion, ResidualFusionConfig
-        result = ResidualFieldFusion(ResidualFusionConfig(context.variable, context.parameters.get("interpolation", "linear"))).apply(context.sources[0], context.sources[1])
+        result = ResidualFieldFusion(ResidualFusionConfig(context.variable, context.parameters.get("interpolation", "linear"),
+            context.parameters.get("outside_hull", "nearest"))).apply(context.sources[0], context.sources[1])
         return AlgorithmResult(result.data, self.spec.id, {"status": "PASS", "backend": self.spec.backend})
 
 
@@ -102,6 +113,9 @@ class WeightedFusionPlugin:
         reasons = list(result.reasons)
         if len(context.sources) < 2:
             reasons.append("至少需要两份同变量网格")
+        for source in context.sources:
+            if context.parameters.get("uncertainty_variable", "uncertainty") not in source.dataset:
+                reasons.append("缺少明确的不确定性变量，无法进行逆方差加权")
         return Compatibility(not reasons, tuple(reasons))
 
     def run(self, context):
@@ -131,6 +145,9 @@ class IDWPlugin:
         from pyproj import CRS, Transformer
         started = perf_counter()
         target = context.sources[0].dataset
+        if context.target_lat is not None and context.target_lon is not None:
+            target = xr.Dataset(coords={"lat": list(context.target_lat), "lon": list(context.target_lon)},
+                                attrs=dict(target.attrs))
         train = context.observations[context.observations["split"].eq("train")].dropna(subset=["longitude", "latitude", "value"])
         if len(train) < 1:
             raise SchemaError("IDW 没有有效训练观测")
@@ -148,7 +165,8 @@ class IDWPlugin:
         px, py = transformer.transform(points[:, 0], points[:, 1])
         sx, sy = transformer.transform(source[:, 0], source[:, 1])
         distance = cdist(np.column_stack([px, py]), np.column_stack([sx, sy]))
-        weights = 1 / np.maximum(distance, 1e-8) ** float(context.parameters.get("power", 2.0))
+        from ecodata.fusion.point_weights import inverse_distance_weights
+        weights = inverse_distance_weights(distance, float(context.parameters.get("power", 2.0)))
         values = weights @ train.value.to_numpy(float) / weights.sum(axis=1)
         output = target.copy(deep=True)
         output[context.variable] = (("lat", "lon"), values.reshape(lon.shape))
@@ -186,6 +204,48 @@ class QPPlugin:
         return AlgorithmResult(result.data, self.spec.id, {"status": "PASS", "backend": self.spec.backend})
 
 
+class TemporalSemanticPlugin:
+    spec = AlgorithmSpec(
+        id="temporal.semantic_resample", name="Semantic temporal resampling", version="1",
+        category="temporal_scale", status="available", input_kinds=("time_grid", "time_table"),
+        semantic_types=("continuous", "accumulation"), physical_constraints=("interval_semantics", "interval_conservation"),
+        compute="low", license="project", backend="EcoData overlap-weighted temporal resampler",
+        capabilities=("temporal_accumulation", "temporal_mean_resampling", "temporal_interpolation"),
+        preconditions=("time_coordinate", "temporal_semantics", "target_time_frequency"),
+        verification_evidence=("tests/test_p2_temporal.py", "tests/test_post_conversion_validation.py"),
+        input_contract=dict(source_arity=1),
+    )
+
+    @staticmethod
+    def _source(context):
+        source=context.sources[0]
+        field=source.dataset[context.variable]
+        if field.attrs.get('temporal_semantics',source.dataset.attrs.get('temporal_semantics'))!='interval_mean':return source
+        ds=source.dataset.copy(deep=False)
+        ds[context.variable].attrs=dict(field.attrs,temporal_semantics='mean')
+        return EcoDataBundle(ds,source.history)
+
+    def compatibility(self, context):
+        result = _basic_compatibility(self.spec, context)
+        reasons = list(result.reasons)
+        if not context.parameters.get("target_time_frequency"):
+            reasons.append("缺少 target_time_frequency")
+        if not context.sources or "time" not in context.sources[0].dataset.coords:
+            reasons.append("缺少时间坐标")
+        if not reasons:
+            from ecodata.temporal.semantic import SemanticTimeConfig, SemanticTimeResampler
+            try:SemanticTimeResampler(SemanticTimeConfig(context.parameters['target_time_frequency'],context.variable,context.parameters.get('temporal_interpolation','linear'))).validate_input(self._source(context))
+            except (ValueError,KeyError,TypeError,SchemaError,SemanticError) as exc:reasons.append(str(exc))
+        return Compatibility(not reasons, tuple(reasons), result.warnings)
+
+    def run(self, context):
+        from ecodata.temporal.semantic import SemanticTimeConfig, SemanticTimeResampler
+        transformed = SemanticTimeResampler(SemanticTimeConfig(context.parameters["target_time_frequency"], context.variable,context.parameters.get('temporal_interpolation','linear'))).apply(self._source(context))
+        original=context.sources[0].dataset[context.variable].attrs.get('temporal_semantics')
+        if original=='interval_mean':transformed.data.dataset[context.variable].attrs['temporal_semantics']=original
+        return AlgorithmResult(transformed.data, self.spec.id, {"status": "PASS", "backend": self.spec.backend,"semantic_alias":"interval_mean -> mean" if original=='interval_mean' else None})
+
+
 class NeuralReconstructionPlugin:
     def __init__(self, backend: str):
         self.backend = backend
@@ -216,6 +276,9 @@ class NeuralReconstructionPlugin:
 
 
 def builtin_plugins():
+    from ecodata.algorithms.open_source_spatial import spatial_plugins
+    from ecodata.algorithms.open_source_stations import station_plugins
+    from ecodata.algorithms.open_source_bias import bias_plugins
     from ecodata.algorithms.galileo import GalileoFeaturePlugin
     from ecodata.algorithms.quality_aware import QualityAwareFusionPlugin
     from ecodata.algorithms.cross_scale import SemanticCrossScaleStackPlugin
@@ -224,7 +287,7 @@ def builtin_plugins():
         RegridPlugin("nearest", ("continuous", "categorical", "integer_count")),
         RegridPlugin("bilinear", ("continuous",)),
         RegridPlugin("conservative", ("continuous", "integer_count", "cell_total", "flux", "accumulation")),
-        IDWPlugin(), ResidualFusionPlugin(), WeightedFusionPlugin(), QPPlugin(),
+        IDWPlugin(), ResidualFusionPlugin(), WeightedFusionPlugin(), QPPlugin(), TemporalSemanticPlugin(),
         NeuralReconstructionPlugin("fno"), NeuralReconstructionPlugin("multiscale_uno"), NeuralReconstructionPlugin("observation_guided_uno"),
         GalileoFeaturePlugin(),
         QualityAwareFusionPlugin(),
@@ -232,11 +295,45 @@ def builtin_plugins():
     ]
     candidates = (
         AlgorithmSpec("super_resolution.zssr", "ZSSR", "official CVPR 2018", "single_source_self_supervised", "research_only", ("image",), ("continuous",), requires_training=True, compute="high", license="WIS/Yeda Academic Non-Commercial", backend="official standalone code", source_url="https://github.com/assafshocher/ZSSR", notes="Commercial use is not granted; official input path is PNG/image oriented and environmental NetCDF semantics are not integrated."),
-        AlgorithmSpec("super_resolution.thera", "Thera", "TMLR 2025", "continuous_scale_representation", "dependency_missing", ("image",), ("continuous",), requires_training=True, requires_weights=True, compute="gpu", license="Apache-2.0", backend="JAX official code", source_url="https://github.com/prs-eth/thera", notes="Official environment is Linux, Python 3.10 and NVIDIA GPU; checkpoints are natural-image models."),
+        AlgorithmSpec("super_resolution.thera", "Thera", "TMLR 2025", "continuous_scale_representation", "gpu_required", ("image",), ("continuous",), requires_training=False, requires_weights=True, compute="gpu", license="Apache-2.0", backend="JAX official code", source_url="https://github.com/prs-eth/thera", notes="GPU_REQUIRED: official environment is Linux, Python 3.10 and NVIDIA GPU; no weights downloaded or inference performed.", capabilities=("arbitrary_scale_image_reconstruction",), input_contract={"training_domain": "natural RGB images", "supported_input": "image", "hardware": "NVIDIA GPU", "environmental_field_validated": False}),
         AlgorithmSpec("super_resolution.liif", "LIIF", "CVPR 2021", "implicit_representation", "research_only", ("image",), ("continuous",), requires_training=True, requires_weights=True, compute="gpu", license="BSD-3-Clause", backend="official PyTorch 1.6 code", source_url="https://github.com/yinboc/liif", notes="DIV2K image checkpoints are not valid environmental-field priors."),
         AlgorithmSpec("super_resolution.diin", "DIIN", "IJCAI 2025", "implicit_representation", "research_only", ("image",), ("continuous",), requires_training=True, requires_weights=True, compute="gpu", license="unverified", backend="official research repository", source_url="https://github.com/Song-1205/DIIN", notes="License and environmental compatibility require verification before redistribution or execution."),
         AlgorithmSpec("spatial.cubic", "Cubic interpolation", "planned", "single_source_scale", "research_only", ("rectilinear_grid",), ("continuous",), compute="low", license="not selected", notes="No verified project backend yet; bilinear is the current safe fallback."),
+        AlgorithmSpec("downscale.topopyscale", "TopoPyScale", "8668a5bf6adb", "weather_downscaling", "python_version_blocked", ("climate_grid", "DEM"), ("continuous",), requires_auxiliary=True, license="MIT", backend="official TopoPyScale workflow", source_url="https://github.com/ArcticSnow/TopoPyScale", capabilities=("topography_assisted_climate_downscaling",), preconditions=("Python>=3.13 for checked revision", "pressure-level climate", "DEM", "time/CRS alignment"), notes="BLOCKED on current Python 3.12; local ERA5 single-level subset is insufficient."),
+        AlgorithmSpec("downscale.granite_wxc", "Granite / Prithvi WxC", "a6c4f3165660", "weather_downscaling", "checkpoint_missing", ("MERRA2_task_tensor", "ECCC_task_tensor"), ("continuous",), requires_weights=True, compute="gpu", license="Apache-2.0 / Prithvi MIT", backend="official Granite WxC", source_url="https://github.com/IBM/granite-wxc", capabilities=("weather_downscaling",), preconditions=("task-specific weights", "normalization statistics", "official variable/channel schema"), notes="RESOURCE_BLOCKED: no task checkpoint loaded; no MERRA2-temperature official inference executed; not generic environmental SR."),
+        AlgorithmSpec("super_resolution.sentinel5p", "Sentinel-5P Super-Resolution", "98ee2c8c357d", "sensor_specific_reconstruction", "license_unverified", ("TROPOMI_hyperspectral",), ("continuous",), requires_weights=True, compute="gpu", license="no explicit license found", backend="official supervised/self-supervised code", source_url="https://github.com/hyamomar/Sentinel-5P-Super-Resolution", capabilities=("sentinel5p_hyperspectral_super_resolution",), preconditions=("TROPOMI sensor data", "authorized code use", "compatible checkpoint"), notes="BLOCKED: checked tree contains no explicit license; no installation/inference."),
+        AlgorithmSpec("fusion.primer", "PRIMER", "07166483591c", "precipitation_fusion", "license_unverified", ("precipitation_grid", "gauge"), ("continuous", "accumulation"), requires_weights=True, requires_observations=True, compute="gpu", license="no explicit license found", backend="official coordinate diffusion", source_url="https://github.com/sunmoumou1/PRIMER", capabilities=("multi_source_precipitation_fusion",), preconditions=("precipitation-specific checkpoint", "CUDA-compatible environment", "authorized code use"), notes="RESOURCE_BLOCKED / LICENSE_UNVERIFIED: authors report 2xA100 training environment, not a proven inference minimum; no checkpoint run."),
+        AlgorithmSpec("fusion.precipitation_fusion", "PrecipitationFusion PDFN", "60bc16dac9e7", "precipitation_fusion", "checkpoint_missing", ("precipitation_grid", "gauge"), ("continuous", "accumulation"), requires_weights=True, compute="high", license="MIT", backend="official PDFN code", source_url="https://github.com/kgavahi/PrecipitationFusion", capabilities=("multi_source_precipitation_fusion",), preconditions=("trained PDFN weights", "matching time/space source products"), notes="BLOCKED: checked tree has no pretrained weight file or directly runnable inference sample; training not attempted."),
     )
     plugins.extend(CatalogOnlyPlugin(item) for item in candidates)
+    plugins.extend(spatial_plugins())
+    plugins.extend(station_plugins())
+    plugins.extend(bias_plugins())
+    from ecodata.algorithms.open_source_time import XclimStatisticsPlugin
+    from ecodata.algorithms.fords import ForDsPressurePlugin
+    plugins.extend((XclimStatisticsPlugin(), ForDsPressurePlugin()))
+    from ecodata.algorithms.expansion_v2 import candidate_specs
+    plugins.extend(CatalogOnlyPlugin(spec) for spec in candidate_specs())
+    from ecodata.algorithms.dual_times_field import DualTimesFieldPlugin
+    plugins.append(DualTimesFieldPlugin())
+    from ecodata.algorithms.climatelearn import ClimateLearnTemperaturePlugin
+    from ecodata.algorithms.fords_temperature import ForDsTemperaturePlugin
+    plugins.extend((ClimateLearnTemperaturePlugin(), ForDsTemperaturePlugin()))
+    from ecodata.algorithms.expansion_v5 import v5_plugins
+    plugins.extend(v5_plugins())
+    from ecodata.algorithms.soil_spline import SoilSplinePlugin
+    plugins.append(SoilSplinePlugin())
+    from ecodata.algorithms.gp_residual import GPResidualPlugin
+    plugins.append(GPResidualPlugin())
+    from ecodata.algorithms.station_calibration import StationAffineCalibrationPlugin
+    plugins.append(StationAffineCalibrationPlugin())
+    from ecodata.algorithms.station_feature_prediction import StationFeatureForest
+    plugins.extend(StationFeatureForest(group) for group in ("background", "weather", "joint"))
+    from ecodata.algorithms.raster_gap_prediction import plugins as raster_gap_plugins
+    plugins.extend(raster_gap_plugins())
+    from ecodata.algorithms.raster_complements import plugins as raster_complement_plugins
+    plugins.extend(raster_complement_plugins())
+    from ecodata.algorithms.advanced_complements import plugins as advanced_complement_plugins
+    plugins.extend(advanced_complement_plugins())
     return tuple(plugins)
 

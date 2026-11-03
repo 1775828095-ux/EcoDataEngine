@@ -15,18 +15,14 @@
 |pcpd|平均月降水天数|day|
 |rainhmx|该月最大0.5小时降水参数|mm|
 |solarav|月平均日太阳辐射|MJ/m2/day|
-|dewpt|原生双用途列：月平均露点，或明确声明的月平均相对湿度|degC，或湿度分数1|
+|dewpt|月平均露点温度|degC|
 |windav|月平均风速|m/s|
 
 站点单位：经纬度degree、海拔m、rain_years为用于半小时最大降雨统计的记录年数year，不是整个气象序列的统一年数。经度要求±180，不猜测东/西经符号。站点名限制50字符ASCII，不截断。
 
 输入CSV：station、month及全部14字段，字段名通过JSON fields映射。station必须与JSON stations[].id精确对应；units逐字段必填，station_units必填。来源source需url/institution/license/description和kind；climate_statistics还需跨至少两年的period_start_year/period_end_year及适当rain_years。此规则防止误用单年天气，不是转换器自动认证来源真实性。format_reference、synthetic_test会在报告中保留不同证据标签。missing_values需列出来源数字缺测标记，没有则明确[]；空值/NaN/无穷、缺月、重复月、缺列、未映射额外列等拒绝，不填零。
 
-单位转换只支持已明确的有限路径：平均温度K或degF→degC；温度标准差K不改值、degF仅乘5/9，不加温度偏移；概率%→1；降水量m→mm；pcpstd m/day→mm/day；辐射kWh/m2/day→MJ/m2/day；风速km/h→m/s。W/m2不能直接当日能量；月平均日降水不能只改标签为月总量。
-
-2026-10-21原生读取核查修复：官方62的cli_initwgn按站点判断：该列12个月全部位于[0,1]时按相对湿度分数读取；只要有一个月超出该范围，全部月份按露点°C读取。配置units.dewpt为`1`或`%`时明确选择湿度统计，输出分数；为`degC`、`K`、`degF`时保留露点语义，换算后若12个月全在[0,1]则拒绝，因为该原生格式不能无歧义表达。不能通过篡改一个月的值迫使模型切换。平台不计算湿度与露点之间的统计换算。报告humidity_semantics及逐字段输出单位保留实际含义。
-
-依据：[cli_initwgn.f90](https://github.com/swat-model/swatplus/blob/62.0.0/src/cli_initwgn.f90)中idewpt判断和[cli_rhgen.f90](https://github.com/swat-model/swatplus/blob/62.0.0/src/cli_rhgen.f90)中的两条读取路径。
+单位转换只支持已明确的有限路径：平均温度K或degF→degC；温度标准差K不改值、degF仅乘5/9，不加温度偏移；概率%→1；降水量m→mm；pcpstd m/day→mm/day；辐射kWh/m2/day→MJ/m2/day；风速km/h→m/s。W/m2不能直接当日能量；相对湿度不能当露点；月平均日降水不能只改标签为月总量。
 
 负温及负偏度允许；标准差/降水/湿日数/辐射/风速非负，概率0–1，最高温≥最低温；湿日数不能超过该月可能最多天数，二月允许闰年混合统计。模型cli_initwgn会调整部分偏度、湿日概率和湿日数；本程序保留原参数，报告提醒该行为，不实施模型初始化算法。
 

@@ -14,11 +14,7 @@ TOKEN=re.compile(r'!(.*?)!',re.S)
 
 
 def export_receptors(content,cfg):
-    version=cfg.get('version')
-    if version not in {'CALPUFF-5.8.4-group17','CALPUFF-7.2.1-group20'}:raise SchemaError('需显式选择CALPUFF5.8.4-group17或7.2.1-group20；7.2仅支持NRGRP=0')
-    group20=version=='CALPUFF-7.2.1-group20'
-    encoding=cfg.get('control_encoding','ascii')
-    if encoding not in {'ascii','latin1'}:raise SchemaError('控制文件编码仅接受显式ascii或latin1')
+    if cfg.get('version')!='CALPUFF-5.8.4-group17':raise SchemaError('当前仅核对CALPUFF5.8.4离散受体group17读取规范')
     if cfg.get('elevation_vertical_reference')!='MSL':raise SchemaError('需明确MSL地面海拔；height_agl是地面以上高度')
     source=cfg.get('source')
     if not isinstance(source,dict) or not all(source.get(k) for k in ('kind','description','license')):raise SchemaError('需明确source.kind/description/license')
@@ -31,7 +27,7 @@ def export_receptors(content,cfg):
         table=cfg.get('table');control=cfg.get('control_file')
         if not isinstance(table,str) or not isinstance(control,str) or table==control or set(names)!={table,control} or len(names)!=2 or any(not re.fullmatch(r'[A-Za-z0-9_.-]+',n) or '..' in n for n in names) or sum(i.file_size for i in info)>32*1024**2:raise SchemaError('ZIP仅允许安全单层CSV和实际控制文件两个成员，最多32MB')
         frame=_table(archive.read(table),FIELDS,cfg)
-        try:text=archive.read(control).decode(encoding)
+        try:text=archive.read(control).decode('ascii')
         except UnicodeError as exc:raise SchemaError('控制文件需目标版本ASCII') from exc
     if not 1<=len(frame)<=11000:raise SchemaError('受体需1..11000条（5.8.4默认编译上限）')
     if frame.id.duplicated().any() or any(not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}',str(v)) for v in frame.id):raise SchemaError('外部受体id需唯一安全标识；native group17按行顺序记录')
@@ -61,12 +57,8 @@ def export_receptors(content,cfg):
     except Exception as exc:raise SchemaError('需明确受体source_crs') from exc
     if not source_crs.equals(target,ignore_axis_order=True):raise SchemaError('受体源CRS与控制网格不符；本profile不隐式做基准转换')
     after=[t for t in tokens if t.start()>nrec_token.start()]
-    end_index=0
-    if group20:
-        if not after or not re.fullmatch(r'\s*NRGRP\s*=\s*0\s*',after[0].group(1),re.I):raise SchemaError('7.2 group20仅支持明确NRGRP=0，不丢弃命名受体分组')
-        end_index=1
-    if len(after)<=end_index or after[end_index].group(1).strip().upper()!='END':raise SchemaError('NREC子组缺紧接END终止符')
-    receptor_tokens=after[end_index+1:]
+    if not after or after[0].group(1).strip().upper()!='END':raise SchemaError('NREC子组缺紧接END终止符')
+    receptor_tokens=after[1:]
     if len(receptor_tokens)!=old_count*2:raise SchemaError('已有受体子组数与NREC不符或group17后有不支持活动记录')
     for i in range(old_count):
         t,end=receptor_tokens[2*i:2*i+2]
@@ -91,9 +83,8 @@ def export_receptors(content,cfg):
     errors=np.abs(values-values.astype('f4').astype(float))*[1000,1000,1,1]
     if not np.isfinite(errors).all() or np.max(errors)>tolerance:raise SchemaError('原生float32坐标/高度舍入超过事先给定米制阈值')
     # Group17 is the last READCF input group; only its active count and records change.
-    prefix=text[:nrec_token.start()]+f'! NREC = {len(values)} !'+text[nrec_token.end():after[end_index].end()]
-    lines=[prefix.rstrip(),'','Discrete receptors supplied by EcoDataEngine ('+('group20c' if group20 else 'group17b')+')']
+    prefix=text[:nrec_token.start()]+f'! NREC = {len(values)} !'+text[nrec_token.end():after[0].end()]
+    lines=[prefix.rstrip(),'','Discrete receptors supplied by EcoDataEngine (group17b)']
     for row in values:lines.extend(['! X = '+', '.join(format(v,'.17g') for v in row)+' !','! END !'])
     notes='CALPUFF5.8.4离散受体group17接入用户已有控制文件；X/Y=km、地面海拔MSL和地上高度=m。原控制文件在NREC之前保持，原受体替换；不生成排放/气象/其它控制参数，不检查其外部文件引用是否可用，未运行CALPUFF。'
-    if group20:notes=notes.replace('CALPUFF5.8.4','CALPUFF7.2.1').replace('group17','group20(NRGRP=0)')
-    return {'CALPUFF.INP':('\n'.join(lines)+'\n').encode(encoding),'README_receptors.txt':notes.encode('utf8')},dict(scope=notes,version=version,control_encoding=encoding,source=source,receptors=len(values),source_crs=target.to_string(),external_id_order=list(frame.id),max_float32_error_m=float(np.max(errors)),source_control_sha256=hashlib.sha256(text.encode(encoding)).hexdigest(),complete_model_input=False,model_run_verified=False)
+    return {'CALPUFF.INP':('\n'.join(lines)+'\n').encode('ascii'),'README_receptors.txt':notes.encode('utf8')},dict(scope=notes,source=source,receptors=len(values),source_crs=target.to_string(),external_id_order=list(frame.id),max_float32_error_m=float(np.max(errors)),source_control_sha256=hashlib.sha256(text.encode('ascii')).hexdigest(),complete_model_input=False,model_run_verified=False)

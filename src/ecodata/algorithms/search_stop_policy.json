@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "min_evaluations": 1,
+  "patience_evaluations": 86,
+  "no_novel_iterations": 5,
+  "min_relative_gain": 0.02918031310342201,
+  "version": "visible_stagnation_2015_v1",
+  "calibration_data": "2015 only",
+  "evidence": "Four-mask initial-graph sensitivity and twelve real development trajectories; no 2016/2018 truth",
+  "calibration_sha256": "653f509dd0275532be1f573e4239eb8b703f59dc1a8256287552b7be0c84df1b",
+  "sources": [
+    "https://hub.optuna.org/callbacks/terminator/",
+    "https://proceedings.mlr.press/v188/makarova22a.html"
+  ],
+  "interpretation": "Empirical stagnation tolerance; no GP regret-bound claim or global optimum certificate"
+}

@@ -313,6 +313,7 @@ def test_streamlit_summary_and_automatic_downloads():
     upload = SimpleNamespace(name="water.csv", getvalue=lambda: "断面名称,氨氮(mg/L)\nA,0.11\nB,0.20\n".encode("utf-8"))
     with patch("streamlit.file_uploader", return_value=[upload]):
         app = AppTest.from_file(str(ROOT / "src/ecodata/interface/app.py"), default_timeout=30).run()
+        app.sidebar.radio[0].set_value('数据转换').run()
         next(button for button in app.button if button.label == "执行数据转换").click().run()
     assert not app.exception and not app.error
     assert any("PASS" in message.value for message in app.success)
@@ -326,6 +327,7 @@ def test_streamlit_resampling_warn_summary():
     upload = SimpleNamespace(name="grid.nc", getvalue=lambda: payload)
     with patch("streamlit.file_uploader", return_value=[upload]):
         app = AppTest.from_file(str(ROOT / "src/ecodata/interface/app.py"), default_timeout=30).run()
+        app.sidebar.radio[0].set_value('数据转换').run()
         next(widget for widget in app.number_input if widget.label.startswith("目标空间分辨率")).set_value(5.).run()
         next(widget for widget in app.selectbox if widget.label == "空间转换算法").set_value("conservative").run()
         next(button for button in app.button if button.label == "执行数据转换").click().run()
@@ -339,6 +341,7 @@ def test_streamlit_failed_file_has_diagnostics_but_no_result_download():
     upload = SimpleNamespace(name="water.csv", getvalue=lambda: b"station_id,value\nA,0.11\nB,0.20\n")
     with patch("streamlit.file_uploader", return_value=[upload]), patch.object(TrialResult, "_export_unchecked", return_value=(b"broken", "bad.nc", "application/x-netcdf")):
         app = AppTest.from_file(str(ROOT / "src/ecodata/interface/app.py"), default_timeout=30).run()
+        app.sidebar.radio[0].set_value('数据转换').run()
         next(button for button in app.button if button.label == "执行数据转换").click().run()
     assert not app.exception and app.error
     labels = [button.label for button in app.get("download_button")]

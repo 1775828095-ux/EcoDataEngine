@@ -1,0 +1,3 @@
+# Optional CPU raster collaboration backends; no existing dependency downgraded.
+scikit-image==0.26.0
+PyWavelets==1.10.0

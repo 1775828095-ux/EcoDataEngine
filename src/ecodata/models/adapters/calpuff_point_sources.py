@@ -1,4 +1,4 @@
-"""CALPUFF 5.8.4/7.2.1 constant point sources into supplied group13.
+"""CALPUFF5.8.4 constant point sources into a supplied control group13.
 
 Every modeled species has a user-supplied rate, including explicit zeros for
 secondary species. No variable emissions, building downwash or missing defaults.
@@ -19,16 +19,12 @@ def _real(value):
 
 
 def export_points(content,cfg):
-    if cfg.get('version') not in {'CALPUFF-5.8.4-group13','CALPUFF-7.2.1-group13'} or cfg.get('emission_time_policy')!='constant_supplied':raise SchemaError('需CALPUFF-5.8.4-group13或CALPUFF-7.2.1-group13及constant_supplied；变排放另需开发')
+    if cfg.get('version')!='CALPUFF-5.8.4-group13' or cfg.get('emission_time_policy')!='constant_supplied':raise SchemaError('需CALPUFF-5.8.4-group13及constant_supplied；变排放另需开发')
     if cfg.get('elevation_vertical_reference')!='MSL':raise SchemaError('需明确MSL地面海拔，height为离地高度')
     source=cfg.get('source')
     if not isinstance(source,dict) or not all(source.get(k) for k in ('kind','description','license')):raise SchemaError('需source.kind/description/license')
-    sigma_policy=cfg.get('initial_sigmas_policy','explicit')
-    if sigma_policy not in {'explicit','preserve_source_omission'}:raise SchemaError('未知initial_sigmas_policy')
-    required_fields=tuple(k for k in FIELDS if sigma_policy=='explicit' or k not in {'sigma_y','sigma_z'})
-    required_units=set(TARGETS) if sigma_policy=='explicit' else set(TARGETS)-{'sigma_y','sigma_z'}
     units=cfg.get('units');markers=cfg.get('missing_values');species=cfg.get('species')
-    if not isinstance(units,dict) or set(units)!=required_units or not isinstance(markers,list) or not isinstance(species,list) or not species:raise SchemaError('需完整几何字段单位、missing_values及物种映射')
+    if not isinstance(units,dict) or set(units)!=set(TARGETS) or not isinstance(markers,list) or not isinstance(species,list) or not species:raise SchemaError('需完整几何字段单位、missing_values及物种映射')
     try:z=zipfile.ZipFile(io.BytesIO(content))
     except zipfile.BadZipFile as exc:raise SchemaError('点源需CSV及已有控制文件ZIP') from exc
     with z:
@@ -82,13 +78,9 @@ def export_points(content,cfg):
         flags[m.group(1)]=values_flag[1]
     if set(flags)!=set(model_species):raise SchemaError('控制物种选项缺项')
     fields=cfg.get('fields')
-    if not isinstance(fields,dict) or set(fields)!=set(required_fields):raise SchemaError('点源需所有字段的明确映射')
+    if not isinstance(fields,dict) or set(fields)!=set(FIELDS):raise SchemaError('点源需所有字段的明确映射')
     combined=dict(fields,**{f'__species_{i}':mapping[n]['column'] for i,n in enumerate(model_species)})
-    frame=_table(raw,(*required_fields,*[f'__species_{i}' for i in range(len(model_species))]),dict(cfg,fields=combined))
-    if sigma_policy=='preserve_source_omission':
-        original_names=[v for k,v,t in assignments if k=='SRCNAM']
-        if any(k=='SIGYZI' for k,v,t in assignments) or len(frame)!=old or frame.name.tolist()!=original_names:
-            raise SchemaError('保留SIGYZI省略仅适用于原控制确实省略、源数量及名称顺序完全不变；不猜测新源扩散参数')
+    frame=_table(raw,(*FIELDS,*[f'__species_{i}' for i in range(len(model_species))]),dict(cfg,fields=combined))
     if not 1<=len(frame)<=200 or frame.name.duplicated().any() or any(not re.fullmatch(r'[A-Za-z0-9_.-]{1,12}',n) for n in frame.name):raise SchemaError('点源需1..200条，SRCNAM唯一安全ASCII最多12字符')
     arrays={}
     for field in frame.columns[1:]:
@@ -109,7 +101,7 @@ def export_points(content,cfg):
         if flags[n]==0 and (arrays[f'__species_{i}']!=0).any():raise SchemaError(f'{n}控制标为不排放，源值却非0；不静默忽略')
     for k in ('height','diameter','exit_temperature'):
         if (arrays[k]<=0).any():raise SchemaError(f'{k}必须正数')
-    if any((arrays[k]<0).any() for k in ('exit_velocity',*(['sigma_y','sigma_z'] if sigma_policy=='explicit' else []),*[f'__species_{i}' for i in range(len(model_species))])):raise SchemaError('速度/初始扩散/排放不能负数，不截零')
+    if any((arrays[k]<0).any() for k in ('exit_velocity','sigma_y','sigma_z',*[f'__species_{i}' for i in range(len(model_species))])):raise SchemaError('速度/初始扩散/排放不能负数，不截零')
     if (arrays['downwash']!=0).any() or (arrays['platform_height']!=0).any() or not np.isin(arrays['momentum_factor'],[0,1]).all():raise SchemaError('当前无下洗/平台profile：downwash/platform_height必须源显式0，momentum_factor必须0或1')
     if ((arrays['x']<x0)|(arrays['x']>=x0+nx*spacing)|(arrays['y']<y0)|(arrays['y']>=y0+ny*spacing)).any():raise SchemaError('点源超出控制网格')
     tolerance=cfg.get('max_float32_error_m')
@@ -129,11 +121,11 @@ def export_points(content,cfg):
     lines=[f'! NPT1 = {len(frame)} !','! NPT2 = 0 !','! IPTU = 1 !','! NSPT1 = 0 !','! END !']
     for i in range(len(frame)):
         x=[arrays[k][i] for k in ('x','y','height','elevation','diameter','exit_velocity','exit_temperature','downwash')]+[arrays[f'__species_{j}'][i] for j in range(len(model_species))]
-        lines+=['! SRCNAM = '+frame.name.iloc[i]+' !','! X = '+', '.join(_real(v) for v in x)+' !']
-        if sigma_policy=='explicit':lines+=['! SIGYZI = '+', '.join(_real(arrays[k][i]) for k in ('sigma_y','sigma_z'))+' !']
-        lines+=['! FMFAC = '+_real(arrays['momentum_factor'][i])+' !','! ZPLTFM = '+_real(arrays['platform_height'][i])+' !','! END !']
+        lines+=['! SRCNAM = '+frame.name.iloc[i]+' !','! X = '+', '.join(_real(v) for v in x)+' !',
+            '! SIGYZI = '+', '.join(_real(arrays[k][i]) for k in ('sigma_y','sigma_z'))+' !',
+            '! FMFAC = '+_real(arrays['momentum_factor'][i])+' !','! ZPLTFM = '+_real(arrays['platform_height'][i])+' !','! END !']
     # Preserve every following explanatory heading too, not merely NAR1's
     # active assignment; the old constant subgroup ends at its last END.
     native=text[:a]+'\n'.join(lines)+'\n\n'+text[region[-1].end():]
-    scope=cfg['version']+'常量点源，IPTU=1 g/s；用户已有控制中其它组保持。每物种/烟囱参数显式供给，无变排放、下洗、平台或自动分种；未检查所有外部引用，未运行CALPUFF。'
-    return {'CALPUFF.INP':native.encode('ascii'),'README_point_sources.txt':scope.encode('utf8')},dict(scope=scope,source=source,initial_sigmas_policy=sigma_policy,point_sources=len(frame),species_order=model_species,source_crs=target.to_string(),emission_unit='g/s',time_processing='constant supplied rates; no time allocation',max_float32_coordinate_error_m=coordinate_error,float32_max_absolute_errors={k:float(np.max(np.abs(a-a.astype('f4').astype(float)))) for k,a in arrays.items()},complete_model_input=False,model_run_verified=False)
+    scope='CALPUFF5.8.4常量点源group13，IPTU=1 g/s；用户已有控制中其它组保持。每物种/烟囱参数显式供给，无变排放、下洗、平台或自动分种；未检查所有外部引用，未运行CALPUFF。'
+    return {'CALPUFF.INP':native.encode('ascii'),'README_point_sources.txt':scope.encode('utf8')},dict(scope=scope,source=source,point_sources=len(frame),species_order=model_species,source_crs=target.to_string(),emission_unit='g/s',time_processing='constant supplied rates; no time allocation',max_float32_coordinate_error_m=coordinate_error,float32_max_absolute_errors={k:float(np.max(np.abs(a-a.astype('f4').astype(float)))) for k,a in arrays.items()},complete_model_input=False,model_run_verified=False)

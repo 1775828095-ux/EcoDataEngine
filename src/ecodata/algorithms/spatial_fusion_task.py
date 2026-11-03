@@ -1,0 +1,836 @@
+"""Spatial relationship adapter for the public random-mutation service.
+
+Paired locations stay paired; gridded estimates never become station observations.
+This task adds ports to the existing DAG executor, cost ledger and random driver.
+It is for continuous spatial estimation, not categorical or conservative remapping.
+"""
+from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
+import json
+import numpy as np
+import pandas as pd
+import xarray as xr
+from pyproj import CRS
+from scipy.spatial import cKDTree, Delaunay
+from threadpoolctl import threadpool_limits
+from ecodata.algorithms.dag import Artifact, Port, Node, NodeAdapter, NumericalDAGExecutor, DAGError
+from ecodata.algorithms.numerical_search import save
+from ecodata.algorithms.search_accounting import SearchAccount, SearchBudgetExceeded
+from ecodata.algorithms.search_stopping import SearchStopper, policy
+from ecodata.fusion.point_weights import distance_weights, weighted_values
+from ecodata.fusion.residual import residual_difference, residual_addition
+from ecodata.algorithms.quality_aware import fit_affine_frames
+from ecodata.evaluation.quality_gates import RawInputQualityGate,ResultQualityGate
+from ecodata.io.structures import table_frame
+from ecodata.algorithms.spatial_selection_protocol import split_locations, fixed_support, error_metrics
+
+VERSION = 'spatial_relationship_fusion_v1_2_selection_assessment'
+COMPONENTS = {
+    'spatial.source': dict(kind='source',backend='xarray / SciPy cKDTree sampling'),
+    'spatial.observations': dict(kind='source',backend='Explicit retained-observation matrix; held labels absent'),
+    'spatial.auxiliary': dict(kind='source',backend='Explicit independently unit-labelled covariate sampling'),
+    'spatial.idw': dict(kind='estimate',backend='fusion.point_weights; same distance kernel as fusion.idw'),
+    'spatial.aux_affine': dict(kind='fit',backend='quality_aware.fit_affine_frames, retained observations only'),
+    'spatial.affine': dict(kind='fit',backend='quality_aware.fit_affine_frames'),
+    'spatial.ratio': dict(kind='fit',backend='NumPy retained-pair ratio of sums'),
+    'spatial.residual_idw': dict(kind='combine',backend='fusion.residual_difference / residual_addition + metric IDW'),
+    'spatial.blend': dict(kind='combine',backend='declared convex source weighting; not inverse-uncertainty weighting'),
+}
+
+
+def applies(parsed, request):
+    if request.get('task') not in {'spatial', 'multisource'} or request.get('adapter'):
+        return False
+    if request.get('processing_goal') == 'spatial_fusion':
+        return True
+    if any(role == 'observations' for role, _ in parsed):
+        return True
+    variable = request.get('variable')
+    return any(role == 'primary' and variable in ds and 'time' in ds[variable].dims
+               and ds[variable].dims != ('time','lat','lon') for role, ds in parsed)
+
+
+def positions(ds):
+    if not ds.attrs.get('crs') or not CRS.from_user_input(ds.attrs['crs']).equals(CRS.from_epsg(4326)):
+        raise ValueError('Spatial fusion currently requires explicit EPSG:4326; project coordinates first')
+    if not {'lat','lon'} <= set(ds.coords):
+        raise ValueError('Explicit spatial coordinates required')
+    if ds.lat.dims == ('lat',) and ds.lon.dims == ('lon',):
+        x,y = np.meshgrid(ds.lon.values, ds.lat.values)
+        return np.column_stack([x.ravel(),y.ravel()]), ('lat','lon'), (len(ds.lat),len(ds.lon))
+    if ds.lat.ndim == ds.lon.ndim == 1 and ds.lat.dims == ds.lon.dims:
+        return np.column_stack([ds.lon.values,ds.lat.values]), ds.lat.dims, ds.lat.shape
+    raise ValueError('Rectilinear grid or paired locations required; curvilinear grids need an explicit adapter')
+
+
+def _values(ds, variable, times):
+    _, dims, shape = positions(ds)
+    a = ds[variable]
+    if a.dims == dims:
+        return np.broadcast_to(a.values.reshape(1,-1), (len(times),int(np.prod(shape))))
+    if a.dims != ('time',*dims):
+        raise ValueError('Value axes must match declared time and spatial coordinates')
+    if not pd.DatetimeIndex(times).isin(ds.time.values).all():
+        if a.attrs.get('temporal_semantics')=='instantaneous':
+            native=pd.DatetimeIndex(ds.time.values)
+            if native.has_duplicates or not native.is_monotonic_increasing or len(native)<2:
+                raise ValueError('Temporal interpolation needs unique increasing observation dates')
+            # Linear sampling of an instantaneous covariate only. Interval totals
+            # and means cannot enter this branch; no temporal extrapolation.
+            return a.interp(time=times,method='linear').values.reshape(len(times),-1)
+        raise ValueError('Source does not cover target dates; no implicit resampling of time intervals')
+    return a.sel(time=times).values.reshape(len(times),-1)
+
+
+def sample(ds, variable, times, query):
+    """Sample covariates, explicitly retaining their spatial support."""
+    xy, dims, _ = positions(ds)
+    values = _values(ds,variable,times)
+    if not np.isfinite(xy).all() or len(np.unique(xy,axis=0)) != len(xy):
+        raise ValueError('Nonfinite or duplicate source locations')
+    if ds[variable].attrs.get('spatial_semantics') == 'cell_mean':
+        index = cKDTree(xy).query(query)[1]
+        if not np.allclose(xy[index],query,rtol=0,atol=1e-9):
+            raise ValueError('Changing cell-average support requires conservative remapping, not point sampling')
+        return values[:,index]
+    if dims == ('lat','lon'):
+        a=xr.DataArray(values.reshape(len(times),len(ds.lat),len(ds.lon)),dims=('time','lat','lon'),
+            coords=dict(time=times,lat=ds.lat,lon=ds.lon))
+        return a.interp(lon=xr.DataArray(query[:,0],dims='query'),
+                        lat=xr.DataArray(query[:,1],dims='query'),method='linear').values
+    # This selects supplied locations, not unknown native pixel centres.
+    distance,index = cKDTree(xy).query(query)
+    inside = distance < 1e-9
+    if len(xy)>=3 and np.linalg.matrix_rank(xy-xy.mean(axis=0))==2:
+        inside |= Delaunay(xy).find_simplex(query)>=0
+    result = values[:,index].copy()
+    result[:,~inside] = np.nan
+    return result
+
+
+def mosaic_fields(fields, variable, times):
+    """Same declared product pieces are a mosaic, not independent measurements.
+
+    No inferred group from filenames. Unknown identity/processing, time mismatch
+    and conflicting overlap stop this operation; no averaging resolves conflicts.
+    """
+    groups={};result=[];relations=[];order={ds.attrs['source_id']:i for i,ds in enumerate(fields)}
+    for ds in fields:
+        group=ds.attrs.get('mosaic_group')
+        if group:groups.setdefault(group,[]).append(ds)
+        else:result.append(ds)
+    for group,members in groups.items():
+        if len(members)==1:result.extend(members);continue
+        if any(not ds.attrs.get('mosaic_evidence') or not ds.attrs.get('source_product') or not ds.attrs.get('processing_level') for ds in members):
+            raise ValueError('Mosaic requires evidenced common product and processing identity')
+        if len({(ds.attrs['source_product'],ds.attrs['processing_level']) for ds in members})!=1:
+            raise ValueError('Mosaic product/processing identities conflict')
+        points=[];columns=[];lookup={};overlap=0
+        for ds in members:
+            if ds[variable].attrs.get('spatial_semantics')!='grid_estimate' or 'time' not in ds or not np.array_equal(ds.time.values,times.values):
+                raise ValueError('Mosaic needs common native dates and gridded-estimate support')
+            xy,_,_=positions(ds);values=_values(ds,variable,times)
+            for i,location in enumerate(xy):
+                key=tuple(location)
+                if key not in lookup:
+                    lookup[key]=len(points);points.append(location);columns.append(values[:,i].copy())
+                else:
+                    j=lookup[key];a=columns[j];b=values[:,i];both=np.isfinite(a)&np.isfinite(b)
+                    if not np.allclose(a[both],b[both],rtol=1e-12,atol=1e-12):
+                        raise ValueError('Mosaic overlap conflicts; values cannot be silently averaged or overwritten')
+                    a[~np.isfinite(a)]=b[~np.isfinite(a)];overlap+=1
+        xy=np.asarray(points)
+        members_ids=[ds.attrs['source_id'] for ds in members]
+        identity='mosaic:'+sha256(json.dumps([group,members_ids]).encode()).hexdigest()[:20]
+        ds=xr.Dataset({variable:(('time','point'),np.column_stack(columns))},
+            coords=dict(time=times,point=np.arange(len(xy)),lat=('point',xy[:,1]),lon=('point',xy[:,0])),
+            attrs=dict(members[0].attrs,source_id=identity,mosaic_members=json.dumps(members_ids)))
+        ds[variable].attrs=dict(members[0][variable].attrs)
+        if 'time_bounds' in members[0]:ds['time_bounds']=members[0].time_bounds
+        result.append(ds)
+        relations.append(dict(operation='same_product_spatial_mosaic',group=group,members=members_ids,
+            output_source_id=identity,output_locations=len(xy),identical_overlap_locations=overlap,
+            conflict_resolution='reject conflicting finite values; fill unknown from identical-product piece',
+            evidence=[m.attrs['mosaic_evidence'] for m in members]))
+    result.sort(key=lambda ds:min(order[sid] for sid in json.loads(ds.attrs['mosaic_members'])) if 'mosaic_members' in ds.attrs else order[ds.attrs['source_id']])
+    return result,relations
+
+
+@dataclass
+class SpatialTask:
+    fields: list
+    auxiliary: list
+    observations: pd.DataFrame
+    template: xr.Dataset
+    times: pd.DatetimeIndex
+    request: dict
+    audit: list
+    self_reference: bool = False
+    relationships: list = None
+    evaluation_observations: pd.DataFrame = None
+
+    @classmethod
+    def build(cls, parsed, request, audit):
+        if request.get('semantic_type') != 'continuous' or not request.get('unit') or request['unit']=='UNKNOWN':
+            raise ValueError('Continuous variable and confirmed unit required for spatial estimation')
+        variable = request['variable']; fields=[]; auxiliary=[]; observations=[]; targets=[]; primary=None
+        for role, ds in parsed:
+            if role=='observations':
+                frame=table_frame(ds).copy()
+                if 'crs' not in frame and ds.attrs.get('crs'):frame['crs']=ds.attrs['crs']
+                observations.append(frame)
+            elif role=='target':
+                targets.append(ds)
+            elif role in {'primary','background'}:
+                if variable not in ds:
+                    raise ValueError('Same-variable source missing target; other variables must be auxiliary')
+                support = ds[variable].attrs.get('spatial_semantics')
+                if support not in {'point','grid_estimate','cell_mean'}:
+                    raise ValueError('Unknown spatial support or unsupported cell totals/flux')
+                positions(ds)
+                if role=='primary':
+                    if primary is not None: raise ValueError('One primary source required')
+                    primary=ds
+                if support=='point':
+                    if ds[variable].attrs.get('units')!=request['unit'] or ds[variable].attrs.get('data_kind') not in {None,'continuous'}:
+                        raise ValueError('Point source unit or data kind conflicts with request')
+                    xy,dims,_=positions(ds)
+                    if 'time' not in ds[variable].dims: raise ValueError('Point observation dates required')
+                    t=pd.DatetimeIndex(ds.time.values); a=_values(ds,variable,t)
+                    if ds[variable].attrs.get('temporal_semantics')=='accumulation':
+                        if ('time_bounds' not in ds or ds.time_bounds.shape!=(len(t),2)
+                                or not np.array_equal(ds.time_bounds.values[:,0],t.values)
+                                or not np.all(ds.time_bounds.values[:,1]-ds.time_bounds.values[:,0]==np.timedelta64(1,'D'))):
+                            raise ValueError('Accumulated point observations require explicit matching daily bounds')
+                    observations.append(pd.DataFrame(dict(time=np.repeat(t,len(xy)),
+                        station_id=np.tile([f'{ds.attrs.get("source_id","point")}:{i}' for i in range(len(xy))],len(t)),
+                        longitude=np.tile(xy[:,0],len(t)),latitude=np.tile(xy[:,1],len(t)),value=a.ravel(),
+                        unit=request['unit'],variable=ds[variable].attrs.get('physical_variable'),split='train',
+                        temporal_semantics=ds[variable].attrs.get('temporal_semantics'),crs='EPSG:4326',
+                        interval_seconds=86400 if ds[variable].attrs.get('temporal_semantics')=='accumulation' and 'time_bounds' in ds else np.nan)))
+                else: fields.append(ds)
+            elif role=='auxiliary': auxiliary.append(ds)
+            else: raise ValueError('Unsupported spatial-fusion resource role: '+role)
+        if primary is None and not observations: raise ValueError('A spatial field or station observations required')
+        if len(targets)>1: raise ValueError('Ambiguous target geometry')
+        if (request.get('target_lat') is None)!=(request.get('target_lon') is None):
+            raise ValueError('Both target grid axes are required; use a target dataset for paired positions')
+        if targets: template=targets[0]
+        elif request.get('target_lat') is not None and request.get('target_lon') is not None:
+            template=xr.Dataset(coords=dict(lat=request['target_lat'],lon=request['target_lon']),attrs=dict(crs='EPSG:4326'))
+        elif primary is not None: template=primary
+        else: raise ValueError('Stations need an explicit target geometry')
+        xy,_,_=positions(template)
+        if not np.isfinite(xy).all() or (abs(xy[:,0])>180).any() or (abs(xy[:,1])>90).any():
+            raise ValueError('Invalid target coordinates')
+        if request.get('target_times') is not None: times=pd.DatetimeIndex(request['target_times'])
+        elif primary is not None and 'time' in primary: times=pd.DatetimeIndex(primary.time.values)
+        elif 'time' in template: times=pd.DatetimeIndex(template.time.values)
+        else: times=pd.DatetimeIndex(sorted(pd.to_datetime(pd.concat(observations).time).unique()))
+        if not len(times) or times.has_duplicates or not times.is_monotonic_increasing:
+            raise ValueError('Unique increasing target dates required')
+        physical=request.get('physical_variable')
+        for ds in fields:
+            a=ds[variable]; attrs=a.attrs
+            if attrs.get('units')!=request['unit'] or not attrs.get('physical_variable') or not attrs.get('physical_definition'):
+                raise ValueError('Same-variable sources require unit, physical variable and definition')
+            physical=physical or attrs['physical_variable']
+            if attrs['physical_variable']!=physical: raise ValueError('Physical variable conflict')
+            if fields and attrs.get('physical_definition')!=fields[0][variable].attrs.get('physical_definition'):
+                raise ValueError('Physical definition conflict')
+            if request.get('temporal_semantics') and attrs.get('temporal_semantics')!=request['temporal_semantics']:
+                raise ValueError('Temporal semantics conflict')
+            values=_values(ds,variable,times)
+            if np.isinf(values).any() or (request.get('nonnegative') and (values<0).any()):
+                raise ValueError('Invalid source values; missing sentinels require documented input decoding')
+            report=RawInputQualityGate().validate(ds,variable=variable,requires_spatial=True,expected_unit=request['unit'])
+            if report['status']=='BLOCK':raise ValueError('Raw input quality gate blocked spatial source: '+str(report))
+            if attrs.get('temporal_semantics')=='accumulation':
+                if 'time_bounds' not in ds or ds.time_bounds.dims!=('time','bounds'):
+                    raise ValueError('Accumulations require explicit interval bounds')
+                b=ds.time_bounds.sel(time=times).values
+                if not np.array_equal(b[:,0],times.values) or not np.all(b[:,1]-b[:,0]==np.timedelta64(1,'D')):
+                    raise ValueError('Reviewed accumulation path requires matching daily intervals')
+        self_reference=not observations
+        if self_reference:
+            if primary is None: raise ValueError('No visible validation anchors')
+            pxy,_,_=positions(primary); values=_values(primary,variable,times)
+            observations=[pd.DataFrame(dict(time=np.repeat(times,len(pxy)),station_id=np.tile(np.arange(len(pxy)).astype(str),len(times)),
+                longitude=np.tile(pxy[:,0],len(times)),latitude=np.tile(pxy[:,1],len(times)),value=values.ravel(),
+                unit=request['unit'],variable=physical,split='train',temporal_semantics=primary[variable].attrs.get('temporal_semantics')))]
+        obs=pd.concat(observations,ignore_index=True).copy()
+        required={'time','station_id','longitude','latitude','value','unit','variable','split','temporal_semantics'}
+        if not required<=set(obs) or not obs.split.isin(['train','test']).all() or not obs.split.eq('train').any():
+            raise ValueError('Declared training observations required; only train/test splits are supported, test never enters fitting')
+        obs.time=pd.to_datetime(obs.time,errors='raise'); obs.station_id=obs.station_id.astype(str)
+        observation_crs=request.get('observation_crs',request.get('parameters',{}).get('observation_crs',request.get('crs')))
+        if 'crs' in obs:
+            if obs.crs.isna().any() or any(not CRS.from_user_input(c).equals(CRS.from_epsg(4326)) for c in obs.crs.unique()):
+                raise ValueError('Station coordinates need explicit EPSG:4326')
+        elif not observation_crs or not CRS.from_user_input(observation_crs).equals(CRS.from_epsg(4326)):
+            if not self_reference:raise ValueError('Observation CRS unknown; confirm before fusion')
+        if obs.duplicated(['station_id','time']).any(): raise ValueError('Duplicate station/date')
+        if obs[['longitude','latitude']].isna().any().any() or obs.groupby('station_id')[['longitude','latitude']].nunique().gt(1).any().any():
+            raise ValueError('Station identity must bind stable finite coordinates')
+        station_xy=obs.drop_duplicates('station_id')[['longitude','latitude']].to_numpy(float)
+        if (not np.isfinite(station_xy).all() or len(np.unique(station_xy,axis=0))!=len(station_xy)
+                or (abs(station_xy[:,0])>180).any() or (abs(station_xy[:,1])>90).any()):
+            raise ValueError('Invalid or duplicate station coordinates')
+        if not obs.unit.eq(request['unit']).all() or obs.variable.isna().any() or obs.variable.nunique()!=1:
+            raise ValueError('Observation quantity/unit unknown or conflicting')
+        physical=physical or obs.variable.iloc[0]
+        if not obs.variable.eq(physical).all(): raise ValueError('Observation/background physical variable conflict')
+        temporal=request.get('temporal_semantics') or (fields[0][variable].attrs.get('temporal_semantics') if fields else obs.temporal_semantics.iloc[0])
+        if temporal not in {'instantaneous','accumulation'}:
+            raise ValueError('Interval means need a reviewed interval-alignment adapter; no guessed time support')
+        if not obs.temporal_semantics.eq(temporal).all() or any(ds[variable].attrs.get('temporal_semantics')!=temporal for ds in fields):
+            raise ValueError('Source temporal semantics differ')
+        request=dict(request,temporal_semantics=temporal)
+        if request.get('temporal_semantics') and not obs.temporal_semantics.eq(request['temporal_semantics']).all():
+            raise ValueError('Observation temporal support conflicts with task')
+        if request.get('temporal_semantics')=='accumulation' and not self_reference:
+            if 'interval_seconds' not in obs or not obs.interval_seconds.eq(86400).all():
+                raise ValueError('Daily accumulated observations need declared 86400-second intervals')
+        if np.isinf(obs.value).any() or (request.get('nonnegative') and (obs.value<0).any()):
+            raise ValueError('Invalid observation values')
+        evaluation=obs.loc[obs.split.eq('test')].copy()
+        obs=obs.loc[obs.split.eq('train')].copy()
+        if not evaluation.empty:
+            if set(evaluation.station_id)&set(obs.station_id):
+                raise ValueError('Final test locations must be disjoint from training locations')
+            if not set(evaluation.time)<=set(times):
+                raise ValueError('Final test dates outside application time support')
+        if obs.station_id.nunique()<3: raise ValueError('At least three spatial locations required for leave-location-out validation')
+        for ds in auxiliary:
+            positions(ds)
+            if any(not a.attrs.get('units') for n,a in ds.data_vars.items() if n!='time_bounds'):
+                raise ValueError('Auxiliary quantities require their own units')
+        fields.sort(key=lambda ds:0 if ds is primary else 1)
+        identities=[ds.attrs.get('source_id') for ds in fields]
+        if any(not sid for sid in identities) or len(set(identities))!=len(identities):
+            raise ValueError('Spatial fields require distinct stable source identities')
+        if self_reference:
+            root=primary.attrs.get('source_id')
+            for ds in [*fields[1:],*auxiliary]:
+                lineage=ds.attrs.get('derived_from',[])
+                if isinstance(lineage,str):
+                    try:lineage=json.loads(lineage)
+                    except json.JSONDecodeError:lineage=[lineage]
+                if root in lineage or ds.attrs.get('source_id')==root:
+                    raise ValueError('Derived reference alias requires replay after masking; cannot leak held anchors')
+        request=dict(request,physical_variable=physical)
+        fields,relationships=mosaic_fields(fields,variable,times)
+        return cls(fields,auxiliary,obs,template,times,request,audit,self_reference,relationships,evaluation)
+
+    def cohort(self, train_ids, query, times):
+        stations=self.observations.drop_duplicates('station_id').set_index('station_id').loc[train_ids]
+        sxy=stations[['longitude','latitude']].to_numpy(float)
+        y=self.observations.pivot(index='time',columns='station_id',values='value').reindex(index=times,columns=train_ids).to_numpy(float)
+        allxy=np.concatenate([query,sxy]); sources=[]; aux=[]
+        for ds in self.fields:
+            if self.self_reference and ds is self.fields[0]:
+                # Replay the primary after removing held locations, including all dates.
+                xy,_,_=positions(ds); visible=np.isclose(xy[:,None,:],sxy[None,:,:],atol=1e-9,rtol=0).all(axis=2).any(axis=1)
+                vals=_values(ds,self.request['variable'],times)[:,visible]
+                sources.append(weighted_values(vals,distance_weights(xy[visible],allxy)))
+            else: sources.append(sample(ds,self.request['variable'],times,allxy))
+        for ds in self.auxiliary:
+            for name in ds.data_vars:
+                if name!='time_bounds': aux.append((name,sample(ds,name,times,allxy),ds[name].attrs['units']))
+        return dict(y=y,query_count=len(query),sources=sources,aux=aux,sxy=sxy,allxy=allxy)
+
+
+class SpatialSearch:
+    def __init__(self,task,folder,budget,seed,model=None):
+        self.task=task; self.folder=Path(folder); self.request=task.request; self.rng=np.random.default_rng(seed)
+        self.budget=budget
+        self.account=SearchAccount(budget['objective_limit'],budget['wall_seconds'],total_calls=budget.get('total_call_limit'))
+        # Selected graph + fixed single-source comparator require a protected
+        # post-selection allowance, in addition to final product deployment.
+        self.account.protect_deployment(96,min(30.,budget['wall_seconds']*.2))
+        self.account.configure_deployment(32,min(30.,budget['wall_seconds']*.2))
+        declaration=policy(self.request)
+        if not declaration.get('calibration_scope_match',False) and not self.request.get('search_stopping'):
+            declaration=dict(enabled=False,evidence='Existing stopping thresholds not calibrated for this spatial task; numerical/time budget applies')
+        self.stopper=SearchStopper(declaration,np.finfo(float).eps)
+        self.records={};self.rows=[];self.transitions=[];self.attempts=0;self.novel_executions=0;self.numerical_rounds=0
+        self.promotion_baseline=None;self.promotion_support=False;self.folds=[];self.executors=[];self.state_seen={}
+        meta=task.observations.drop_duplicates('station_id').sort_values(['longitude','latitude','station_id'])
+        explicit=task.evaluation_observations is not None and not task.evaluation_observations.empty
+        self.location_protocol=split_locations(meta,seed,explicit_test=explicit)
+        selection_ids=self.location_protocol['selection_ids']
+        groups=[held for _,held in self.location_protocol['folds']]
+        # Last date block is confirmation only and cannot influence search/stop.
+        cut=max(1,int(len(task.times)*.8)) if len(task.times)>=5 else len(task.times)
+        self.search_times=task.times[:cut];self.confirm_times=task.times[cut:];self.groups=groups
+        # Outer test values cannot affect even tie resolution or stopping.
+        visible=task.observations[task.observations.station_id.isin(selection_ids)&task.observations.time.isin(self.search_times)]
+        finite=visible.value.to_numpy(float);finite=finite[np.isfinite(finite)]
+        if not len(finite):raise ValueError('No finite selection labels')
+        self.resolution=np.finfo(float).eps*max(1,len(finite))*max(1.,float(np.max(abs(finite))))
+        for retained,held in self.location_protocol['folds']:
+            query=meta[meta.station_id.isin(held)][['longitude','latitude']].to_numpy(float)
+            reference=task.observations.pivot(index='time',columns='station_id',values='value').reindex(index=self.search_times,columns=held).to_numpy(float)
+            cohort=task.cohort(retained,query,self.search_times)
+            if not np.isfinite(reference).any(): raise ValueError('Spatial holdout has no finite labels')
+            self.folds.append(dict(held=list(held),train=retained,query=query,reference=reference,cohort=cohort,
+                support_sha256=fixed_support(reference,held,self.search_times)))
+            self.executors.append(self.executor(cohort,'search'))
+        self.leaves=[self.intern('spatial.source',[],dict(index=i)) for i in range(len(task.fields))]
+        self.leaves += [self.intern('spatial.idw',[],dict(power=p)) for p in (1.,2.,3.)]
+        if self.request.get('allow_training'):
+            for i in range(len(self.folds[0]['cohort']['aux'])):self.leaves.append(self.intern('spatial.aux_affine',[],dict(index=i)))
+        self.portraits=None
+        if self.request.get('spatial_soft_guidance',False):
+            if model is None or not model.get('state_policy'):
+                raise ValueError('Spatial soft guidance requires an explicit registered model portrait policy')
+            from ecodata.algorithms.spatial_portraits import SpatialPortraits
+            self.portraits=SpatialPortraits(self,model)
+        self.candidate_pool=self.request.get('spatial_candidate_pool',1)
+        if type(self.candidate_pool) is not int or not 1<=self.candidate_pool<=16:
+            raise ValueError('Spatial candidate pool must be an integer in 1..16')
+
+    def candidate_sources(self,key):
+        identities=set()
+        for node in self.nodes(key):
+            if node.operation=='spatial.source':
+                identities.add('field:'+self.task.fields[node.parameters['index']].attrs['source_id'])
+            elif node.operation=='spatial.observations':
+                identities.add('field:'+self.task.fields[0].attrs['source_id'] if self.task.self_reference else 'conditioning_observations')
+            elif node.operation=='spatial.auxiliary':
+                identities.add('auxiliary:'+str(node.parameters['index']))
+        return sorted(identities)
+
+    def comparison_seeds(self):
+        # These are scored candidates, never a forced fusion/final weighting.
+        # Keep the existing random driver and component implementations intact.
+        sources=[k for k in self.leaves if self.records[k]['operation']=='spatial.source']
+        seeds=[]
+        for source in sources:
+            k=self.intern('spatial.residual_idw',[source],dict(power=2.))
+            if len(self.candidate_sources(k))>1:seeds.append(k)
+        for left,right in zip(sources,sources[1:]):
+            seeds.append(self.intern('spatial.blend',[left,right],dict(weight=.5)))
+        return list(dict.fromkeys(seeds))
+
+    def comparison_report(self,best):
+        families={}
+        for name in ['SINGLE_SOURCE','MULTISOURCE']:
+            rows=[r for r in self.rows if r.get('source_family')==name]
+            passed=[r for r in rows if r['status']=='PASS']
+            value=min((r['metrics']['objective'] for r in passed),default=None)
+            winner=min((r for r in passed if r['metrics']['objective']<=value+self.resolution),
+                       key=lambda r:(r['algorithm_nodes'],r['key'])) if passed else None
+            families[name]=dict(evaluated=len(rows),passed=len(passed),
+                best_key=winner['key'] if winner else None,metrics=winner['metrics'] if winner else None)
+        return dict(protocol='spatial_selection_assessment_v1',
+            decision_after_scoring=True,selection_metric='RMSE',
+            fixed_support_sha256=[f['support_sha256'] for f in self.folds],
+            families=families,selected_key=best['key'],selected_family=best['source_family'],
+            comparison_status='BOTH_FAMILIES_SCORED' if all(f['passed'] for f in families.values()) else 'COMPARISON_INCOMPLETE_OR_SINGLE_SOURCE_ONLY',
+            reference_basis='PRIMARY_GRID_RECONSTRUCTION_PROXY' if self.task.self_reference else 'HELD_STATION_OBSERVATIONS',
+            accuracy_improvement='NOT_ESTABLISHED',
+            source_identity_scope='Declared source identities, not proof of statistical independence')
+
+    def post_selection_assessment(self,keys):
+        """Evaluate frozen winners only. Results never feed best()/stopper."""
+        task=self.task;explicit=task.evaluation_observations
+        if explicit is not None and not explicit.empty:
+            frame=explicit;origin='EXPLICIT_TEST_LOCATIONS'
+        else:
+            frame=task.observations[task.observations.station_id.isin(self.location_protocol['test_ids'])]
+            origin=self.location_protocol['reason']
+        report=dict(used_for_selection=False,source=origin,
+            reference_basis='PRIMARY_GRID_RECONSTRUCTION_PROXY' if task.self_reference else 'STATION_OBSERVATIONS_UPSTREAM_INDEPENDENCE_UNKNOWN',
+            statistical_independence_verified=False,accuracy_improvement='NOT_ESTABLISHED')
+        if frame.empty:return dict(report,status='NO_SEPARATE_LOCATION_TEST')
+        meta=frame.drop_duplicates('station_id').sort_values(['longitude','latitude','station_id'])
+        ids=meta.station_id.tolist();query=meta[['longitude','latitude']].to_numpy(float)
+        times=pd.DatetimeIndex(sorted(frame.time.unique()))
+        reference=frame.pivot(index='time',columns='station_id',values='value').reindex(index=times,columns=ids).to_numpy(float)
+        cohort=task.cohort(self.location_protocol['selection_ids'],query,times)
+        report.update(test_station_ids=ids,conditioning_station_ids=self.location_protocol['selection_ids'],
+            reference_sha256=sha256(reference.tobytes()).hexdigest(),support_sha256=fixed_support(reference,ids,times),
+            schemes={},times=[str(t) for t in times])
+        executor=self.executor(cohort,'validation_audit')
+        for name,key in keys.items():
+            if key is None:continue
+            try:
+                executed=executor.run(self.nodes(key),key)
+                prediction=executed['outputs']['field'].value[:,:len(ids)]
+                if self.request.get('nonnegative'):prediction=np.maximum(prediction,0.)
+                bounds=self.request.get('parameters',{}).get('target_valid_range')
+                mask=np.isfinite(reference)
+                if bounds is not None and ((prediction[mask]<bounds[0])|(prediction[mask]>bounds[1])).any():
+                    raise ValueError('Assessment prediction outside declared application range')
+                report['schemes'][name]=dict(status='PASS',key=key,metrics=error_metrics(prediction,reference),trace=executed['trace'])
+            except Exception as exc:
+                report['schemes'][name]=dict(status='NOT_EVALUATED_RESOURCE_LIMIT' if isinstance(exc,SearchBudgetExceeded) or getattr(exc,'details',{}).get('budget_exhausted') else 'FAILED',key=key,error=str(exc))
+        report['status']='PASS' if report['schemes'] and all(s['status']=='PASS' for s in report['schemes'].values()) else 'INCOMPLETE'
+        if report['status']=='PASS' and 'selected' in report['schemes'] and 'single_source_baseline' in report['schemes']:
+            report['RMSE_reduction_vs_single_on_this_reference']=(report['schemes']['single_source_baseline']['metrics']['RMSE']-report['schemes']['selected']['metrics']['RMSE'])
+        return report
+
+    def intern(self,op,parents,parameters):
+        parents=list(parents)
+        if op in {'spatial.idw','spatial.aux_affine','spatial.affine','spatial.ratio','spatial.residual_idw'}:
+            observations=self.intern('spatial.observations',[],{})
+            if op=='spatial.idw' and not parents:parents=[observations]
+            elif op=='spatial.aux_affine' and not parents:
+                parents=[self.intern('spatial.auxiliary',[],dict(index=parameters['index'])),observations]
+            elif op in {'spatial.affine','spatial.ratio','spatial.residual_idw'} and len(parents)==1:
+                parents.append(observations)
+        if op=='spatial.blend' and parents[0]==parents[1]:return parents[0]
+        if op in {'spatial.affine','spatial.ratio'} and self.records.get(parents[0],{}).get('operation')==op:return parents[0]
+        row=dict(operation=op,parents=list(parents),parameters=parameters)
+        key=sha256(json.dumps(row,sort_keys=True).encode()).hexdigest()[:20];self.records[key]=row
+        return key
+
+    def nodes(self,key):
+        result=[];seen=set()
+        def visit(k):
+            if k in seen:return
+            seen.add(k);r=self.records[k]
+            for p in r['parents']:visit(p)
+            names=self.input_names(r['operation'])
+            result.append(Node(k,r['operation'],dict(zip(names,[(p,'field') for p in r['parents']])),r['parameters']))
+        visit(key);return result
+
+    def bind_graph(self,graph):
+        visiting=set();rebound={}
+        def bind(key):
+            if key in rebound:return rebound[key]
+            if key in visiting:raise ValueError('Cycle in spatial graph')
+            visiting.add(key);row=graph['records'][key]
+            if row['operation'] not in COMPONENTS:raise ValueError('Unknown spatial component')
+            rebound[key]=self.intern(row['operation'],[bind(p) for p in row['parents']],row['parameters'])
+            visiting.remove(key);return rebound[key]
+        return bind(graph['key'])
+
+    @staticmethod
+    def input_names(op):
+        if op in {'spatial.source','spatial.observations','spatial.auxiliary'}:return []
+        if op=='spatial.idw':return ['observations']
+        if op=='spatial.aux_affine':return ['covariate','observations']
+        if op=='spatial.blend':return ['left','right']
+        return ['field','observations']
+
+    def executor(self,cohort,phase):
+        port=Port('spatial_estimate_pair',('units',)); nq=cohort['query_count']; allxy=cohort['allxy']; sxy=cohort['sxy']
+        weight_cache={}
+        def weights(power):
+            if power not in weight_cache:weight_cache[power]=distance_weights(sxy,allxy,power)
+            return weight_cache[power]
+        def operation(op):
+            def run(inputs,p,external):
+                token=self.account.before(op,phase,p,requires_training=op in {'spatial.affine','spatial.ratio','spatial.aux_affine'})
+                try:
+                    detail={}
+                    output_kind='spatial_estimate_pair'
+                    y=inputs['observations'].value if 'observations' in inputs else None
+                    if op=='spatial.observations':
+                        result=cohort['y'].copy();output_kind='spatial_conditioning_matrix'
+                        detail.update(coordinates=sxy.tolist(),role='retained observations only')
+                    elif op=='spatial.auxiliary':
+                        result=cohort['aux'][p['index']][1].copy();output_kind='spatial_covariate_matrix'
+                        detail.update(name=cohort['aux'][p['index']][0],units=cohort['aux'][p['index']][2],role='covariate; never a target observation')
+                    elif op=='spatial.source': result=cohort['sources'][p['index']].copy()
+                    elif op=='spatial.idw': result=weighted_values(y,weights(p['power']))
+                    elif op=='spatial.aux_affine':
+                        x=inputs['covariate'].value;slope,intercept,failed=fit_affine_frames(x[:,nq:],y)
+                        result=slope*x+intercept
+                        if failed: raise ValueError('Auxiliary affine response cannot be identified in every date; no invented coefficient')
+                    elif op=='spatial.blend':
+                        a=inputs['left'].value;b=inputs['right'].value;w=p['weight']
+                        if not np.isfinite(w) or not 0<=w<=1:raise ValueError('Convex blend weight must be in [0,1]')
+                        result=w*a+(1-w)*b
+                    else:
+                        a=inputs['field'].value; station=a[:,nq:]
+                        if op=='spatial.affine':
+                            slope,intercept,failed=fit_affine_frames(station,y);result=slope*a+intercept
+                            detail['unidentifiable_dates_identity']=failed
+                            detail.update(coefficient_sha256=sha256(slope.tobytes()+intercept.tobytes()).hexdigest(),
+                                slope_range=[float(slope.min()),float(slope.max())],intercept_range=[float(intercept.min()),float(intercept.max())])
+                        elif op=='spatial.ratio':
+                            valid=np.isfinite(station)&np.isfinite(y);den=np.where(valid,station,0).sum(axis=1,keepdims=True)
+                            num=np.where(valid,y,0).sum(axis=1,keepdims=True);ok=(valid.sum(axis=1,keepdims=True)>=2)&(den>0)
+                            ratio=np.divide(num,den,out=np.ones_like(num),where=ok);result=ratio*a
+                            detail['unidentifiable_dates_identity']=int((~ok).sum())
+                        elif op=='spatial.residual_idw':
+                            delta=residual_difference(y,station);correction=weighted_values(delta,weights(p['power']))
+                            result=residual_addition(a,correction)
+                            # Explicit missing-background fallback, not a zero-rain assumption.
+                            result=np.where(np.isfinite(a),result,weighted_values(y,weights(p['power'])))
+                        else:raise ValueError('Unregistered spatial operation')
+                    self.account.after(token)
+                    metadata=dict(operation=op,units=self.request['unit'],**detail) if 'units' not in detail else dict(operation=op,**detail)
+                    return dict(field=Artifact(output_kind,result,metadata))
+                except Exception as exc:
+                    self.account.after(token,error=exc);raise
+            return run
+        adapters={}
+        observations=Port('spatial_conditioning_matrix',('units',));covariate=Port('spatial_covariate_matrix',('units',))
+        for op in COMPONENTS:
+            names=self.input_names(op)
+            output=observations if op=='spatial.observations' else covariate if op=='spatial.auxiliary' else port
+            ports={n:observations if n=='observations' else covariate if n=='covariate' else port for n in names}
+            adapters[op,'run']=NodeAdapter(ports,{'field':output},operation(op),version=VERSION,
+                decision_contract=dict(COMPONENTS[op],scope='paired spatial-estimate task component; not a new scientific method'))
+        return NumericalDAGExecutor(adapters,version=VERSION)
+
+    def execute(self,key,phase='initial'):
+        if any(r['key']==key for r in self.rows): return
+        nodes=self.nodes(key)
+        if len(nodes)>32:return
+        if not self.account.can_search(len(nodes)*len(self.folds),self.account.reserve):return
+        identities=self.candidate_sources(key)
+        row=dict(key=key,phase=phase,algorithm_nodes=len(nodes),source_identities=identities,
+            source_family='MULTISOURCE' if len(identities)>1 else 'SINGLE_SOURCE',
+            fixed_support_sha256=[f['support_sha256'] for f in self.folds])
+        if self.portraits is not None:row['candidate_prior']=self.portraits.score(key)
+        predictions=[];labels=[];traces=[]
+        try:
+            for fold,executor in zip(self.folds,self.executors):
+                executed=executor.run(nodes,key);trace=executed['trace'];a=executed['outputs']['field'].value[:,:fold['cohort']['query_count']]
+                if self.request.get('nonnegative'):a=np.maximum(a,0.)
+                mask=np.isfinite(fold['reference'])
+                if not np.isfinite(a[mask]).all():raise ValueError('Incomplete predictions on fixed held-location cohort')
+                bounds=self.request.get('parameters',{}).get('target_valid_range')
+                if bounds is not None and ((a[mask]<bounds[0])|(a[mask]>bounds[1])).any():
+                    raise ValueError('Candidate outside declared application range')
+                predictions.append(a[mask]);labels.append(fold['reference'][mask]);traces.append(trace)
+            values=np.concatenate(predictions);truth=np.concatenate(labels)
+            digest=sha256(values.tobytes()).hexdigest()
+            if digest in self.state_seen:
+                row['same_validation_predictions_as']=self.state_seen[digest]
+            else:self.state_seen[digest]=key
+            error=values-truth;rmse=float(np.sqrt(np.mean(error**2)))
+            row.update(status='PASS',metrics=dict(objective=rmse,RMSE=rmse,MAE=float(np.mean(abs(error))),count=len(error)),traces=traces)
+        except SearchBudgetExceeded: return
+        except Exception as exc:
+            if getattr(exc,'details',{}).get('budget_exhausted'):return
+            row.update(status='FAILED',error=str(exc))
+        self.rows.append(row);self.novel_executions+=1
+
+    def best(self):
+        rows=[r for r in self.rows if r['status']=='PASS']
+        if not rows:return None
+        value=min(r['metrics']['objective'] for r in rows)
+        return min((r for r in rows if r['metrics']['objective']<=value+self.resolution),key=lambda r:(r['algorithm_nodes'],r['key']))
+
+    def exhausted(self):
+        return bool(self.stopper.reason or self.attempts>=self.budget['proposal_limit'] or self.account.exhausted()
+                    or not self.account.can_search(1,self.account.reserve))
+
+    def destroy(self,key,rng):return dict(reset=bool(rng.integers(2)))
+
+    def candidate(self,current,family,rng,destruction=None):
+        self.attempts+=1;row=self.records[current]
+        if family in {'algorithm','source'} or (destruction and destruction['reset']):
+            child=str(rng.choice(self.leaves))
+        elif family=='parameters' and row['operation'] in {'spatial.idw','spatial.residual_idw','spatial.blend'}:
+            p=dict(row['parameters']);p.update(weight=float(rng.choice([.25,.5,.75]))) if row['operation']=='spatial.blend' else p.update(power=float(rng.choice([1.,2.,3.])))
+            child=self.intern(row['operation'],row['parents'],p)
+        else:
+            options=['spatial.residual_idw','spatial.blend','delete']
+            if self.request.get('allow_training'):options+=['spatial.affine','spatial.ratio']
+            op=str(rng.choice(options))
+            anchor=str(rng.choice([current,*self.leaves]))
+            if op=='delete':
+                candidates=[p for p in row['parents'] if self.records[p]['operation'] not in {'spatial.observations','spatial.auxiliary'}]
+                child=str(rng.choice(candidates)) if candidates else current
+            elif op=='spatial.blend':child=self.intern(op,[anchor,str(rng.choice(self.leaves))],dict(weight=float(rng.choice([.25,.5,.75]))))
+            else:child=self.intern(op,[anchor],dict(power=float(rng.choice([1.,2.,3.]))) if op=='spatial.residual_idw' else {})
+        return child
+
+    def propose(self,current,family,strategy,rng,destruction=None):
+        choices=[]
+        for _ in range(self.candidate_pool):
+            if self.exhausted():break
+            choices.append(self.candidate(current,family,rng,destruction))
+        if not choices:return None
+        random_child=choices[0];child=random_child
+        prior=None
+        if strategy=='portrait' and self.portraits is not None:
+            child=min(choices,key=lambda k:(self.portraits.order_key(k),k))
+            prior=self.portraits.score(child)
+        before=len(self.rows);self.execute(child,'mutation')
+        self.transitions.append(dict(parent=current,child=child,family=family,
+            strategy=strategy if self.portraits is not None else 'random',
+            actual_execution=len(self.rows)>before,candidates=choices,random_child=random_child,
+            guidance_changed_choice=child!=random_child,candidate_prior=prior))
+        return child
+
+    def product(self,key):
+        task=self.task;xy,dims,shape=positions(task.template)
+        ids=task.observations.drop_duplicates('station_id').station_id.tolist()
+        cohort=task.cohort(ids,xy,task.times)
+        self.account.begin_deployment();executor=self.executor(cohort,'deploy')
+        executed=executor.run(self.nodes(key),key);trace=executed['trace'];a=executed['outputs']['field'].value[:,:len(xy)]
+        projected=int(np.sum(a<0)) if self.request.get('nonnegative') else 0
+        if self.request.get('nonnegative'):a=np.maximum(a,0.)
+        if not np.isfinite(a).all():raise ValueError('Final field incomplete; no silent source-only substitution')
+        bounds=self.request.get('parameters',{}).get('target_valid_range')
+        if bounds is not None and ((a<bounds[0])|(a>bounds[1])).any():
+            raise ValueError('Final estimate outside declared application range')
+        out=xr.Dataset(coords={n:task.template[n] for n in task.template.coords if n!='time' and 'time' not in task.template[n].dims})
+        out=out.assign_coords(time=task.times)
+        variable=self.request['variable'];out[variable]=(('time',*dims),a.reshape(len(task.times),*shape))
+        out[variable].attrs.update(units=self.request['unit'],physical_variable=self.request['physical_variable'],
+            physical_definition=task.fields[0][variable].attrs['physical_definition'] if task.fields else self.request['physical_variable'],
+            temporal_semantics=self.request.get('temporal_semantics','instantaneous'),spatial_semantics='grid_estimate',
+            data_kind='continuous',estimate_kind='spatial model estimate, not additional observed stations')
+        stations=cohort['sxy']
+        outside=np.ones(len(xy),bool)
+        if len(stations)>=3 and np.linalg.matrix_rank(stations-stations.mean(axis=0))==2:
+            outside=Delaunay(stations).find_simplex(xy)<0
+        out['outside_station_hull']=(dims,outside.reshape(shape).astype('int8'))
+        out.outside_station_hull.attrs.update(long_name='Outside conditioning-location convex hull; no accuracy guarantee',units='1')
+        out['conditioning_location_count']=('time',np.isfinite(cohort['y']).sum(axis=1).astype('int32'))
+        out.conditioning_location_count.attrs.update(units='1',long_name='Available input conditioning locations on each date')
+        if self.request.get('temporal_semantics')=='accumulation':
+            out['time_bounds']=(('time','bounds'),np.stack([task.times.values,(task.times+pd.Timedelta(days=1)).values],axis=1))
+        out.attrs.update(crs='EPSG:4326',processing_stage='spatial_estimation',fusion_method=VERSION,
+            selected_graph=key,uncertainty_status='UNKNOWN',nonnegative_projection_count=projected,
+            point_geometry='paired positions' if dims!=('lat','lon') else 'rectilinear analysis grid',
+            source_lineage=json.dumps([ds.attrs.get('source_id','UNKNOWN') for ds in task.fields]),
+            sampling_operator='Rectilinear linear / nearest supplied paired position inside hull; instantaneous covariates may interpolate time linearly without extrapolation; no interval-total interpolation or native-cell equivalence',
+            observation_role='contemporaneous model conditioning; no forecasting claim')
+        quality=ResultQualityGate().validate(task.fields[0] if task.fields else out,out,variable=variable,
+            nonnegative=bool(self.request.get('nonnegative')),expected_output_unit=self.request['unit'])
+        if quality['status']=='BLOCK':raise ValueError('Result quality gate blocked spatial output: '+str(quality))
+        return out,trace
+
+
+@threadpool_limits.wrap(limits=1)
+def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
+    from ecodata.algorithms.composition_optimizers import random_graph_search
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    if (folder/'summary.json').exists():raise ValueError('Immutable spatial request already exists')
+    model=None
+    if request.get('model_profile') or request.get('application_contract'):
+        from ecodata.algorithms.profile_matching import prepare_model_request
+        request,model=prepare_model_request(request)
+        if set(model['matching_requirements']['hard'])-{'nonnegative'}:
+            raise ValueError('Unsupported hard model requirement for spatial-estimation adapter')
+        if 'nonnegative' in model['matching_requirements']['hard']:request=dict(request,nonnegative=True)
+    if request.get('preferences'):
+        raise ValueError('Custom multiobjective preference scoring is not yet supported for the new spatial ports')
+    task=SpatialTask.build(parsed,request,audit)
+    save(folder/'request.json',dict(request=request,inputs=audit,budget=budget,seed=seed,version=VERSION))
+    search=SpatialSearch(task,folder,budget,seed,model=model);search.budget=budget
+    leaves=sorted(search.leaves,key=lambda k:(search.portraits.order_key(k),k)) if search.portraits else search.leaves
+    for key in leaves:
+        if search.exhausted():break
+        search.execute(key)
+    for key in search.comparison_seeds():
+        if search.exhausted():break
+        search.execute(key,'family_baseline')
+    initial=search.best()
+    if not initial:raise ValueError('No executable spatial estimator passed every spatial validation fold')
+    initial_key=initial['key'];search.stopper.start(initial)
+    backend=request.get('mutation_control','random')
+    if backend not in {'random','none'}:raise ValueError('Spatial task supports random mutation or explicit no-mutation control')
+    optimizer=random_graph_search(search,request,dict(portraits_enabled=search.portraits is not None)) if backend=='random' else dict(backend='none')
+    best=search.best()
+    comparison=search.comparison_report(best)
+    out,trace=search.product(best['key']);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
+    with xr.open_dataset(path,engine='h5netcdf') as readback:xr.testing.assert_equal(out,readback.load())
+    assessment=search.post_selection_assessment(dict(selected=best['key'],
+        single_source_baseline=comparison['families']['SINGLE_SOURCE']['best_key']))
+    confirmation=[]
+    # Independent date-block confirmation is post-selection only; no promotion.
+    if len(search.confirm_times):
+        try:
+            for fold in search.folds:
+                cohort=task.cohort(fold['train'],fold['query'],search.confirm_times)
+                executor=search.executor(cohort,'validation_audit')
+                executed=executor.run(search.nodes(best['key']),best['key']);a=executed['outputs']['field'].value[:,:len(fold['held'])]
+                if request.get('nonnegative'):a=np.maximum(a,0.)
+                ref=task.observations.pivot(index='time',columns='station_id',values='value').reindex(index=search.confirm_times,columns=fold['held']).to_numpy(float)
+                mask=np.isfinite(ref)
+                if not np.isfinite(a[mask]).all():raise ValueError('Incomplete confirmation support')
+                confirmation.extend((a[mask]-ref[mask]).tolist())
+            confirm=dict(RMSE=float(np.sqrt(np.mean(np.square(confirmation)))),count=len(confirmation),used_for_selection=False)
+        except (SearchBudgetExceeded,DAGError) as exc:
+            if isinstance(exc,SearchBudgetExceeded) or getattr(exc,'details',{}).get('budget_exhausted'):
+                confirm=dict(status='NOT_EVALUATED_RESOURCE_LIMIT',used_for_selection=False)
+            else:confirm=dict(status='FAILED',error=str(exc),used_for_selection=False)
+    else:confirm=dict(status='NO_SEPARATE_DATE_BLOCK',used_for_selection=False)
+    groups=[dict(held_station_ids=f['held'],training_station_ids=f['train'],reference_sha256=sha256(f['reference'].tobytes()).hexdigest()) for f in search.folds]
+    result=dict(status='PASS',version=VERSION,product=str(path),best=best,initial_key=initial_key,
+        optimizer=optimizer,counts=dict(evaluated=len(search.rows),proposals=search.attempts),
+        stop_reason=search.stopper.reason or ('BUDGET_OR_PROPOSAL_LIMIT' if backend=='random' else 'NO_MUTATION_CONTROL'),
+        selected_graph=dict(key=best['key'],records={n.id:search.records[n.id] for n in search.nodes(best['key'])}),
+        deployment_trace=trace,current_input_deployment=dict(status='PASS'),total_cost=search.account.receipt(),
+        selection_comparison=comparison,post_selection_assessment=assessment,
+        self_validation_protocol=dict(tasks=['spatial_block_selection','untouched_location_assessment','date_block_confirmation'],folds=groups,
+            search_start=str(search.search_times.min()),search_end=str(search.search_times.max()),
+            confirmation_start=str(search.confirm_times.min()) if len(search.confirm_times) else None,
+            self_gridded_reference=task.self_reference,
+            external_test_used=bool(task.evaluation_observations is not None and not task.evaluation_observations.empty and assessment['status']=='PASS'),
+            location_split=search.location_protocol,
+            explicit_test_used=bool(task.evaluation_observations is not None and not task.evaluation_observations.empty),
+            test_used_for_selection=False,
+            deployment_refit='Frozen winning graph refitted on all declared training locations; explicit test remains excluded',
+            reference_scope='held visible grid estimates' if task.self_reference else 'held visible station observations',
+            statistical_independence='UNKNOWN: upstream gridded products may include the target stations'),
+        confirmation=confirm,task_acceptance=dict(status='MECHANISM_AND_OUTPUT_PASS',task_quality_achieved=None),
+        final_validation_best_delivered=True,evolution_used=any(t['actual_execution'] for t in search.transitions),
+        limitations=['No certified global optimum','No downstream native model run','Unknown uncertainty and model sensitivity remain unknown',
+                    'Sparse station cross-validation is not independent product truth','Point estimates are not conservative cell averages'],
+        portrait_scope='Experimental existing three-portrait exploration heuristic; final selection by held-location RMSE' if search.portraits else 'Hard quantity/unit/support/model contracts active; no invented soft benefit ranking for new spatial ports',
+        soft_guidance=dict(enabled=search.portraits is not None,candidate_pool=search.candidate_pool,
+            changed_choices=sum(t['guidance_changed_choice'] for t in search.transitions)))
+    result['component_catalog']=COMPONENTS
+    result['input_relationships']=task.relationships
+    save(folder/'selection_comparison.json',comparison);save(folder/'post_selection_assessment.json',assessment)
+    save(folder/'graphs.json',search.records);save(folder/'candidate_results.json',search.rows);save(folder/'transitions.json',search.transitions)
+    if search.portraits is not None:save(folder/'portraits.json',dict(profiles=search.portraits.profiles,scores=search.portraits.cache))
+    save(folder/'validation_protocol.json',result['self_validation_protocol']);save(folder/'total_cost.json',result['total_cost']);save(folder/'summary.json',result)
+    return result
+
+
+@threadpool_limits.wrap(limits=1)
+def execute_graph(parsed,request,audit,graph,folder):
+    """Fixed reference/deployment through the same ports; never used to seed search."""
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    if (folder/'deployment.json').exists():raise ValueError('Immutable spatial deployment exists')
+    if request.get('model_profile') or request.get('application_contract'):
+        from ecodata.algorithms.profile_matching import prepare_model_request
+        request,model=prepare_model_request(request)
+        if set(model['matching_requirements']['hard'])-{'nonnegative'}:
+            raise ValueError('Unsupported hard model requirement for spatial-estimation adapter')
+        if 'nonnegative' in model['matching_requirements']['hard']:request=dict(request,nonnegative=True)
+    task=SpatialTask.build(parsed,request,audit)
+    budget=dict(objective_limit=1000,total_call_limit=1000,wall_seconds=300,proposal_limit=1)
+    engine=SpatialSearch(task,folder,budget,11);key=engine.bind_graph(graph)
+    graph=dict(key=key,records={n.id:engine.records[n.id] for n in engine.nodes(key)})
+    for node in engine.nodes(key):
+        if node.operation not in COMPONENTS:raise ValueError('Unknown fixed spatial component')
+        if node.operation=='spatial.source' and not 0<=node.parameters['index']<len(task.fields):
+            raise ValueError('Fixed graph source binding differs')
+        if node.operation in {'spatial.affine','spatial.ratio','spatial.aux_affine'} and not request.get('allow_training'):
+            raise ValueError('Fixed fitting requires authorized training')
+    out,trace=engine.product(key);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
+    with xr.open_dataset(path) as saved:xr.testing.assert_equal(out,saved.load())
+    receipt=dict(status='PASS',product=str(path),graph=graph,trace=trace,cost=engine.account.receipt(),
+        selection_performed=False,reference_used=False,inputs=audit)
+    save(folder/'deployment.json',receipt)
+    return receipt
+
+
+@threadpool_limits.wrap(limits=1)
+def evaluate_bank(parsed,request,audit,graphs,folder,*,budget,seed):
+    """Matched validation of fixed controls only; cannot replace live search."""
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    task=SpatialTask.build(parsed,request,audit);engine=SpatialSearch(task,folder,budget,seed);engine.budget=budget
+    keys={}
+    for name,graph in graphs.items():
+        key=engine.bind_graph(graph);keys[name]=key;engine.execute(key,'fixed_control_audit')
+    result=dict(selection_performed=False,product=None,control_keys=keys,
+        controls={name:next((r for r in engine.rows if r['key']==key),dict(status='NOT_EVALUATED_RESOURCE_LIMIT')) for name,key in keys.items()},
+        total_cost=engine.account.receipt(),external_test_used=False)
+    save(folder/'summary.json',result)
+    return result

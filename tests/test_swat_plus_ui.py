@@ -24,7 +24,6 @@ def test_real_ui_calls_writer_and_reports_errors():
     missing,_,_=export_structure(read_structure('weather.nc',good).drop_vars('air_temperature_min'),'NetCDF')
     mutable={'data':good,'config':cfg}
     def upload(label,**kwargs):
-        if label.startswith('上传已有流域工程'): return None
         data=mutable['data'] if label=='导入源数据' else mutable['config']
         return SimpleNamespace(name='weather.nc' if label=='导入源数据' else 'config.json',getvalue=lambda:data)
     original=SWATPlusWriter.write

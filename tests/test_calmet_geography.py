@@ -76,20 +76,3 @@ def save_examples(path):
         ds,cfg,_=case(alternate);name='synthetic_south_km' if alternate else 'synthetic_north_m'
         ds.to_netcdf(path/f'A_{name}.nc',engine='scipy')
         (path/f'config_{name}.json').write_text(json.dumps(cfg,ensure_ascii=False,indent=2),encoding='utf8')
-
-
-def test_nad27_and_signed_native_categories_preserved_without_datum_conversion():
-    ds,cfg,_=case()
-    cfg['crs']='EPSG:26719'
-    cfg['landuse_categories']=[10,11,-20]
-    ds.landuse.values[0,0]=-20
-    files,report=export_geography(ds,cfg)
-    lines=files['GEO.DAT'].decode('ascii').splitlines()
-    assert lines[5].startswith('NAS-C')
-    assert lines[4].strip()=='19N'
-    assert '-20' in lines[10] and '-20' in ' '.join(lines[11:13])
-    assert report['crs']=='EPSG:26719'
-    assert report['origin_km']==[500,1000]
-    ds.attrs['crs']='EPSG:32619'
-    with pytest.raises(SchemaError,match='冲突'):
-        export_geography(ds,cfg)

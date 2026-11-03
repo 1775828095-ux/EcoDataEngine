@@ -136,7 +136,7 @@ class ResultQualityGate:
     def validate(self, source: xr.Dataset, output: xr.Dataset, *, variable: str,
                  semantic_type: str = "continuous", nonnegative: bool = False,
                  model_check: dict[str, Any] | None = None, reference: xr.DataArray | None = None,
-                 validation_role: str | None = None) -> dict[str, Any]:
+                 validation_role: str | None = None, expected_output_unit: str | None = None) -> dict[str, Any]:
         checks: list[dict[str, Any]] = []
         if variable not in output:
             checks.append(_item("output.variable", "结构", "BLOCK", f"输出缺少变量 {variable}", decision="禁止模型适配与交付"))
@@ -150,9 +150,10 @@ class ResultQualityGate:
                             decision="禁止交付" if all_invalid else ("保留 mask 并说明" if invalid else "none")))
         unit = output[variable].attrs.get("units")
         source_unit = source[variable].attrs.get("units") if variable in source else None
-        checks.append(_item("output.unit", "单位", "BLOCK" if not unit or (source_unit and unit != source_unit) else "PASS",
-                            "单位缺失或意外改变" if not unit or (source_unit and unit != source_unit) else f"单位保持为 {unit}",
-                            value=unit, threshold=source_unit))
+        expected_unit = expected_output_unit or source_unit
+        checks.append(_item("output.unit", "单位", "BLOCK" if not unit or (expected_unit and unit != expected_unit) else "PASS",
+                            "单位缺失或意外改变" if not unit or (expected_unit and unit != expected_unit) else f"单位符合要求 {unit}（原单位 {source_unit}）",
+                            value=unit, threshold=expected_unit))
         source_crs = source.attrs.get("crs"); output_crs = output.attrs.get("crs")
         checks.append(_item("output.crs", "空间", "BLOCK" if source_crs and not output_crs else "PASS",
                             "输出 CRS 丢失" if source_crs and not output_crs else "CRS 检查通过"))

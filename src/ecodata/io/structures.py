@@ -107,6 +107,9 @@ def read_structure(name: str, content: bytes, *, hdf_value: str = "", hdf_x: str
         layout=json.loads(Path(__file__).with_name('monitoring_semantics.json').read_text(encoding='utf8'))['fixed_layout']
         frame,evidence=read_monitoring_text(content,layout)
         dataset=attach_table_evidence(table_dataset(frame),evidence)
+    elif suffix=='.csv' and content.lstrip(b'\xef\xbb\xbf').startswith(b'Latitude:') and b'Daymet' in content[:2000]:
+        from ecodata.io.daymet import read_daymet_precipitation
+        dataset=read_daymet_precipitation(content)
     elif suffix in {".csv", ".tsv"}:
         # CSV carries no type schema. Preserve identifiers including leading zeros;
         # numeric conversion is explicit when a numeric operation is requested.

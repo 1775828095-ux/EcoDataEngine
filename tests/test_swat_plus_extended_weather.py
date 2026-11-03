@@ -91,7 +91,6 @@ def test_synthetic_unit_conversion_and_leap_day():
 def test_extended_real_ui_calls_writer_and_downloads_cli_bytes():
     good,cfg=load();cfgbytes=json.dumps(cfg).encode();mutable={'data':good,'config':cfgbytes}
     def upload(label,**kwargs):
-        if label.startswith('上传已有流域工程'): return None
         b=mutable['data'] if label=='导入源数据' else mutable['config']
         return SimpleNamespace(name='weather.nc' if label=='导入源数据' else 'config.json',getvalue=lambda:b)
     expected,_=convert('swat_plus',good,cfg)

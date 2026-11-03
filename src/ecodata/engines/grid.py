@@ -21,13 +21,10 @@ class GridEngine:
         if backend != "fallback" and status["available"] and geographic:
             import xesmf as xe
             if method == "conservative":
-                # cf-xarray owns bounds inference; complex grids require explicit bounds.
                 for ds in (source, target):
                     for axis in ("lat", "lon"):
-                        if ds[axis].ndim != 1 and not ds[axis].attrs.get("bounds"):
-                            raise SchemaError("曲线网格保守重网格需要明确的角点/bounds")
-                source = source.cf.add_bounds([a for a in ("lat", "lon") if source[a].ndim == 1 and not source[a].attrs.get("bounds")])
-                target = target.cf.add_bounds([a for a in ("lat", "lon") if target[a].ndim == 1 and not target[a].attrs.get("bounds")])
+                        if axis + "_b" not in ds and ds[axis].attrs.get("bounds") not in ds:
+                            raise SchemaError("INPUT_REQUIREMENT_MISSING: 保守重网格需要明确的源/目标 cell bounds")
             regridder = xe.Regridder(source, target, "nearest_s2d" if method == "nearest" else method,
                                      unmapped_to_nan=True)
             output = regridder(source, keep_attrs=True)

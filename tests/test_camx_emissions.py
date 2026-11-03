@@ -57,20 +57,6 @@ def test_lcc_metre_globals_kilometre_coordinates():
         assert abs(f.variables['latitude'][0,1]-40)<.02
 
 
-def test_cb05_version_species_and_native_values():
-    frame,cfg=case();cfg.update(version='CAMx-7.10',mechanism='CB05_CF2')
-    cfg['species'][0]['name']='NTR';cfg['species'][1]['name']='POA'
-    files,report=export_gridded_emissions(frame,cfg)
-    assert report['target']=='CAMx-7.10' and 'emissions.CAMx7.40.nc' not in files
-    with netcdf_file(BytesIO(files['emissions.CAMx7.10.nc']),mmap=False) as f:
-        np.testing.assert_array_equal(f.variables['NTR'][:].reshape(-1),np.arange(1,13)*3600)
-        assert f.variables['POA'].units==b'g hr-1'
-    cfg['version']='CAMx-7.40'
-    with pytest.raises(SchemaError):export_gridded_emissions(frame,cfg)
-    cfg.update(version='CAMx-7.10',mechanism='CB6r5_CF3_COMPLX')
-    with pytest.raises(SchemaError):export_gridded_emissions(frame,cfg)
-
-
 @pytest.mark.parametrize('fault', ['missing_cell','duplicate_cell','gap_hour','naive_time','half_hour','missing_marker','negative','nan','extra_column','gas_mass','wrong_phase','unknown_species','missing_unit','wrong_version','bad_grid','bad_base','unknown_projection','missing_config'])
 def test_reject_bad_inputs(fault):
     f,c=case()

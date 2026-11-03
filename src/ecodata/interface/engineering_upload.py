@@ -1,17 +1,57 @@
 """Safe ingestion of a WASP engineering directory or archive."""
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import hashlib
 import io
 import zipfile
 
 
-SUPPORTED_SUFFIXES = {".csv", ".txt", ".rdb", ".gz", ".isd", ".xlsx",
+SUPPORTED_SUFFIXES = {".csv", ".tsv", ".txt", ".rdb", ".gz", ".isd", ".xlsx",
                       ".parquet", ".nc", ".nc4", ".tif", ".tiff", ".h5"}
 WASP_GROUPS = {"usgs", "nbc", "noaa", "ri_dem", "wwtp"}
 IGNORED_GROUPS = {"references", "reference", "official_original", "official_wasp_reference"}
-MAX_FILE_BYTES = 250 * 1024 * 1024
-MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
+MAX_FILE_BYTES = 10 * 1024 * 1024 * 1024
+MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class LocalUpload:
+    """Expose a local file through the same read-only upload protocol."""
+    name: str
+    path: Path
+
+    def getvalue(self):
+        if self.path.stat().st_size > MAX_FILE_BYTES:
+            raise ValueError(f"文件超过10 GB限制：{self.name}")
+        return self.path.read_bytes()
+
+
+def local_folder_uploads(folder, *, include_all=False):
+    """Collect supported files recursively, retaining relative source names."""
+    root = Path(str(folder).strip().strip('"')).expanduser()
+    if not root.is_dir():
+        raise ValueError("文件夹不存在或无法访问，请填写本机上的完整文件夹路径。")
+    root = root.resolve()
+    uploads, total = [], 0
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or (not include_all and path.suffix.casefold() not in SUPPORTED_SUFFIXES | {".zip"}):
+            continue
+        # Links must not silently import data outside the selected directory.
+        if not path.resolve().is_relative_to(root):
+            continue
+        name = path.relative_to(root).as_posix()
+        if not include_all and _group(name)[1]:
+            continue
+        size = path.stat().st_size
+        if size > MAX_FILE_BYTES:
+            raise ValueError(f"文件超过10 GB限制：{name}")
+        total += size
+        if total > MAX_TOTAL_BYTES:
+            raise ValueError("文件夹数据超过10 GB限制，请选择更小的数据子文件夹。")
+        uploads.append(LocalUpload(name, path))
+    if not uploads:
+        raise ValueError("文件夹内未找到支持的数据文件或 ZIP 压缩包。")
+    return uploads
 
 
 @dataclass
@@ -34,6 +74,9 @@ def _normalise(name):
 
 
 def _safe_name(name):
+    raw=str(name).replace('\\','/')
+    if raw.startswith('/') or '\x00' in raw:
+        return False
     normal = _normalise(name)
     path = PurePosixPath(normal)
     return bool(normal) and not path.is_absolute() and ".." not in path.parts and not (
@@ -60,21 +103,21 @@ def _members(upload, *, expand_archives=True):
             if info.is_dir():
                 continue
             member_name = _normalise(info.filename)
-            if not _safe_name(member_name):
+            if not _safe_name(info.filename) or (info.external_attr >> 16) & 0o170000 == 0o120000:
                 members.append((member_name, b"", "ZIP中包含不安全路径"))
                 continue
             if info.file_size > MAX_FILE_BYTES:
-                members.append((member_name, b"", "文件超过250 MB限制"))
+                members.append((member_name, b"", "文件超过10 GB限制"))
                 continue
             total += info.file_size
             if total > MAX_TOTAL_BYTES:
-                members.append((member_name, b"", "ZIP解压后总量超过2 GB限制"))
+                members.append((member_name, b"", "ZIP解压后总量超过10 GB限制"))
                 continue
             members.append((member_name, archive.read(info), None))
     return members
 
 
-def scan_model_uploads(uploads, *, classify_wasp=False, expand_archives=True):
+def scan_model_uploads(uploads, *, classify_wasp=False, expand_archives=True, include_all=False):
     """Expand model folders/ZIPs, filter unsafe files and deduplicate content."""
     result, seen = UploadScan(), {}
     for upload in uploads or []:
@@ -91,11 +134,13 @@ def scan_model_uploads(uploads, *, classify_wasp=False, expand_archives=True):
                 result.ignored.append({"file": name, "reason": "不安全路径"})
                 continue
             group, reason = _group(name)
+            if include_all:
+                reason=None  # Native content/reference checks decide its role.
             if not classify_wasp and reason:
                 # Reference material is never a model input, regardless of model.
                 group = None
             suffix = PurePosixPath(name).suffix.casefold()
-            if reason or suffix not in SUPPORTED_SUFFIXES:
+            if reason or (not include_all and suffix not in SUPPORTED_SUFFIXES):
                 result.ignored.append({"file": name, "reason": reason or f"暂不读取 {suffix or '无扩展名'} 文件"})
                 continue
             digest = hashlib.sha256(content).hexdigest()

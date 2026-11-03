@@ -10,17 +10,6 @@ CASE=Path(__file__).resolve().parents[1]/'examples/ai_round1/cmaq/icon_profile'
 @pytest.fixture(scope='module')
 def sample():return pd.read_csv(CASE/'A_profile_long.csv'),json.loads((CASE/'config.json').read_text())
 def native(data):return list(csv.reader(line for line in data.decode('ascii').splitlines() if not line.startswith('#')))
-
-def test_explicit_cb6r5_35_layer_roundtrip_and_version_guard(sample):
-    frame,cfg=sample;cfg=copy.deepcopy(cfg)
-    cfg['version']='CMAQ-5.5-ICON-profile-CB6R5_AE7_AQ';cfg['layers']=35
-    names=['PRES','ZH','ZF','O3'];cfg['target_units']={n:cfg['target_units'][n] for n in names}
-    data=frame[(frame.layer<=35)&frame.variable.isin(names)].copy()
-    files,report=export_icon_profile(data,cfg);rows=native(files['IC_PROFILE_CMAQ55.csv'])
-    assert report['layers']==35 and len(rows[0])==37
-    assert float(rows[-1][-1])==float(data[(data.variable=='O3')&(data.layer==35)].value.iloc[0])
-    cfg['version']='CMAQ-5.5-ICON-profile-CB6R3M_AE7_KMTBR'
-    with pytest.raises(SchemaError):export_icon_profile(data,cfg)
 def test_official_reference_and_cli(sample):
     frame,cfg=sample
     files,report=convert('cmaq',(CASE/'A_profile_long.csv').read_bytes(),cfg)

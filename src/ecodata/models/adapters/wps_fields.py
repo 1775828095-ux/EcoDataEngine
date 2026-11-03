@@ -203,15 +203,10 @@ def export_pressure(dataset, config):
     if 'UU' in mappings and level_sets['UU'] != level_sets['VV']:
         raise SchemaError('UU/VV等压层不一致')
     if not projected:
-        radius = config.get('earth_radius_km', 6367.47)
-        if isinstance(radius, bool) or not isinstance(radius, (int, float)) or not np.isfinite(radius) or not 6300 <= radius <= 6400:
-            raise SchemaError('earth_radius_km需明确为6300..6400之间的有限数值（km）')
         latitude = np.sort(latitude)
         longitude = np.sort(longitude)
         ny, nx = len(latitude), len(longitude)
-        projection = _text('SWCORNER', 8)+struct.pack('>5f', latitude[0], longitude[0], latitude[1]-latitude[0], longitude[1]-longitude[0], radius)
-        projection_info['earth_radius_km'] = radius
-        projection_info['earth_radius_source'] = 'configuration' if 'earth_radius_km' in config else 'legacy default; verify against target project'
+        projection = _text('SWCORNER', 8)+struct.pack('>5f', latitude[0], longitude[0], latitude[1]-latitude[0], longitude[1]-longitude[0], 6367.47)
     files, float_errors = {}, {}
     for i, t in enumerate(times):
         chunks = []

@@ -8,12 +8,11 @@ import numpy as np
 from netCDF4 import Dataset
 from ecodata.core.exceptions import SchemaError
 from ecodata.models.adaptation import unit_transform
-from ecodata.models.adapters.cmaq_gridded_emissions import _grid,_time,_griddesc,_number,CATALOGS
+from ecodata.models.adapters.cmaq_gridded_emissions import _grid,_time,_griddesc,_number,CATALOG
 
 
 def export_boundary(ds,cfg):
-    if cfg.get('version')!='CMAQ-5.5' or cfg.get('mechanism') not in CATALOGS:raise SchemaError('仅支持CMAQ5.5/cb6r3_ae7_aq或cb6r5_ae7_aq边界资料直接编码')
-    catalog=CATALOGS[cfg['mechanism']]
+    if cfg.get('version')!='CMAQ-5.5' or cfg.get('mechanism')!=CATALOG['mechanism']:raise SchemaError('仅支持CMAQ5.5/cb6r3_ae7_aq边界资料直接编码')
     source=cfg.get('source')
     if not isinstance(source,dict) or not all(source.get(k) for k in ('kind','description','license')):raise SchemaError('需source.kind/description/license')
     axes=cfg.get('axes')
@@ -58,7 +57,7 @@ def export_boundary(ds,cfg):
     arrays={};units={};errors={};used=[]
     for name,m in fields.items():
         if not isinstance(m,dict) or set(m)!={'source','type','source_units'}:raise SchemaError('物种配置需source/type/source_units')
-        kind=m['type'];accepted=catalog['gas_molecular_weights_g_mol'] if kind=='gas' else catalog['aerosol_mass'] if kind=='aerosol_mass' else []
+        kind=m['type'];accepted=CATALOG['gas_molecular_weights_g_mol'] if kind=='gas' else CATALOG['aerosol_mass'] if kind=='aerosol_mass' else []
         if name not in accepted or m['source'] not in ds.data_vars:raise SchemaError(f'{name}物种或源变量无效')
         field=ds[m['source']];dims=(time,layer,perim)
         if field.dtype.kind not in 'iuf':raise SchemaError(f'{name}需实数浓度，不能丢弃复数或转换布尔值')

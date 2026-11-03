@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ecodata-engine"
-version = "1.0.1.dev3+swatui.20261024.acceptance1"
+version = "1.0.1.dev1+source.20261006.r12"
 description = "Unified, semantics-aware environmental data processing engine"
 requires-python = ">=3.11"
 dependencies = [
@@ -22,6 +22,7 @@ dependencies = [
   "pyshp>=2.3,<3",
   "psutil>=7,<8",
   "scipy>=1.12,<2",
+  "threadpoolctl>=3,<4",
   "streamlit>=1.50,<2",
   "xarray>=2024.1,<2027",
   "xarray-regrid>=0.4.2,<0.5",
@@ -43,6 +44,13 @@ galileo = ["einops>=0.7,<0.9"] # Official Galileo single-file encoder dependency
 verification = ["PseudoNetCDF==3.4.1", "geographiclib==2.1"] # Independent readers; not production writers.
 pnc = ["PseudoNetCDF==3.5.0"] # Optional reader, bundled and tested in round-one portable.
 xesmf = ["xesmf>=0.9,<0.10"] # ESMPy must be installed separately.
+golem = ["thegolem==0.5.0"] # Isolated graph-search backend; BSD-3-Clause.
+composition-search = ["alns==7.0.0", "pymoo==0.6.2"] # Optional native optimisers; no GOLEM dependency in optimiser adapter.
+environment-algorithms = ["pykrige==1.7.3", "metpy==1.7.1", "xsdba==0.5.0"]
+raster-complements = ["scikit-image==0.26.0", "PyWavelets==1.10.0"]
+advanced-complements = ["opencv-contrib-python-headless==5.0.0.93", "dask[array]==2026.8.0", "zarr==3.4.1"]
+climate-statistics = ["xclim==0.59.1", "yamale==6.1.0"]
+terrain-components = ["scikit-learn==1.9.1", "netCDF4>=1.6,<2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -52,4 +60,4 @@ addopts = "-q --basetemp=.pytest_tmp"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ecodata = ["models/profiles/*.json", "models/adapters/*.json", "io/*.json", "interface/*.json"]
+ecodata = ["models/profiles/*.json", "models/adapters/*.json", "io/*.json", "algorithms/*.json"]

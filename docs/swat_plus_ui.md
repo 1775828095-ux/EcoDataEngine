@@ -25,6 +25,3 @@ CLI：`python -m ecodata.round1 --model swat_plus --input examples/ai_round1/swa
 界面：上传A_power_2021.nc → 上传同目录config_ui.json → 检查配置 → 执行专项转换 → 下载全部转换文件。旧便携ZIP未更新，不能用来复测本轮新增变量。
 
 2026-10-05 最小修复：仅改变专项 CLI/界面天气下载包的交付范围，保留通用 writer 和模板模式行为。输出请使用新目录，避免旧目录中残留先前的 file.cio。现有 Windows 便携版 ZIP 未更新，不包含本轮修复。
-
-
-2026-10-22 weatherlink1：日天气结果下方可上传已有工程ZIP、选择目标天气站，自动放入新天气并更新站点/变量索引。天气单独包仍不提供file.cio；工程副本保留用户原file.cio并在新增可选变量时仅更新climate索引。详见swat_weather_project.md。

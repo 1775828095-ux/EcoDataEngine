@@ -2,6 +2,12 @@
 from ecodata.core.exceptions import SchemaError
 
 
+def get_preprocessor(identifier):
+    """Explicit official preprocessing, separate from generic fusion/search."""
+    from ecodata.models.adapters.official_preprocessing import get_preprocessor as select
+    return select(identifier)
+
+
 def get_adapter(schema):
     from ecodata.models.adapters.standardized import ModelAdapter
     from ecodata.models.adapters.cmaq import CMAQAdapter

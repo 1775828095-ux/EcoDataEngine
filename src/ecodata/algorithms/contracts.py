@@ -29,6 +29,17 @@ class AlgorithmSpec:
     backend: str = "EcoData Engine"
     source_url: str | None = None
     notes: str = ""
+    capabilities: tuple[str, ...] = ()
+    preconditions: tuple[str, ...] = ()
+    input_contract: dict[str, Any] = field(default_factory=dict)
+    output_contract: dict[str, Any] = field(default_factory=dict)
+    verification_evidence: tuple[str, ...] = ()
+    auxiliary_inputs: tuple[str, ...] = ()
+    temporal_requirements: tuple[str, ...] = ()
+    spatial_requirements: tuple[str, ...] = ()
+    runtime_requirements: tuple[str, ...] = ()
+    verification_status: str = "UNVERIFIED"
+    official_entry_point: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         value = asdict(self)

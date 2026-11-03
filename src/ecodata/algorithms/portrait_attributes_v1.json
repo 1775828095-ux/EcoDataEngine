@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "version": "builtin-v1",
+  "parent_sha256": null,
+  "created_at": "2026-10-23",
+  "evidence": "Existing reviewed portrait_rules.py providers; structural suitability, not environmental accuracy.",
+  "attributes": [
+    {"id":"range_preservation","definition":"Reviewed final-output input-range guarantee","tables":["data","algorithm","model"],"unit":"dimensionless","role":"scoring","scoring_enabled":true,"hard_allowed":true,"provider":"guarantee","property":"range_preservation","activation":"variation","evidence":"Existing finite interior interpolation transfer rules","history":["Initial reviewed provider"]},
+    {"id":"continuity","definition":"Reviewed spatial continuity guarantee","tables":["data","algorithm","model"],"unit":"dimensionless","role":"scoring","scoring_enabled":true,"hard_allowed":true,"provider":"guarantee","property":"continuity","activation":"variation","evidence":"Existing finite interior interpolation transfer rules","history":["Initial reviewed provider"]},
+    {"id":"no_mixing","definition":"Reviewed copying of source sample values","tables":["data","algorithm","model"],"unit":"dimensionless","role":"scoring","scoring_enabled":true,"hard_allowed":true,"provider":"guarantee","property":"no_mixing","activation":"variation","evidence":"Nearest selection and existing projection transfer rules","history":["Initial reviewed provider"]},
+    {"id":"nonnegative","definition":"Reviewed nonnegative output guarantee","tables":["data","algorithm","model"],"unit":"dimensionless","role":"scoring","scoring_enabled":true,"hard_allowed":true,"provider":"guarantee","property":"nonnegative","activation":"negative_fraction","evidence":"Existing interpolation and nonnegative projection transfer rules","history":["Initial reviewed provider"]},
+    {"id":"coarse_consistency","definition":"Consistency with an explicitly declared coarse observation operator","tables":["data","algorithm","model"],"unit":"dimensionless","role":"scoring","scoring_enabled":true,"hard_allowed":true,"provider":"guarantee","property":"coarse_consistency","activation":"constant_one","evidence":"Existing coarse-observation QP; not a universal mass-conservation claim","history":["Initial reviewed provider"]}
+  ]
+}

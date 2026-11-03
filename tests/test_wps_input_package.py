@@ -14,27 +14,6 @@ def transform(data,func):
         for name in z.namelist():out.writestr(name,func(z.read(name)))
     return raw.getvalue()
 
-def test_regular_ll_east_longitude_preserved_not_shifted():
-    from ecodata.interface.wrf_assembly import read_fields
-    data,cfg=case()
-    def east(raw):
-        records=read_fields(raw)
-        result=[]
-        for record in records:
-            projection=bytearray(record.parts[2]);struct.pack_into('>f',projection,12,230.)
-            record.parts[2]=bytes(projection);result.append(record.raw)
-        return b''.join(result)
-    data=transform(data,east)
-    files,_=convert('wrf',data,cfg)
-    originals=[]
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        for n in z.namelist():originals.extend(read_fields(z.read(n)))
-    for name,raw in files.items():
-        if not name.endswith('.wps'):continue
-        for r in read_fields(raw):
-            assert r.grid[1]==230.
-            assert any(r.raw==o.raw for o in originals)
-
 @pytest.mark.parametrize('label,shape,iproj',[('latlon',(2,3),0),('lambert',(3,2),3)])
 def test_independent_scipy_native_parse_and_values(label,shape,iproj):
     data,cfg=case(label);files,report=convert('wrf',data,cfg)

@@ -35,10 +35,6 @@ def _identifier(value, label):
 
 
 def _unit_transform(name, unit):
-    # cli_initwgn uses this native slot as RH when all 12 values are in [0,1].
-    # Explicit source units select meaning; never convert RH into a temperature.
-    if name == 'dewpt' and unit in {'1', '%'}:
-        return (.01 if unit == '%' else 1.), 0.
     if unit == UNITS[name]:
         return 1., 0.
     if name in {'tmpmx', 'tmpmn', 'dewpt'}:
@@ -147,8 +143,7 @@ def export_wgn(content, config, weather_station_index=None):
     title = config.get('title', 'weather-wgn.cli: SWAT+ 62.0.0 climate statistics')
     if not isinstance(title,str) or not title.isascii() or not title.strip() or len(title)>80 or '\n' in title or '\r' in title:
         raise SchemaError('title需1–80字符单行ASCII')
-    lines = [title]; warnings = []; humidity_modes = {}
-    output_units = {**UNITS, 'dewpt': '1' if units['dewpt'] in {'1', '%'} else 'degC'}
+    lines = [title]; warnings = []
     for name, coords in stations.items():
         frame = data[data.station==name].sort_values('month')
         if frame.month.duplicated().any(): raise SchemaError(f'{name}有重复月份')
@@ -156,7 +151,6 @@ def export_wgn(content, config, weather_station_index=None):
         if missing: raise SchemaError(f'{name}缺月份：{missing}；不能补零')
         lines.append(' '.join([name]+[repr(coords[n]) for n in STATION_UNITS]))
         lines.append(' '.join(n.upper() for n in FIELDS))
-        humidity_values = []
         for row in frame.to_dict('records'):
             mo = row['month']; label = f'{name}月{mo}'
             original = {n:_number(row[n], f'{label}.{n}') for n in FIELDS}
@@ -164,9 +158,6 @@ def export_wgn(content, config, weather_station_index=None):
                 if v in missing_markers: raise SchemaError(f'{label}.{n}为来源缺测标记{v}；不能填零')
             values = {n:original[n]*transforms[n][0]+transforms[n][1] for n in FIELDS}
             if not all(np.isfinite(v) for v in values.values()): raise SchemaError(f'{label}单位转换溢出')
-            if output_units['dewpt'] == '1' and not 0 <= values['dewpt'] <= 1:
-                raise SchemaError(f'{label}.dewpt按相对湿度声明时必须为0–1（或输入0–100%）')
-            humidity_values.append(values['dewpt'])
             if values['tmpmx'] < values['tmpmn']: raise SchemaError(f'{label}最高温低于最低温')
             for n in ('tmpstdmx','tmpstdmn','pcpmm','pcpstd','pcpd','rainhmx','solarav','windav'):
                 if values[n] < 0: raise SchemaError(f'{label}.{n}不能为负值/缺测标记')
@@ -177,15 +168,11 @@ def export_wgn(content, config, weather_station_index=None):
             if values['pcpskw'] < .2 or values['pr_ww'] <= values['pr_wd'] or values['pr_wd'] <= 0:
                 warnings.append(f'{label}：SWAT+初始化可能调整偏度/湿日概率/湿日数；本转换保留原值')
             lines.append(' '.join(repr(values[n]) for n in FIELDS))
-        if output_units['dewpt'] == 'degC' and all(0 <= value <= 1 for value in humidity_values):
-            raise SchemaError(f'{name}的12个月露点均在0–1°C，SWAT+62会按相对湿度分数读取；不能无损表达该露点序列，请提供有依据的湿度统计或调整目标工作流，不能仅改单位标签')
-        humidity_modes[name] = 'relative_humidity_fraction' if output_units['dewpt'] == '1' else 'dewpoint_temperature'
     reference = check_station_references(weather_station_index, stations)
     report = {'scope':'SWAT+ 62.0.0 weather-wgn.cli statistics only',
               'stations':stations, 'months_per_station':12, 'monthly_fields':list(FIELDS),
-              'units':output_units, 'station_units':STATION_UNITS,
-              'humidity_semantics':humidity_modes,
-              'unit_conversions':{n:{'input':units[n],'output':output_units[n],'multiply_by':transforms[n][0],'add':transforms[n][1]} for n in FIELDS},
+              'units':UNITS, 'station_units':STATION_UNITS,
+              'unit_conversions':{n:{'input':units[n],'output':UNITS[n],'multiply_by':transforms[n][0],'add':transforms[n][1]} for n in FIELDS},
               'source':source, 'provenance_verification':'source metadata supplied by user, not independently certified by converter',
               'station_reference_check':reference, 'warnings':warnings,
               'random_weather_generation':False, 'climate_statistics_calculated':False,
@@ -197,7 +184,6 @@ def export_wgn(content, config, weather_station_index=None):
               'Optional uploaded weather-sta.cli is checked for WGN names only, not modified or repackaged.\n'
               'Without that file, station association is unverified. Check the report before using it.\n'
               'SWAT initialization may change skewness, wet-day probabilities and wet-day counts; exporter preserves supplied values.\n'
-              'The native dewpt slot is RH fraction if all 12 values are within [0,1], otherwise dewpoint degC. Explicit source units and report specify meaning; no RH/dewpoint estimation is performed.\n'
               'Not an independently runnable basin project; no official SWAT run verified.\n')
     return {'weather-wgn.cli': ('\n'.join(lines)+'\n').encode('ascii'),
             'README_WGN.txt':readme.encode('ascii')}, report

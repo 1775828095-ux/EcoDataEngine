@@ -1,0 +1,5 @@
+# Optional isolated CPU backends; retain base project dependencies separately.
+pyresample==1.35.0
+emiproc==2.10.0
+tensorboardX==2.6.5
+# R is external/R-4.5.2; R-library uses mpspline2 0.1.9 and aqp 2.3.2.

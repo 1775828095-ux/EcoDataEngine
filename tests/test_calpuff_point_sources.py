@@ -5,33 +5,8 @@ import pytest
 from ecodata.round1 import convert
 from ecodata.core.exceptions import SchemaError
 BASE=Path(__file__).parents[1]/'examples/ai_round1/calpuff/points'
-
-def test_preserve_optional_sigma_omission_without_fabricating_zero():
-    data,cfg=case()
-    cfg['initial_sigmas_policy']='preserve_source_omission'
-    for group in ('fields','units'):
-        for field in ('sigma_y','sigma_z'):cfg[group].pop(field)
-    files,report=convert('calpuff',data,cfg)
-    assert not re.search(rb'!\s*SIGYZI\s*=',files['CALPUFF.INP'])
-    assert report['initial_sigmas_policy']=='preserve_source_omission'
-    changed=change(data,'points.csv',lambda b:b.replace(b'STK1',b'NEW1'))
-    with pytest.raises(SchemaError,match='数量及名称'):
-        convert('calpuff',changed,cfg)
-    changed=change(data,'supplied.INP',lambda b:b.replace(b'FMFAC',b'SIGYZI = 1, 1 ! ! FMFAC',1))
-    with pytest.raises(SchemaError,match='省略'):
-        convert('calpuff',changed,cfg)
 def case(label='NAD27'):
     return (BASE/f'A_synthetic_{label}.zip').read_bytes(),json.loads((BASE/f'config_{label}.json').read_text(encoding='utf8'))
-
-def test_explicit_version_scope_and_unknown_version_rejected():
-    data,cfg=case()
-    cfg['version']='CALPUFF-7.2.1-group13'
-    files,report=convert('calpuff',data,cfg)
-    assert report['scope'].startswith('CALPUFF-7.2.1-group13')
-    assert report['model_run_verified'] is False
-    cfg['version']='CALPUFF-unknown-group13'
-    with pytest.raises(SchemaError,match='group13'):
-        convert('calpuff',data,cfg)
 def change(data,name,fn):
     b=io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(data)) as z,zipfile.ZipFile(b,'w') as out:

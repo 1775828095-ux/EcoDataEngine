@@ -70,25 +70,3 @@ def save_examples(path):
             ds,cfg,_=case(category,alternate);name=('landuse' if category else 'terrain')+('_mapped' if alternate else '_standard')
             ds.to_netcdf(path/f'A_synthetic_{name}.nc',engine='scipy')
             (path/f'config_synthetic_{name}.json').write_text(json.dumps(cfg,ensure_ascii=False,indent=2),encoding='utf8')
-
-
-@pytest.mark.parametrize('fault',[None,'sum','order','missing_layer','unit'])
-def test_explicit_fraction_layers_preserve_mixed_categories(fault):
-    ds,cfg,_=case(category=True)
-    values=np.zeros((4,2,3),dtype=np.int16);values[0]=30;values[1]=70
-    ds['value']=(('category','lat','lon'),values,{'units':'%'})
-    ds=ds.assign_coords(category=[1,2,3,4]);cfg.update(representation='fraction_layers',category_coordinate='category')
-    if fault=='sum':ds.value.values[0,0,0]=29
-    if fault=='order':ds=ds.assign_coords(category=[2,1,3,4])
-    if fault=='missing_layer':ds=ds.isel(category=slice(0,3))
-    if fault=='unit':ds.value.attrs['units']='1'
-    if fault:
-        with pytest.raises(SchemaError):export_geography(ds,cfg)
-        return
-    files,report=export_geography(ds,cfg)
-    with zipfile.ZipFile(io.BytesIO(files['geogrid_LANDUSEF.zip'])) as z:
-        index=dict(line.split('=',1) for line in z.read('index').decode().splitlines())
-        assert index['type']=='continuous' and index['tile_z']=='4'
-        raw=z.read(report['native_tile'])
-        actual=np.array(struct.unpack('>'+str(values.size)+'h',raw)).reshape(values.shape)
-        np.testing.assert_array_equal(actual,values)

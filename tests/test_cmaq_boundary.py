@@ -7,15 +7,6 @@ from scipy.io import netcdf_file
 from ecodata.models.adapters.cmaq_boundary import export_boundary
 from ecodata.core.exceptions import SchemaError
 
-def test_cb6r5_uses_explicit_catalog_without_relabeling_values():
-    ds,cfg=case();cfg['mechanism']='cb6r5_ae7_aq'
-    files,report=export_boundary(ds,cfg)
-    with netcdf_file(io.BytesIO(files['boundary.CMAQ55.nc']),'r',mmap=False) as nc:
-        assert nc.variables['O3'].units.strip()==b'ppmV'
-        assert np.isfinite(nc.variables['O3'].data).all()
-    cfg['mechanism']='unknown'
-    with pytest.raises(SchemaError,match='cb6r5'):export_boundary(ds,cfg)
-
 
 def case(alternate=False):
     nx,ny,nl=(3,2,2) if not alternate else (2,3,3)

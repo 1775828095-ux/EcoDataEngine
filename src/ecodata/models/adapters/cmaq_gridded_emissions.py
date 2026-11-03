@@ -15,8 +15,6 @@ from ecodata.core.exceptions import SchemaError
 from ecodata.models.adaptation import unit_transform
 
 CATALOG = json.loads(Path(__file__).with_name('cmaq_emission_species.json').read_text())
-CATALOG_CB6R5 = json.loads(Path(__file__).with_name('cmaq_emission_species_cb6r5.json').read_text())
-CATALOGS = {c['mechanism']: c for c in (CATALOG, CATALOG_CB6R5)}
 
 
 def _griddesc(grid):
@@ -165,8 +163,8 @@ def _area(config, dataset, grid, axes):
 
 
 def export_gridded_emissions(dataset, config):
-    if config.get('version') != 'CMAQ-5.5' or config.get('mechanism') not in CATALOGS:
-        raise SchemaError('当前网格排放只核对CMAQ5.5的cb6r3_ae7_aq或cb6r5_ae7_aq；其他机制需独立物种表适配，不自动互换')
+    if config.get('version') != 'CMAQ-5.5' or config.get('mechanism') != CATALOG['mechanism']:
+        raise SchemaError('当前网格排放只核对CMAQ5.5/cb6r3_ae7_aq；其他机制需独立物种表适配')
     if config.get('layer_mode') != 'surface':
         raise SchemaError('当前仅真实已分配到地面层的排放；不猜测高架源层分配')
     source = config.get('source')
@@ -186,24 +184,15 @@ def export_gridded_emissions(dataset, config):
         raise SchemaError('需明确vertical.VGTYP/VGTOP/VGLVLS，与目标气象工程一致')
     vgt=_number(vertical['VGTYP'],'VGTYP',True);top=_number(vertical['VGTOP'],'VGTOP')
     levels=np.asarray(vertical['VGLVLS'],dtype=float)
-    sigma_surface = vgt==7 and top>0 and levels.shape==(2,) and np.isfinite(levels).all() and 0<=levels[1]<levels[0]<=1
-    # Official CMAS 2018 12NE3 single-layer emissions declare VGTYP=-1,
-    # VGTOP=0 and VGLVLS=[0,0]. This is an explicitly unspecified surface
-    # inventory, not an atmospheric vertical coordinate inferred from MCIP.
-    unspecified_surface = (vgt==-1 and top==0 and levels.shape==(2,)
-        and np.array_equal(levels,[0,0]) and config.get('surface_layer_assignment')=='model_first_layer'
-        and isinstance(config.get('surface_layer_assignment_source'),str)
-        and bool(config['surface_layer_assignment_source'].strip()))
-    if not (sigma_surface or unspecified_surface):
-        raise SchemaError('需VGTYP=7的有效单地面层sigma边界；或明确VGTYP=-1/VGTOP=0/VGLVLS=[0,0]、surface_layer_assignment=model_first_layer及其依据；不推断垂直分配')
+    if vgt!=7 or top<=0 or levels.shape!=(2,) or not np.isfinite(levels).all() or not 0<=levels[1]<levels[0]<=1:
+        raise SchemaError('当前仅支持VGTYP=7、正VGTOP、两个递减0..1 sigma-pressure边界的单地面层')
     arrays={};units={};operations={};area=None
     used=[]
     for target, mapping in fields.items():
         if not isinstance(mapping,dict) or not re.fullmatch(r'[A-Z][A-Z0-9_]{0,15}',str(target)):
             raise SchemaError(f'无效物种名或字段配置：{target}')
         kind=mapping.get('type');name=mapping.get('source')
-        catalog = CATALOGS[config['mechanism']]
-        accepted=catalog['gas_molecular_weights_g_mol'] if kind=='gas' else catalog['aerosol_mass'] if kind=='aerosol_mass' else []
+        accepted=CATALOG['gas_molecular_weights_g_mol'] if kind=='gas' else CATALOG['aerosol_mass'] if kind=='aerosol_mass' else []
         if target not in accepted:
             raise SchemaError(f'{target}不是所选机制{kind}物种；不把PM25/NOx等总量自动拆分')
         if name not in dataset.data_vars:
@@ -275,7 +264,7 @@ def export_gridded_emissions(dataset, config):
         content=bytes(ncf.close());ncf=None
     finally:
         if ncf is not None:ncf.close()
-    notes=(f'CMAQ5.5 {config["mechanism"]} GRDDED3地面排放文件，目标逻辑流GR_EMIS_XXX。'
+    notes=('CMAQ5.5 cb6r3_ae7_aq GRDDED3地面排放文件，目标逻辑流GR_EMIS_XXX。'
            '需要与MCIP网格/垂直定义和DESID物种映射匹配；不生成气象、初始/边界场或控制工程。'
            'hourly仅保留真实逐小时；static_inventory保存明确平均期的时间不变排放，TSTEP/SDATE/STIME/TFLAG=0，'
            '不是实测逐小时排放，应用到仿真时需用户明确静态清单时间使用假设。'
@@ -284,8 +273,6 @@ def export_gridded_emissions(dataset, config):
         'target':'CMAQ 5.5 GR_EMIS_XXX / I/O API GRDDED3','mechanism':config['mechanism'], 'grid':grid,'time_mode':config['time_mode'],
         'times_utc': [pd.Timestamp(t).isoformat() for t in dataset[time_name].values] if time_name else [],'time_interpolation':'none',
         'variable_units':units,'conversion_operations':operations,'surface_layer_only':True,'source':source,
-        'vertical':vertical,'surface_layer_assignment':config.get('surface_layer_assignment'),
-        'surface_layer_assignment_source':config.get('surface_layer_assignment_source'),
         'unmapped_source_variables':[k for k in dataset.data_vars if k not in used and k!=config.get('cell_area_variable')],
         'numeric_storage':'IEEE float32; relative rounding bound 1e-7 except subnormal values', 'scope':notes,
         'griddesc_scope':'Single emission grid only; horizontal geometry matches NetCDF. No vertical/meteorological data in GRIDDESC.',

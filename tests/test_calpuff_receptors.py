@@ -71,23 +71,3 @@ def save_examples(path):
         data,cfg,_,_=case(alternate);name='synthetic_mapped_WGS84' if alternate else 'synthetic_NAD27'
         (path/f'A_{name}.zip').write_bytes(data)
         (path/f'config_{name}.json').write_text(json.dumps(cfg,ensure_ascii=False,indent=2),encoding='utf8')
-
-
-def test_group20_preserves_explicit_no_groups_and_latin1_comments():
-    data,cfg,expected,original=case()
-    original=original.replace('!  NREC =  0   !','!  NREC =  0   !\n! NRGRP = 0 !')
-    assert 'NRGRP = 0' in original
-    original='author\x92s comment\n'+original
-    cfg.update(version='CALPUFF-7.2.1-group20',control_encoding='latin1')
-    rows=[['r1',310250,4820500,123.5,2.5]]
-    raw=bundle(rows,list(cfg['fields']),original)
-    # bundle encodes strings asUTF8; write original control bytes explicitly.
-    b=io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(raw)) as z,zipfile.ZipFile(b,'w') as out:
-        out.writestr('receptors.csv',z.read('receptors.csv'));out.writestr('CPUF.INP',original.encode('latin1'))
-    files,report=export_receptors(b.getvalue(),cfg)
-    text=files['CALPUFF.INP'].decode('latin1')
-    assert text.startswith('author\x92s comment') and '! NRGRP = 0 !' in text and 'group20c' in text
-    assert report['receptors']==1 and report['version']==cfg['version']
-    cfg['control_encoding']='utf8'
-    with pytest.raises(SchemaError):export_receptors(b.getvalue(),cfg)

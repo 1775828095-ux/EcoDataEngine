@@ -12,10 +12,19 @@ from ecodata.core.schemas import EcoDataBundle, TransformRecord, TransformResult
 from ecodata.io.readers import dataset_to_frame
 
 
+def residual_difference(observed, background):
+    return observed - background
+
+
+def residual_addition(background, correction):
+    return background + correction
+
+
 @dataclass(frozen=True)
 class ResidualFusionConfig:
     variable: str = "value"
     interpolation: str = "linear"
+    outside_hull: str = "nearest"
 
 
 class ResidualFieldFusion:
@@ -34,6 +43,8 @@ class ResidualFieldFusion:
             raise SchemaError("P2 residual fusion accepts one two-dimensional background field")
         if self.config.interpolation not in {"linear", "nearest"}:
             raise SchemaError("Residual interpolation must be linear or nearest")
+        if self.config.outside_hull not in {"nearest", "mask"}:
+            raise SchemaError("Residual outside_hull must be nearest or mask")
 
         frame = dataset_to_frame(observations.dataset)
         names = frame["variable"].unique()
@@ -54,18 +65,22 @@ class ResidualFieldFusion:
         station_lat = xr.DataArray(frame["latitude"].to_numpy(), dims="station")
         station_lon = xr.DataArray(frame["longitude"].to_numpy(), dims="station")
         predicted = bg[variable].interp(lat=station_lat, lon=station_lon, method="linear").values
-        residual = frame["value"].to_numpy(dtype=float) - predicted
+        residual = residual_difference(frame["value"].to_numpy(dtype=float), predicted)
         target_lon, target_lat = np.meshgrid(bg["lon"].values, bg["lat"].values)
         points = np.column_stack([frame["longitude"], frame["latitude"]])
         correction = griddata(points, residual, (target_lon, target_lat), method=self.config.interpolation)
-        if self.config.interpolation == "linear" and np.isnan(correction).any():
+        if self.config.interpolation == "linear" and np.isnan(correction).any() and self.config.outside_hull == "nearest":
             nearest = griddata(points, residual, (target_lon, target_lat), method="nearest")
             correction = np.where(np.isnan(correction), nearest, correction)
+        if self.config.outside_hull == "mask":
+            from scipy.spatial import Delaunay
+            inside_hull = Delaunay(points).find_simplex(np.column_stack([target_lon.ravel(), target_lat.ravel()])) >= 0
+            correction = np.where(inside_hull.reshape(target_lon.shape), correction, np.nan)
 
         output = bg.copy(deep=True)
         output["background_value"] = bg[variable].copy(deep=True)
         output["residual_correction"] = (("lat", "lon"), correction)
-        output[variable] = bg[variable] + output["residual_correction"]
+        output[variable] = residual_addition(bg[variable], output["residual_correction"])
         output.attrs.update(
             {
                 "processing_stage": "fused",
@@ -80,7 +95,8 @@ class ResidualFieldFusion:
         )
         record = TransformRecord(
             method=self.name,
-            parameters={"interpolation": self.config.interpolation, "observation_count": len(frame)},
+            parameters={"interpolation": self.config.interpolation, "observation_count": len(frame),
+                        "outside_hull": self.config.outside_hull},
             input_rows=int(bg[variable].size + len(frame)),
             output_rows=int(output[variable].size),
             elapsed_seconds=perf_counter() - started,

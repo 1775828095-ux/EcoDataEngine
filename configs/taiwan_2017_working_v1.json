@@ -1,0 +1,32 @@
+{
+  "version": "taiwan-2017-working-v1.0.0",
+  "status": "FROZEN_USER_SPECIFIED_WORKING_CONVENTION",
+  "author_original_definitions_verified": false,
+  "ground": {
+    "id_field": "stn_eng", "time_field": "DT", "value_field": "PM2.5",
+    "field_types": {"stn_eng": "string", "DT": "timestamp", "PM2.5": "float64"},
+    "naive_timezone": "Asia/Taipei", "aware_time": "preserve instant; convert, never apply offset twice",
+    "hour_interval": "[t,t+1h)", "unit": "ug m-3", "unit_evidence": "paper 10.1029/2020EA001599; not a unit column in author CSV",
+    "quality_flag": "ABSENT_IN_AUTHOR_TABLE; preserve raw value and missing state, never invent instrument QA",
+    "invalid": "missing/nonfinite/negative values excluded, not filled", "duplicates": "reject station + UTC interval duplicates"
+  },
+  "satellite": {
+    "value": "AOD550", "qa": "QCAll", "unit": "1", "qa_accept": [0, 1],
+    "valid_range": [-0.05, 5], "scale_offset": "apply declared attributes; range and fill evaluated in stored representation",
+    "time_priority": "explicit observation time metadata before custom filename; never Algorithm release or template System time",
+    "filename_naive_timezone": "Asia/Taipei", "filename_time_status": "NOMINAL_TIME_WORKING_ASSUMPTION_NOT_VERIFIED_PIXEL_SCAN_TIME",
+    "hour_aggregation": "mean of actual QA-passing scan neighborhood means inside left-closed right-open hour",
+    "neighborhood_metres": 27500,
+    "composites": "accept actual interval wholly within one target hour; reject cross-hour composites rather than invent within-interval evolution",
+    "missing": "preserve mask; no cross-hour borrowing or fabricated scans"
+  },
+  "space": {
+    "station_original_fields": ["SiteEngName", "Lon", "Lat"],
+    "unverified_geographic_crs": "EPSG:4326", "metric_crs": "EPSG:32651",
+    "all_distance_methods": "same projected easting/northing in metres, including IDW",
+    "domain": "training convex hull; no unsupported extrapolation",
+    "projected_input": "must declare a projected CRS; never interpret metre coordinates as degrees"
+  },
+  "split": {"source": "output/taiwan_2017_preparation_20261019/golem_dag_smoke/station_split.csv", "sha256": "58d97ce058b86e9460e3bed68b5047fc1e67b6a86e2d1bf7088b1fac045ba915", "train": 50, "validation": 13, "test": 14},
+  "evaluation": {"min_training_stations": 15, "min_heldout_stations": 3, "nonnegative_projection": true, "same_eligible_cohort": true, "test_unseal": "only after validation selection artifact is frozen"}
+}

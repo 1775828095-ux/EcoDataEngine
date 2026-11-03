@@ -3,7 +3,7 @@
 The operation quantities come from users, never from a land-use class. This
 profile excludes automatic decision rules, heat-unit triggers and rotations.
 """
-import calendar,io,json,zipfile,re
+import calendar,io,json,zipfile
 from pathlib import PurePosixPath
 import numpy as np
 import pandas as pd
@@ -32,8 +32,7 @@ def _database(data,role,minimum):
 
 
 def export_management(content,cfg):
-    preserve=cfg.get('profile')=='calendar_fert_manure_preserve_automatic' and cfg.get('automatic_operations')=='preserve_source'
-    if cfg.get('target_model_version')!='62.0.0' or not(preserve or cfg.get('profile')=='calendar_fert_manure' and cfg.get('automatic_operations')==[]):
+    if cfg.get('target_model_version')!='62.0.0' or cfg.get('profile')!='calendar_fert_manure' or cfg.get('automatic_operations')!=[]:
         raise SchemaError('需SWAT+62.0.0、profile=calendar_fert_manure、automatic_operations=[]；自动/轮作另需开发')
     if cfg.get('units',{}).get('hu_sch')!='1':raise SchemaError('hu_sch单位必须明确1；本profile仅显式0的日历触发')
     source=cfg.get('source')
@@ -49,16 +48,7 @@ def export_management(content,cfg):
             p=PurePosixPath(name)
             if p.is_absolute() or '..' in p.parts or '\\' in name or ':' in name:raise SchemaError('ZIP路径不安全')
         if cfg.get('table') not in names:raise SchemaError('table缺源CSV')
-        source_csv=z.read(cfg['table'])
-        if preserve and cfg.get('allow_automatic_only') is True:
-            mapping=cfg.get('fields',{})
-            try:probe=pd.read_csv(io.BytesIO(source_csv),dtype=str,keep_default_na=False)
-            except (ValueError,UnicodeError) as exc:raise SchemaError('自动管理源CSV无效') from exc
-            if probe.empty:
-                if set(mapping)!=set(FIELDS) or len(set(mapping.values()))!=len(FIELDS) or list(probe.columns)!=[mapping[k] for k in FIELDS]:raise SchemaError('无手动操作仍须完整唯一CSV表头')
-                frame=probe.copy();frame.columns=FIELDS
-            else:frame=_table(source_csv,FIELDS,cfg)
-        else:frame=_table(source_csv,FIELDS,cfg)
+        frame=_table(z.read(cfg['table']),FIELDS,cfg)
         for k in ('schedule','material','application'):frame[k]=[_name(v,k,40) for v in frame[k]]
         frame['operation']=[operations.get(v) for v in frame.operation]
         if frame.operation.isna().any():raise SchemaError('源操作缺operation_mapping')
@@ -111,43 +101,9 @@ def export_management(content,cfg):
                 if record[1] not in catalogs['manure_om']:raise SchemaError('粪肥org_min引用缺manure_om属性')
                 if any(v!='null' for v in record[2:7]):raise SchemaError('粪肥的pests/paths/hmets/salts/constit非null：当前尚未核查这些深层引用')
         lines=['management.sch EcoDataEngine SWAT+62 explicit calendar','name numb_ops numb_auto op_typ mon day hu_sch op_data1 op_data2 op_data3']
-        schedule_names=set(frame.schedule);automatic_count=0
-        if preserve:
-            management_file=cfg.get('management_file');decision_file=refs.get('automatic_decision')
-            if management_file not in names or decision_file not in names:raise SchemaError('保留自动规则需原management文件及真实lum.dtl')
-            try:
-                rows=[r.split() for r in z.read(management_file).decode('ascii').splitlines()[2:] if r.strip()]
-                decision=z.read(decision_file);decision_rows=decision.decode('ascii').splitlines()
-            except UnicodeError as exc:raise SchemaError('已有管理与决策表需ASCII') from exc
-            catalog=set()
-            for line in decision_rows:
-                parts=line.split()
-                if len(parts)==4 and all(re.fullmatch(r'\d+',v) for v in parts[1:]):catalog.add(parts[0])
-            contexts=[];i=0
-            while i<len(rows):
-                head=rows[i];i+=1
-                if len(head)!=3 or not all(v.isdigit() for v in head[1:]):raise SchemaError('原管理日程头无效')
-                name=_name(head[0],'schedule',40);nops,nauto=map(int,head[1:])
-                if i+nauto+nops>len(rows):raise SchemaError('原管理日程被截断')
-                auto=rows[i:i+nauto];i+=nauto
-                arguments=cfg.get('automatic_arguments')=='preserve_source'
-                if any((len(r)!=1 and not(arguments and len(r)==2 and re.fullmatch(r'[A-Za-z0-9_.-]{1,40}',r[1]))) or r[0] not in catalog for r in auto):raise SchemaError('原自动规则缺引用/含未明确保留的参数，不补规则')
-                original=rows[i:i+nops];i+=nops
-                if any(len(r)!=7 or r[0] not in ('fert','manu') for r in original):raise SchemaError('原手动操作含当前未支持类别，不丢弃操作')
-                contexts.append((name,nops,[' '.join(r) for r in auto]))
-            if len({x[0] for x in contexts})!=len(contexts):raise SchemaError('原管理日程名称重复')
-            schedule_names={name for name,_,_ in contexts};automatic_count=sum(len(auto) for _,_,auto in contexts)
-            if set(frame.schedule)!={name for name,n,_ in contexts if n}:raise SchemaError('CSV必须覆盖原管理文件所有手动日程，不能遗漏或新增')
-            for name,nops,auto in contexts:
-                g=frame[frame.schedule==name].sort_values('order')
-                if len(g)!=nops:raise SchemaError('原手动操作数量不同，不能改变上下文')
-                lines.append(f'{name} {nops} {len(auto)}');lines.extend(auto)
-                for _,r in g.iterrows():lines.append(f'{r.operation} {r.month} {r.day} 0 {r.material} {r.application} {float(r.amount)!r}')
-            files['lum.dtl']=decision
-        else:
-            for name,g in frame.groupby('schedule',sort=True):
-                lines.append(f'{name} {len(g)} 0')
-                for _,r in g.sort_values('order').iterrows():lines.append(f'{r.operation} {r.month} {r.day} 0 {r.material} {r.application} {float(r.amount)!r}')
+        for name,g in frame.groupby('schedule',sort=True):
+            lines.append(f'{name} {len(g)} 0')
+            for _,r in g.sort_values('order').iterrows():lines.append(f'{r.operation} {r.month} {r.day} 0 {r.material} {r.application} {float(r.amount)!r}')
         files['management.sch']=('\n'.join(lines)+'\n').encode('ascii')
         # Optional real landuse table: verify its direct schedule names, never
         # inject a management assignment or overwrite other parameter names.
@@ -155,9 +111,8 @@ def export_management(content,cfg):
             if cfg['landuse_file'] not in names:raise SchemaError('landuse_file引用文件缺失')
             raw=z.read(cfg['landuse_file']);rows=_database(raw,'landuse',14)
             for row in rows.values():
-                if row[3]!='null' and row[3] not in schedule_names:raise SchemaError(f'landuse管理引用{row[3]}不存在')
+                if row[3]!='null' and row[3] not in set(frame.schedule):raise SchemaError(f'landuse管理引用{row[3]}不存在')
             files['landuse.lum']=raw
-    scope='SWAT+62 management.sch固定月日fert/manu日程及已提供材料/施用数据库；不生成自动规则、热量触发、轮作、灌溉或其他管理操作，不生成file.cio。只核对已使用材料、施用方式及粪肥有机属性名称，不认证整个数据库物理参数或完整工程。'
-    if preserve:scope+=' 显式preserve_source模式保留原自动规则名称、顺序和完整lum.dtl字节，只检查直接名称，不重新生成、修改或认证自动决策逻辑。'
+    scope='SWAT+62 management.sch固定月日fert/manu日程及已提供材料/施用数据库；无自动规则、热量触发、轮作、灌溉或其他管理操作，不生成file.cio。只核对已使用材料、施用方式及粪肥有机属性名称，不认证整个数据库物理参数或完整工程。'
     files['README_management.txt']=scope.encode('utf8')
-    return files,dict(scope=scope,schedules=sorted(schedule_names),operations=len(frame),preserved_automatic_rules=automatic_count,amount_unit='kg/ha',time_processing='fixed month/day, original operation order; no interpolation',source=source,complete_model_input=False)
+    return files,dict(scope=scope,schedules=sorted(set(frame.schedule)),operations=len(frame),amount_unit='kg/ha',time_processing='fixed month/day, original operation order; no interpolation',source=source,complete_model_input=False)

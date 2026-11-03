@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import xarray as xr
 
 from ecodata.algorithms.contracts import AlgorithmContext
 
@@ -18,13 +19,19 @@ class ScaleDecision:
 
 
 def spatial_scale_factor(context: AlgorithmContext) -> float:
-    if (not context.sources or context.target_lat is None or context.target_lon is None
+    target_lat, target_lon = context.target_lat, context.target_lon
+    grid = context.parameters.get("target_grid")
+    if target_lat is None and isinstance(grid, xr.Dataset) and "lat" in grid.coords:
+        target_lat = grid.lat
+    if target_lon is None and isinstance(grid, xr.Dataset) and "lon" in grid.coords:
+        target_lon = grid.lon
+    if (not context.sources or target_lat is None or target_lon is None
             or context.variable not in context.sources[0].dataset):
         return 1.0
     field = context.sources[0].dataset[context.variable]
     if not {"lat", "lon"}.issubset(field.dims):
         return 1.0
-    return max(len(context.target_lat) / field.sizes["lat"], len(context.target_lon) / field.sizes["lon"])
+    return max(len(target_lat) / field.sizes["lat"], len(target_lon) / field.sizes["lon"])
 
 
 class TargetScaleAdvisor:
@@ -34,6 +41,9 @@ class TargetScaleAdvisor:
         warnings = []
         target_lat, target_lon = context.target_lat, context.target_lon
         reason = "使用用户指定目标网格"
+        grid = context.parameters.get("target_grid")
+        if (target_lat is None or target_lon is None) and isinstance(grid, xr.Dataset) and {"lat", "lon"}.issubset(grid.coords):
+            target_lat, target_lon = tuple(grid.lat.values), tuple(grid.lon.values)
         if target_lat is None or target_lon is None:
             requested = constraints.get("target_grid")
             if requested:

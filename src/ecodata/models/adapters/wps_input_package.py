@@ -28,10 +28,7 @@ def _blocks(raw,markers=()):
         if nx<2 or ny<2 or nx*ny>10_000_000 or len(slab)!=nx*ny*4:raise SchemaError('WPS网格数量与数据长度不一致')
         if iproj not in {0,3} or len(proj)!={0:28,3:40}.get(iproj) or proj[:8]!=b'SWCORNER':raise SchemaError('当前组包支持IPROJ0/3、SWCORNER；其他投影未核对')
         p=np.array(struct.unpack('>'+('5f' if iproj==0 else '8f'),proj[8:]))
-        # WPS regular-ll legitimately uses either -180..180 or 0..360 east
-        # longitude (e.g. FNL starts at 230E). Preserve its original bytes.
-        longitude_valid=(-180<=p[1]<=360) if iproj==0 else (-180<=p[1]<=180)
-        if not np.isfinite(p).all() or not (-90<=p[0]<=90) or not longitude_valid or min(p[2:4])<=0 or p[-1]<=0:
+        if not np.isfinite(p).all() or not (-90<=p[0]<=90) or not (-180<=p[1]<=180) or min(p[2:4])<=0 or p[-1]<=0:
             raise SchemaError('WPS坐标、格距或地球半径无效')
         if field not in FIELDS or unit!=FIELDS[field][0]:raise SchemaError(f'WPS字段{field}单位{unit}未匹配已支持规范；不改单位标签')
         kind=FIELDS[field][1]

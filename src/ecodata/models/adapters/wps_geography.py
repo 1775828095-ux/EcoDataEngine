@@ -13,9 +13,6 @@ def export_geography(ds,cfg):
     if cfg.get('version')!='WPS-4.6-geogrid-tile' or cfg.get('crs')!='EPSG:4326':raise SchemaError('仅WPS4.6规则经纬度geogrid原始瓦片；需crs=EPSG:4326')
     if ds.attrs.get('crs') and ds.attrs['crs']!='EPSG:4326':raise SchemaError('数据内crs与配置冲突')
     field=cfg.get('field');category=field=='LANDUSEF'
-    fractions=category and cfg.get('representation')=='fraction_layers'
-    if cfg.get('representation') not in (None,'category_codes','fraction_layers'):raise SchemaError('未知地理数据representation')
-    if not category and cfg.get('representation')=='fraction_layers':raise SchemaError('比例层只适用于LANDUSEF')
     if field not in {'HGT_M','LANDUSEF'}:raise SchemaError('当前仅HGT_M地形及LANDUSEF已分类土地利用，不推算其他地理变量')
     if not category and cfg.get('elevation_vertical_reference')!='MSL':raise SchemaError('HGT_M需elevation_vertical_reference=MSL，不能把椭球高默认为海拔')
     source=cfg.get('source')
@@ -34,16 +31,13 @@ def export_geography(ds,cfg):
     name=cfg.get('variable')
     if name not in ds.data_vars:raise SchemaError('variable没有对应源地理变量')
     variable=ds[name]
-    cat=cfg.get('category_coordinate') if fractions else None
-    expected={lat,lon,cat} if fractions else {lat,lon}
-    if len(variable.dims)!=(3 if fractions else 2) or set(variable.dims)!=expected or variable.dtype.kind not in 'iuf':raise SchemaError('源需静态二维格网，或显式LANDUSEF类别比例三维格网；不能丢弃时间或额外层')
+    if len(variable.dims)!=2 or set(variable.dims)!={lat,lon} or variable.dtype.kind not in 'iuf':raise SchemaError('源需静态二维实数格网，不能丢弃时间或额外层')
     actual=variable.attrs.get('units','');declared=cfg.get('source_units',actual)
     if not declared:raise SchemaError('地理源物理单位不明')
     _check_unit_declaration(actual,declared,field)
-    if category and declared!=('%' if fractions else '1'):raise SchemaError('类别码需单位1，显式比例层需单位%；不猜测单位')
-    scale,offset=(1.,0.) if fractions else unit_transform(declared,'1' if category else 'm')
-    order=(cat,lat,lon) if fractions else (lat,lon)
-    raw=np.asarray(variable.sortby(lat).sortby(lon).transpose(*order),dtype=float)
+    if category and declared!='1':raise SchemaError('土地类别码需单位1，不把百分比等连续量改成类别')
+    scale,offset=unit_transform(declared,'1' if category else 'm')
+    raw=np.asarray(variable.sortby(lat).sortby(lon).transpose(lat,lon),dtype=float)
     markers=cfg.get('missing_values')
     if not isinstance(markers,list):raise SchemaError('需明确missing_values列表')
     if not np.isfinite(raw).all():raise SchemaError('源瓦片有NaN/缺测；不填补')
@@ -68,11 +62,7 @@ def export_geography(ds,cfg):
         if any(type(info[k])!=int for k in ('category_min','category_max','iswater','islake','isice','isurban')) or not 1<=info['category_min']<=info['category_max']<=32767:raise SchemaError('土地类别范围需1..32767整数')
         if any(not info['category_min']<=info[k]<=info['category_max'] for k in ('iswater','islake','isice','isurban')):raise SchemaError('特殊地类编码未位于类别范围')
         if not isinstance(info['mminlu'],str) or not re.fullmatch('[A-Za-z0-9_-]{1,32}',info['mminlu']):raise SchemaError('mminlu须明确安全分类系统名')
-        if fractions:
-            expected_codes=np.arange(info['category_min'],info['category_max']+1)
-            if cat not in ds.coords or ds[cat].dims!=(cat,) or not np.array_equal(ds[cat].values,expected_codes):raise SchemaError('比例层类别坐标须逐项对应完整类别范围；不排序或补层')
-            if np.any((values<0)|(values>100)) or not np.allclose(values.sum(axis=0),100,rtol=0,atol=1e-6):raise SchemaError('比例层须0..100且每格合计100%；不归一或填补')
-        if quant!=1 or tolerance!=0 or np.any(values!=np.rint(values)) or (not fractions and np.any((values<info['category_min'])|(values>info['category_max']))):raise SchemaError('类别码/原样整数百分比不允许量化；scale_factor=1，允许误差=0')
+        if quant!=1 or tolerance!=0 or np.any(values!=np.rint(values)) or np.any((values<info['category_min'])|(values>info['category_max'])):raise SchemaError('类别码不允许量化或超范围；scale_factor=1，允许误差=0')
         extra=info
     stored=np.rint(values/quant)
     limit=2**(wordsize*8-1)
@@ -86,10 +76,10 @@ def export_geography(ds,cfg):
     # missing_value is format metadata, never a value inserted into the grid.
     nodata=-9999
     if np.any(decoded==nodata):raise SchemaError('真实值与目标missing_value=-9999冲突，拒绝写出')
-    meta=dict(type='categorical' if category and not fractions else 'continuous',signed='yes',projection='regular_ll',dx=b[1]-b[0],dy=a[1]-a[0],known_x=1.,known_y=1.,known_lat=a[0],known_lon=b[0],wordsize=wordsize,endian=endian,row_order='bottom_top',tile_x=nx,tile_y=ny,tile_z=values.shape[0] if fractions else 1,tile_bdr=0,scale_factor=quant,missing_value=nodata)
+    meta=dict(type='categorical' if category else 'continuous',signed='yes',projection='regular_ll',dx=b[1]-b[0],dy=a[1]-a[0],known_x=1.,known_y=1.,known_lat=a[0],known_lon=b[0],wordsize=wordsize,endian=endian,row_order='bottom_top',tile_x=nx,tile_y=ny,tile_z=1,tile_bdr=0,scale_factor=quant,missing_value=nodata)
     meta.update(extra)
     lines=[f'{k}={format(v,".17g") if isinstance(v,(float,np.floating)) else v}' for k,v in meta.items()]
-    lines+=['units="%"' if fractions else 'units="category"' if category else 'units="m"',f'description="EcoDataEngine user supplied {field}"']
+    lines+=['units="category"' if category else 'units="m"',f'description="EcoDataEngine user supplied {field}"']
     index=('\n'.join(lines)+'\n').encode('ascii');tile=stored.astype(dtype).tobytes(order='C')
     archive=io.BytesIO()
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
@@ -97,5 +87,4 @@ def export_geography(ds,cfg):
             info=zipfile.ZipInfo(member,date_time=(1980,1,1,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED
             z.writestr(info,content)
     notes=f'WPS4.6 geogrid上游{field}数据集（index与原始整数瓦片），规则经纬度单瓦片；未生成geo_em。需把ZIP解压至独立地理目录，并在已有GEOGRID.TBL对应{field}节配置绝对路径/分辨率及有依据的插值规则。需完整域覆盖及其他必需地理数据；本平台不运行geogrid，不填出界格，不改变土地分类或推导物理参数。量化最大绝对误差={error}，源缺测策略=拒绝。'
-    if fractions:notes+=' 显式完整类别整数百分比层原样保留；不取多数地类、不归一或填补。'
-    return {f'geogrid_{field}.zip':archive.getvalue(),'README_geogrid.txt':notes.encode('utf8')},dict(scope=notes,field=field,representation='fraction_layers' if fractions else 'category_codes' if category else 'continuous',source=source,shape_y_x=[ny,nx],index=meta,native_tile=filename,unit_conversion=dict(source=declared,target='%' if fractions else 'category' if category else 'm',scale=scale,offset=offset),max_absolute_quantization_error=error,time_processing='static; no time axis',coordinate_processing='axis sorting only; no regridding',complete_model_input=False,model_run_verified=False)
+    return {f'geogrid_{field}.zip':archive.getvalue(),'README_geogrid.txt':notes.encode('utf8')},dict(scope=notes,field=field,source=source,shape_y_x=[ny,nx],index=meta,native_tile=filename,unit_conversion=dict(source=declared,target='category' if category else 'm',scale=scale,offset=offset),max_absolute_quantization_error=error,time_processing='static; no time axis',coordinate_processing='axis sorting only; no regridding',complete_model_input=False,model_run_verified=False)

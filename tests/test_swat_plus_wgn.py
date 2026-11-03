@@ -145,33 +145,6 @@ def test_two_synthetic_station_blocks_do_not_mix_months():
     assert r['source']['kind']=='synthetic_test'
 
 
-@pytest.mark.parametrize('unit,value', [('1','0.75'),('%','75')])
-def test_native_humidity_fraction_slot_requires_explicit_units(unit,value):
-    data,cfg=load();cfg['source']['kind']='synthetic_test';cfg['units']['dewpt']=unit
-    data=mutate(data,lambda rows,headers:[r.update(DEWPT=value) for r in rows])
-    files,report=convert('swat_plus',data,cfg)
-    records=independent_read(files['weather-wgn.cli'])['wgn001']['months']
-    assert all(row[12]==Decimal('0.75') for row in records)
-    assert report['units']['dewpt']=='1'
-    assert report['humidity_semantics']=={'wgn001':'relative_humidity_fraction'}
-    assert report['unit_conversions']['dewpt']['output']=='1'
-
-
-def test_ambiguous_all_month_dewpoint_not_silently_read_as_humidity():
-    data,cfg=load()
-    data=mutate(data,lambda rows,headers:[r.update(DEWPT='0.5') for r in rows])
-    with pytest.raises(SchemaError,match='SWAT\\+62会按相对湿度分数读取'):
-        convert('swat_plus',data,cfg)
-
-
-@pytest.mark.parametrize('value', ['-0.01','1.01'])
-def test_humidity_slot_out_of_range_is_rejected(value):
-    data,cfg=load();cfg['units']['dewpt']='1'
-    data=mutate(data,lambda rows,headers:rows[0].update(DEWPT=value))
-    with pytest.raises(SchemaError,match='相对湿度声明'):
-        convert('swat_plus',data,cfg)
-
-
 def test_real_ui_wgn_download_and_rejection():
     data,cfg=load();mutable={'data':data,'cfg':json.dumps(cfg).encode()}
     def upload(label,**kwargs):

@@ -1,0 +1,71 @@
+{
+  "legacy_python": "C:/Users/ASUS/Documents/Codex/2026-10-02/wo/work/EcoDataEngine/_runtime/python.exe",
+  "legacy_source": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\SWATplus操作界面_20261020\\platform\\src",
+  "models": {
+    "wrf": {
+      "configuration": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\WRF双路线_20261025\\config_FNL_pressure.json",
+      "engineering": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\WRF完整案例准备_20261017\\06_官方参考运行\\files",
+      "accepted_fields": [
+        "air_temperature",
+        "air",
+        "uwnd",
+        "vwnd",
+        "hgt",
+        "eastward_wind",
+        "northward_wind",
+        "geopotential_height"
+      ],
+      "aliases": {
+        "air_temperature": "air",
+        "eastward_wind": "uwnd",
+        "northward_wind": "vwnd",
+        "geopotential_height": "hgt"
+      },
+      "scope": "Existing NOAA FNL 2023-03-31 WPS field assembly; no invented humidity or soil variables",
+      "configuration_sha256": "b22a230678966015a90f84ccfedd1dd267b795556ffdd8fe32acec4cd8e89fff"
+    },
+    "camx": {
+      "configuration": "D:/EcoDataEngine/cases/CAMx740_20261020/official/native_complx_emission_probe/config.json",
+      "engineering": "D:/EcoDataEngine/cases/CAMx740_20261020/official/native_platform_photolysis_5min_20261021/CAMx.in",
+      "accepted_fields": [
+        "NO",
+        "PEC"
+      ],
+      "target": "Emiss_Grid(1,1)",
+      "scope": "CAMx7.40 CB6r5_CF3_COMPLX, existing NO/PEC surface-emission update",
+      "configuration_sha256": "2012cf92560e2fd717f78626f2d5d808e7d5a9d80052e1c1c040a5499736140a",
+      "engineering_sha256": "eed6fc86069aeba085be17e550ed7c39cd26fbd305313f9d938c77313f754e15"
+    },
+    "cmaq": {
+      "configuration": "D:/EcoDataEngine/cases/CMAQ_20261024/official_12NE3/platform_no/config.json",
+      "engineering": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\CMAQ已有工程接入_20261101\\platform_exported_project.json",
+      "accepted_fields": [
+        "nitric_oxide",
+        "NO"
+      ],
+      "aliases": {
+        "NO": "nitric_oxide"
+      },
+      "target": "GR_EMIS_003",
+      "preserve_original_vertical_headers": true,
+      "scope": "Existing CMAQ5.5 12NE3 CB6r5/AE7/m3dry. Preserve original vertical type-code difference under prior explicit case policy; not physical equivalence. Whole-stream contract remains enforced.",
+      "configuration_sha256": "5dc269fcdb35496cd74a5894dfc05c590607aaf110f2e694a6c63403e5d650a1",
+      "engineering_sha256": "63c9bd58dc5fdbe0765cc58c1f5b3f9ce39015a329d802fe888b167a3bd8eaef"
+    },
+    "calpuff": {
+      "configuration": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\SWATplus操作界面_20261020\\platform\\outputs\\calpuff_projects\\f4424818995b4a5883eccd986bd5a909\\receptor_config.json",
+      "engineering": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\SWATplus操作界面_20261020\\platform\\outputs\\calpuff_projects\\f4424818995b4a5883eccd986bd5a909\\existing_project.zip",
+      "accepted_fields": [
+        "x",
+        "y",
+        "elevation",
+        "height_agl",
+        "receptor_id",
+        "id"
+      ],
+      "scope": "Existing CALPUFF7 engineering, current receptor products into original control; no inferred source/datum/height",
+      "configuration_sha256": "5b4a654929a83d00a17d48a8ecdc459fe71d4b04d1021081ee7937ac4b668dbf",
+      "engineering_sha256": "0c6738d5cb71f8de01ee6f2f73751ba69b6cae13202ca7b8cf222390d5d75fb1"
+    }
+  }
+}

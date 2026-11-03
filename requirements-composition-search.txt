@@ -1,0 +1,3 @@
+# GitHub-inspected native backends; selected only after grouped comparison.
+alns==7.0.0
+pymoo==0.6.2

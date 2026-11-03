@@ -1,0 +1,81 @@
+{
+  "calibration_id": "ndvi_grouped_2020_2021_v1",
+  "common_reference_graph": {
+    "bank_id": "g03d805de1dc473e5598bc83e447be834956905a95470db64b47c7a3fad0ad49c",
+    "evidence": "Frozen strongest common deployable development-bank graph by equal-group normalized loss; never injected into search candidates",
+    "key": "m6b9f2ca2212ec4aeaf4f5734ac7e8edde6596eb0b497747311bb5b6fb9aad9cc",
+    "records": {
+      "m1b84467522942990153004ecf2450c36d752a131a524d9836ef8bb23641738aa": {
+        "operation": "reconstruction.grid_gap_linear",
+        "parameters": {},
+        "parents": [
+          "s0"
+        ]
+      },
+      "m1db1d574e28471fab736c76d011aff7a02a66faa52436d9345ae1080dd6d06cb": {
+        "operation": "spatial.bilinear",
+        "parameters": {},
+        "parents": [
+          "s1"
+        ]
+      },
+      "m271ba6678ffb11ee495c9f124d98e23ff89df9bf18c2d9bde833f6544847a82f": {
+        "operation": "temporal.raster_linear",
+        "parameters": {},
+        "parents": [
+          "m1b84467522942990153004ecf2450c36d752a131a524d9836ef8bb23641738aa"
+        ]
+      },
+      "m6b9f2ca2212ec4aeaf4f5734ac7e8edde6596eb0b497747311bb5b6fb9aad9cc": {
+        "operation": "fusion.primary_weighted_mean",
+        "parameters": {
+          "primary_index": 0,
+          "primary_share": 0.762360016551816
+        },
+        "parents": [
+          "m271ba6678ffb11ee495c9f124d98e23ff89df9bf18c2d9bde833f6544847a82f",
+          "mbd8165647bb3ba600d55b8a77352f90f1f3d93cb6123bfbb0739a8e47697b552"
+        ]
+      },
+      "mbd8165647bb3ba600d55b8a77352f90f1f3d93cb6123bfbb0739a8e47697b552": {
+        "operation": "fusion.visible_anchor_residual",
+        "parameters": {
+          "fine_index": 0,
+          "residual_strength": 0.3818370966849064
+        },
+        "parents": [
+          "m1db1d574e28471fab736c76d011aff7a02a66faa52436d9345ae1080dd6d06cb",
+          "s1"
+        ]
+      },
+      "s0": {
+        "operation": "source",
+        "parameters": {
+          "source": "source0"
+        },
+        "parents": []
+      },
+      "s1": {
+        "operation": "source",
+        "parameters": {
+          "source": "source1"
+        },
+        "parents": []
+      }
+    }
+  },
+  "delta": 0.0,
+  "evidence": "Grouped real development-bank readback; NO_HELD_GROUP_GAIN_ZERO_TOLERANCE",
+  "evidence_role": "development",
+  "metric_weights": {
+    "RMSE": 1.0
+  },
+  "report": "D:\\codex\\EcoDataEngine\\output\\reliable_selection_calibrations\\ndvi_grouped_2020_2021_v1.json",
+  "report_sha256": "a8df3832c4ea16a0ac7ab53cdee1549cdebd8576a7f2bf174f9bcd7140b83fb3",
+  "scope": {
+    "unit": "1",
+    "variable": "ndvi"
+  },
+  "status": "NO_HELD_GROUP_GAIN_ZERO_TOLERANCE",
+  "version": "reliable_tolerance_calibration_v1"
+}

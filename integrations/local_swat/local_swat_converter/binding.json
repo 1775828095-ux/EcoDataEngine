@@ -1,0 +1,14 @@
+{
+  "project_zip": "C:\\Users\\ASUS\\Documents\\ChatGPT\\测试重\\Hubbard已有工程替换资料_20261031\\02_已有工程_接入前\\C_Hubbard_W2_1964_1968_project.zip",
+  "project_sha256": "229dd40d7838ea4f6e31e3f3e621b1d69e23106e93c35b16c95e2e2d155829ed",
+  "station": "s43958n71725w",
+  "latitude": 43.952,
+  "longitude": -71.725,
+  "elevation": 254.6,
+  "start": "1964-01-01",
+  "end": "1968-12-31",
+  "run_native": false,
+  "engine": "D:/EcoDataEngine/tools/SWATPlusEditor402/resources/app.asar.unpacked/static/swat_exe/swatplus-62-ifo-win_amd64-Rel.exe",
+  "engine_sha256": "d680b142b6029762d9a9deeade50494ed0ec5a7e7f68fbace193b2c760f163d0",
+  "scope": "Hubbard W2 precipitation plus HQ temperature; original project WGN for other weather; no accuracy claim"
+}

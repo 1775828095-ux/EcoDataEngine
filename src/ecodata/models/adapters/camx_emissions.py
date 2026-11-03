@@ -1,4 +1,4 @@
-"""CAMx 7.40/7.10 native NetCDF 2-D, hourly, already-speciated emissions.
+"""CAMx 7.40 native NetCDF 2-D, hourly, already-speciated grid emissions.
 
 Metadata follows CAMx ncf_areaprep/ncf_chk_griddef, not generic IO-API
 renaming. Does not spatially allocate an inventory or invent chemical species.
@@ -17,17 +17,9 @@ from ecodata.core.exceptions import SchemaError
 from ecodata.models.adaptation import unit_transform
 
 MECHANISM = 'CB6r5_CF3_SIMPLE_NoEvap'
-# Official CAMx 7.40 CHEMPARAM files differ only in the SOAP3 option and
-# description: gas/aerosol identifiers and all species records are identical.
-# This selects a compatible input vocabulary; it does not convert chemistry.
-SUPPORTED_MECHANISMS = frozenset({MECHANISM, 'CB6r5_CF3_COMPLX'})
 # Species identifiers, not physical values, from the v7.40 official CHEMPARAM.
 GASES = set('AACD ACET ALD2 ALDX BENZ BZO2 C2O3 CAT1 ACG2 ACG1 BCG2 BCG1 CO CRES CRO CRON CXO3 DMS ECH4 EPOX EPX2 ETH ETHA ETHY ETOH FACD FORM GLY GLYD H2O2 HCL HCO3 HIO3 HNO3 HO2 HOI HONO HPLD I I2 I2O2 INO3 INTR IO IOLE ISO2 ISOP ISPD ISPX IVOA IXOY KET MEO2 MEOH MEPX MGLY N2O5 NH3 NO NO2 NO3 NTR1 NTR2 O O1D O3 OH OIO OLE OPAN OPEN OPO3 PACD PAN PANX PAR PNA PRPA RO2 ROOH ROR SO2 SQT SULF SVOA TERP APIN TO2 TOL XLO2 XO2 XO2H XO2N XOPN XPAR XPRP XYL CGLY'.split())
 AEROSOLS = set('CCRS CPRM FCRS FPRM NA PCL PEC PH2O PNH4 PNO3 PSO4 HOA AOA2 AOA1 AOA0 BOA2 BOA1 BOA0'.split())
-# Species vocabulary from published CAMx7.1.chemparam.CB05_CF2, Zenodo
-# 14944768. Keep version/mechanism pairs strict: no chemistry translation.
-CB05_GASES = set('O1D O OH HO2 C2O3 XO2 XO2N CXO3 MEO2 TO2 ROR HCO3 CRO ETHA ETOH FACD FORM H2O2 HNO3 HONO IOLE ISOP ISPD MEOH MEPX MGLY N2O5 NO NO2 NO3 NTR O3 OLE OPEN PACD PAN PANX PAR PNA ROOH SO2 SULF TERP TOL XYL NH3 HCL SQT IVOA CG1 CG2 CG3 CG4 AACD ALD2 ALDX CO CRES ETH'.split())
-CB05_AEROSOLS = set('PNO3 PSO4 PNH4 POA SOA1 SOA2 SOA3 SOA4 SOPA SOPB PEC FPRM FCRS CPRM CCRS NA PCL PH2O'.split())
 
 
 def _number(value, name, integer=False):
@@ -101,13 +93,10 @@ def export_gridded_emissions(frame, config):
                 'row_col_base', 'missing_values', 'time_basis', 'source'}
     if not isinstance(config, dict) or not required <= set(config) or set(config) - required - {'encoding'}:
         raise SchemaError('CAMx排放配置必须明确mode/version/mechanism/fields/species/grid/row_col_base/missing_values/time_basis/source')
-    if config['mode'] != 'gridded_emissions' or config['version'] not in {'CAMx-7.40','CAMx-7.10'}:
-        raise SchemaError('本入口支持CAMx-7.40或CAMx-7.10 mode=gridded_emissions，须显式匹配机制')
-    legacy = config['version'] == 'CAMx-7.10'
-    supported = {'CB05_CF2'} if legacy else SUPPORTED_MECHANISMS
-    if not isinstance(config['mechanism'], str) or config['mechanism'] not in supported:
-        raise SchemaError('版本与化学机制不匹配：7.10仅CB05_CF2；7.40仅CB6r5_CF3_SIMPLE_NoEvap/CB6r5_CF3_COMPLX；不进行机制互换')
-    gases,aerosols = (CB05_GASES,CB05_AEROSOLS) if legacy else (GASES,AEROSOLS)
+    if config['mode'] != 'gridded_emissions' or config['version'] != 'CAMx-7.40':
+        raise SchemaError('本入口仅支持CAMx-7.40 mode=gridded_emissions')
+    if config['mechanism'] != MECHANISM:
+        raise SchemaError('当前机制仅支持CB6r5_CF3_SIMPLE_NoEvap；其他机制需核对CHEMPARAM后适配')
     if config['time_basis'] != 'interval_start_hourly':
         raise SchemaError('必须为interval_start_hourly：时间为每小时平均排放率区间起点，不将瞬时值或累计量冒充小时排放率')
     source = config['source']
@@ -132,8 +121,8 @@ def export_gridded_emissions(frame, config):
             raise SchemaError('模型物种名须为1..10字符大写标识符，不能与保留变量重名')
         if spec['phase'] not in {'gas', 'aerosol'}:
             raise SchemaError(f'{name}需明确gas或aerosol')
-        if name not in (gases if spec['phase']=='gas' else aerosols):
-            raise SchemaError(f'{name}不属于指定{config["version"]}机制的{spec["phase"]}物种；不自动把NOx/PM25改名或拆分')
+        if name not in (GASES if spec['phase']=='gas' else AEROSOLS):
+            raise SchemaError(f'{name}不属于指定CAMx 7.40机制的{spec["phase"]}物种；不自动把NOx/PM25改名或拆分')
         target = 'mol/hour' if spec['phase'] == 'gas' else 'g/hour'
         try:
             factor, offset = unit_transform(spec['unit'], target)
@@ -213,8 +202,8 @@ def export_gridded_emissions(frame, config):
             attrs.update(CPROJ=g['cproj'],GDTYP=g['gdtyp'],IUTM=0,ISTAG=0,NCOLS=g['ncols'],NROWS=g['nrows'],NLAYS=1,NVARS=len(names),
                          SDATE=int(tf[0,0,0]),STIME=int(tf[0,0,1]),TSTEP=10000,NSTEPS=len(times),
                          P_GAM=g['xcent'],CAMx_NAME='EMISSIONS',NOTE='EcoDataEngine: supplied speciated hourly gridded rates',
-                         FILEDESC=config['version']+' native area emissions; no invented species or values',FTYPE=1,NTHIK=1,
-                         GDNAM=config['version']+' grid',UPNAM='EcoDataEngine',**{'VAR-LIST':''.join(n.ljust(16) for n in names)})
+                         FILEDESC='CAMx 7.40 native area emissions; no invented species or values',FTYPE=1,NTHIK=1,
+                         GDNAM='CAMx7.40 grid',UPNAM='EcoDataEngine',**{'VAR-LIST':''.join(n.ljust(16) for n in names)})
             out.setncatts(attrs)
             for key,vals in [('TFLAG',tf),('ETFLAG',ef)]:
                 v=out.createVariable(key,'i4',('TSTEP','VAR','DATE-TIME'));v.units='YYYYDDD,HHMMSS';v.long_name=key;v.var_desc=key;v[:]=vals
@@ -224,7 +213,7 @@ def export_gridded_emissions(frame, config):
             for name,arr,unit in zip(names,arrays,units):
                 v=out.createVariable(name,'f4',('TSTEP','LAY','ROW','COL'));v.units=unit;v.long_name=name;v.var_desc=name+' supplied emission rate';v.coordinates='longitude latitude';v[:]=arr
         payload=path.read_bytes()
-    report={'target':config['version'],'output_type':'native NetCDF 2D hourly gridded emissions candidate','mechanism':config['mechanism'],
+    report={'target':'CAMx-7.40','output_type':'native NetCDF 2D hourly gridded emissions candidate','mechanism':config['mechanism'],
             'species':names,'units':dict(zip(names,units)),'shape':[len(times),1,g['nrows'],g['ncols']],
             'grid':g,'row_order':'south to north','column_order':'west to east','ITZON_hours_west_of_UTC':g['itzon'],
             'time_range':[times[0].isoformat(),(times[-1]+pd.Timedelta(hours=1)).isoformat()],
@@ -233,5 +222,4 @@ def export_gridded_emissions(frame, config):
             'complete_model_input':False,'camx_run_verified':False,
             'next_steps':'Use Gridded_Emissions in a matching CAMx.in with the identical grid, standard time zone, mechanism and complete episode; other CAMx inputs still required.'}
     readme='CAMx 7.40二维逐小时网格排放候选文件。需匹配CAMx.in的网格、Time_Zone、化学机制及完整模拟时段。\n输入为已完成化学分种的每格小时平均排放率；本入口未生成空间分配、化学拆分、小时分配或其他模型输入。\n独立解析不代表CAMx已读取或完整工程可运行。X/Y坐标为km（LCC）或degree（LATLON），投影全局网格属性为m（LCC）或degree（LATLON），按官方接口分别处理。\n'
-    if legacy:readme=readme.replace('CAMx 7.40','CAMx 7.10 CB05_CF2')
-    return {('emissions.CAMx7.10.nc' if legacy else 'emissions.CAMx7.40.nc'):payload,'README_CAMx_emissions.txt':readme.encode('utf8')},report
+    return {'emissions.CAMx7.40.nc':payload,'README_CAMx_emissions.txt':readme.encode('utf8')},report

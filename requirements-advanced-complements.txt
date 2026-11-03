@@ -1,0 +1,4 @@
+# Main platform only. GDAL and the NumPy1 Whittaker ABI are isolated externally.
+opencv-contrib-python-headless==5.0.0.93
+dask[array]==2026.8.0
+zarr==3.4.1
