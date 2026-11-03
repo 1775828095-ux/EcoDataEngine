@@ -65,17 +65,30 @@ class ProjectFiles:
     def resolve(self, control, reference):
         reference = reference.strip().replace('\\', '/')
         parts = PurePosixPath(reference).parts
-        if '..' in parts or '\x00' in reference:
+        if not reference or '\x00' in reference:
             raise ValueError('工程引用越界：' + reference)
         absolute = reference.startswith('/') or bool(re.match(r'^[A-Za-z]:', reference))
         if not absolute:
-            exact = (PurePosixPath(control).parent / reference).as_posix()
+            # Resolve only against the virtual uploaded root, never the host FS.
+            resolved = list(PurePosixPath(control).parent.parts)
+            for part in parts:
+                if part == '..':
+                    if not resolved:
+                        raise ValueError('工程引用越界：' + reference)
+                    resolved.pop()
+                elif part != '.':
+                    if ':' in part:
+                        raise ValueError('工程引用越界：' + reference)
+                    resolved.append(part)
+            exact = '/'.join(resolved)
             if exact in self.files:
                 return exact, 'control_relative'
             # Relative references are exact: missing does not mean relocate.
             raise ValueError('工程引用缺失：' + reference)
         # Historical machine roots can be relocated only by a unique >=2-part
         # suffix, never by basename or by opening the referenced host path.
+        if '..' in parts:
+            raise ValueError('工程引用越界：' + reference)
         parts = [p for p in parts if p not in ('/', '') and ':' not in p]
         for length in range(len(parts), 1, -1):
             suffix = '/'.join(parts[-length:])

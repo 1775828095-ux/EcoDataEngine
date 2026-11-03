@@ -10,6 +10,7 @@ import json
 import zipfile
 import numpy as np
 import xarray as xr
+import re
 
 
 def save(path, value):
@@ -45,11 +46,33 @@ def _oisst(raw):
         return ds
 
 
+def _sst_update_enabled(raw):
+    """Read only the active namelist's SST-update switch; WRF's default is off."""
+    text = raw.decode('latin1')
+    text = '\n'.join(line.split('!', 1)[0] for line in text.splitlines())
+    physics = re.search(r'(?is)&physics\b(.*?)(?:/|&end\b)', text)
+    if physics is None:
+        return False
+    matches = re.findall(r'(?im)^\s*sst_update\s*=\s*([^\n]+)', physics.group(1))
+    if not matches:
+        return False
+    for assignment in matches:
+        # A following namelist assignment may share a line after a comma.
+        assignment = re.split(r',\s*[A-Za-z][A-Za-z0-9_]*\s*=', assignment, maxsplit=1)[0]
+        values = [value.strip().strip(',').strip() for value in assignment.split(',') if value.strip(' ,')]
+        if not values or any(value not in {'0', '1'} for value in values):
+            raise ValueError('namelist.input 中 sst_update 不是可识别的 0/1 设置')
+        if any(value == '1' for value in values):
+            return True
+    return False
+
+
 def prepare(uploads, folder, progress=None):
     from ecodata.interface.engineering_upload import MAX_FILE_BYTES, MAX_TOTAL_BYTES
     folder = Path(folder)
     inventory, sources, archives = [], [], []
     native = []
+    namelist_settings = []
     catalog_files = []
     dependencies = []
     total = 0
@@ -94,6 +117,7 @@ def prepare(uploads, folder, progress=None):
                             if not {'XLAT','XLONG','LANDMASK','Times'} <= set(d.variables):
                                 raise ValueError('WRF工程缺少网格、海陆掩码或时间字段：'+str(name))
                             record['extent']=[float(d['XLAT'][:].min()),float(d['XLAT'][:].max()),float(d['XLONG'][:].min()),float(d['XLONG'][:].max())]
+                            record['contains_initial_sst']='SST' in d.variables
                         native.append(record)
                     catalog_files.append((str(name),payload))
                 elif base.endswith(('.nc','.nc4')):
@@ -135,11 +159,14 @@ def prepare(uploads, folder, progress=None):
                     record.update(role='raw_atmospheric_forcing_dependency',members=members,
                                   processing='retained as dependency; not treated as SST or discarded')
                 elif base=='namelist.input':
-                    record.update(role='engineering_configuration',sha256=sha(z.read(item)))
+                    payload=z.read(item)
+                    sst_update=_sst_update_enabled(payload)
+                    record.update(role='engineering_configuration',sha256=sha(payload),sst_update_enabled=sst_update)
+                    namelist_settings.append(dict(file=str(name),sst_update_enabled=sst_update))
                     dep=folder/'dependencies'/'namelist.input'
                     dep.parent.mkdir(parents=True,exist_ok=True)
                     if dep.exists():raise ValueError('存在多个namelist.input，不能自动选择')
-                    dep.write_bytes(z.read(item))
+                    dep.write_bytes(payload)
                     catalog_files.append((str(name),dep.read_bytes()))
                     dependencies.append(dict(path=dep.relative_to(folder).as_posix(),sha256=record['sha256'],role='engineering_configuration',source_member=str(name)))
                 elif 'wrf_runtime_tables' in name.parts:
@@ -153,8 +180,15 @@ def prepare(uploads, folder, progress=None):
                 inventory.append(record)
     if not sources and native:
         folder.mkdir(parents=True,exist_ok=True)
-        save(folder/'bundle_inventory.json',dict(archives=archives,files=inventory))
-        raise ValueError('已识别WRF原生工程，但没有识别到本入口可自动处理的SST资料。不会把工程或嵌套资料当作站点文本；请核对待更新变量及支持格式。')
+        update_requested=any(item['sst_update_enabled'] for item in namelist_settings)
+        initial_sst_present=any(item.get('contains_initial_sst',False) for item in native)
+        disposition=dict(route='wrf_daily_sst_bundle_v1',status='SST_SUPPLEMENT_NOT_REQUESTED',
+            sst_update_enabled=update_requested,existing_initial_sst_present=initial_sst_present,
+            reason='工程未启用 sst_update；WPS 专项 SST 更新入口不适用，交由常规资料识别继续处理')
+        save(folder/'bundle_inventory.json',dict(archives=archives,files=inventory,route_decision=disposition))
+        if update_requested:
+            raise ValueError('工程已启用 sst_update=1，但没有识别到可用的独立时变SST资料。现有wrfinput中的初始SST不能代替wrflowinp更新资料。')
+        return None
     if not sources:
         return None
     folder.mkdir(parents=True,exist_ok=True)

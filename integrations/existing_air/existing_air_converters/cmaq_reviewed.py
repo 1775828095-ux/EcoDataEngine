@@ -65,9 +65,10 @@ def prepare(uploads,folder,progress=None):
             target=inputs/(key+'.nc');target.write_bytes(raw)
             records.append(dict(role=key,member=member,path=target.relative_to(folder).as_posix(),
                 sha256=digest(target),bytes=len(raw)))
-    sat=xr.open_dataset(inputs/'satellite.nc',engine='h5netcdf').load()
-    met=xr.open_dataset(inputs/'meteorology.nc').load()
-    grid=xr.open_dataset(inputs/'grid.nc').load()
+    from .netcdf_io import load_dataset
+    sat=load_dataset(inputs/'satellite.nc')
+    met=load_dataset(inputs/'meteorology.nc')
+    grid=load_dataset(inputs/'grid.nc')
     from datetime import datetime
     flags=met.TFLAG.values
     if not np.array_equal(flags,np.broadcast_to(flags[:,:1,:],flags.shape)):raise ValueError('各变量的原生时标不同')

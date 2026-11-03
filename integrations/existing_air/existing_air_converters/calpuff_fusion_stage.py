@@ -93,7 +93,8 @@ def process_surface(surface,receipt,folder,progress=None):
         if progress:progress(f'平台算法比较：{component}，{inside.sum()}个实际站点与{len(flon)}个MM4网格，固定同一留站评分范围')
         result=process_current_input(inputs,request,work/'search',progress=progress)
         if not result.get('product'):raise ValueError('平台融合算法没有给出合格结果：'+component+'；'+str(result.get('reason',result.get('status'))))
-        ds=xr.open_dataset(result['product']).load()
+        from .netcdf_io import load_dataset
+        ds=load_dataset(result['product'])
         value=ds[component].values.reshape(len(requested),int(inside.sum()))
         if not np.isfinite(value).all():raise ValueError('平台选择结果不完整：'+component)
         comparison=result.get('selection_comparison',{})

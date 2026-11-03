@@ -260,7 +260,8 @@ def convert(manifest_path,output_dir):
     for item in m['products']:
         p=(base/item['path']).resolve();f=item['field']
         if not p.is_relative_to(base) or digest(p)!=item['sha256']:raise ValueError('本次处理产品越界或哈希变化')
-        with xr.open_dataset(p) as d:arrays.append(d[[f]].load())
+        from .netcdf_io import load_dataset
+        arrays.append(load_dataset(p)[[f]])
         fields.append(f);reads.append(dict(path=str(p),sha256=item['sha256'],field=f))
     if fields!=list(FIELDS):raise ValueError('本次8个地面变量不完整')
     ds=xr.merge(arrays,join='exact',compat='equals')

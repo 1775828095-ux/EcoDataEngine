@@ -62,6 +62,29 @@ def test_absolute_relocation_is_evidence_based():
     assert row['reason'] == 'unique_path_suffix:2'
 
 
+@pytest.mark.parametrize('reference', ['../inputs/met.nc', r'..\inputs\met.nc'])
+def test_parent_reference_within_uploaded_root(reference):
+    files = case(reference=reference)
+    files['project/run/control.any'] = files.pop('project/control.any').replace(
+        "'inputs/", "'../inputs/")
+    b = bind_project([uploaded(files)], 'camx')
+    row = next(r for r in b['bindings'] if r['parameter'] == 'met2d_grid')
+    assert row['target'] == 'project/inputs/met.nc'
+    assert row['reason'] == 'control_relative'
+
+
+@pytest.mark.parametrize('reference', ['../../inputs/met.nc', '../../../inputs/met.nc',
+                                       'C:/outside/../inputs/met.nc'])
+def test_parent_reference_cannot_escape_uploaded_root(reference):
+    with pytest.raises(ValueError, match='越界'):
+        bind_project([uploaded(case(reference=reference))], 'camx')
+
+
+def test_wrf_bundle_uses_shared_deployed_upload_limits():
+    from ecodata.interface.engineering_upload import MAX_FILE_BYTES, MAX_TOTAL_BYTES
+    assert MAX_FILE_BYTES == MAX_TOTAL_BYTES == 10 * 1024 ** 3
+
+
 @pytest.mark.parametrize('ref', ['missing.nc', '../inputs/met.nc', '/private/unknown.nc'])
 def test_missing_or_unsafe_reference(ref):
     with pytest.raises(ValueError):

@@ -5,6 +5,10 @@ import hashlib
 import io
 import zipfile
 
+# Shared with native bundle converters; retain the deployed 10 GiB policy.
+MAX_FILE_BYTES = 10 * 1024 * 1024 * 1024
+MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024
+
 
 SUPPORTED_SUFFIXES = {".csv", ".tsv", ".txt", ".rdb", ".gz", ".isd", ".xlsx",
                       ".parquet", ".nc", ".nc4", ".tif", ".tiff", ".h5"}
