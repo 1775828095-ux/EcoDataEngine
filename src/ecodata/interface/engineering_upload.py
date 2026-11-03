@@ -10,8 +10,6 @@ SUPPORTED_SUFFIXES = {".csv", ".tsv", ".txt", ".rdb", ".gz", ".isd", ".xlsx",
                       ".parquet", ".nc", ".nc4", ".tif", ".tiff", ".h5"}
 WASP_GROUPS = {"usgs", "nbc", "noaa", "ri_dem", "wwtp"}
 IGNORED_GROUPS = {"references", "reference", "official_original", "official_wasp_reference"}
-MAX_FILE_BYTES = 10 * 1024 * 1024 * 1024
-MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -21,8 +19,6 @@ class LocalUpload:
     path: Path
 
     def getvalue(self):
-        if self.path.stat().st_size > MAX_FILE_BYTES:
-            raise ValueError(f"文件超过10 GB限制：{self.name}")
         return self.path.read_bytes()
 
 
@@ -32,7 +28,7 @@ def local_folder_uploads(folder, *, include_all=False):
     if not root.is_dir():
         raise ValueError("文件夹不存在或无法访问，请填写本机上的完整文件夹路径。")
     root = root.resolve()
-    uploads, total = [], 0
+    uploads = []
     for path in sorted(root.rglob("*")):
         if not path.is_file() or (not include_all and path.suffix.casefold() not in SUPPORTED_SUFFIXES | {".zip"}):
             continue
@@ -42,12 +38,6 @@ def local_folder_uploads(folder, *, include_all=False):
         name = path.relative_to(root).as_posix()
         if not include_all and _group(name)[1]:
             continue
-        size = path.stat().st_size
-        if size > MAX_FILE_BYTES:
-            raise ValueError(f"文件超过10 GB限制：{name}")
-        total += size
-        if total > MAX_TOTAL_BYTES:
-            raise ValueError("文件夹数据超过10 GB限制，请选择更小的数据子文件夹。")
         uploads.append(LocalUpload(name, path))
     if not uploads:
         raise ValueError("文件夹内未找到支持的数据文件或 ZIP 压缩包。")
@@ -98,20 +88,12 @@ def _members(upload, *, expand_archives=True):
         return [(name, content, None)]
     members = []
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
-        total = 0
         for info in archive.infolist():
             if info.is_dir():
                 continue
             member_name = _normalise(info.filename)
             if not _safe_name(info.filename) or (info.external_attr >> 16) & 0o170000 == 0o120000:
                 members.append((member_name, b"", "ZIP中包含不安全路径"))
-                continue
-            if info.file_size > MAX_FILE_BYTES:
-                members.append((member_name, b"", "文件超过10 GB限制"))
-                continue
-            total += info.file_size
-            if total > MAX_TOTAL_BYTES:
-                members.append((member_name, b"", "ZIP解压后总量超过10 GB限制"))
                 continue
             members.append((member_name, archive.read(info), None))
     return members

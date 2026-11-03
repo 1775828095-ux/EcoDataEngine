@@ -27,6 +27,10 @@ def prepare_uploads(uploads, model_id, folder, progress=None):
         prepared = prepare_bundle(uploads, folder, progress=progress)
         if prepared is not None:
             return prepared
+    from ecodata.models.project_binding import prepare_project_binding
+    bound = prepare_project_binding(uploads, model_id, folder, progress=progress)
+    if bound is not None:
+        return bound
     table = preparation_table(model_id, model_table(model_id))
     contract = table.get("converter_contract")
     scan = scan_model_uploads(uploads, include_all=True)

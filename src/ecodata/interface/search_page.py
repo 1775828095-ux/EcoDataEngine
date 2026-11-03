@@ -29,8 +29,8 @@ def request_fingerprint(inputs,goal):
 
 def render_search_page():
     st.subheader("统一算法选择与组合 · 空间 / 时间 / 多源")
-    st.caption("画像短组合枚举与历史GOLEM模式共用真实执行和质量门。通用NetCDF不等于模拟器原生输入。")
-    selection_mode=st.selectbox("选择机制",["PortraitMutation","Autonomous","AutonomousField","Profile","C-local"],format_func=lambda v:{"PortraitMutation":"当前数据自主判断 · 随机变异搜索","Autonomous":"自主组合 · 全注册库与统一真实误差","AutonomousField":"互补时空场 · 开放图与可见锚点验证","Profile":"模型需求与三画像 · 短组合 / 可选遗传寻优","C-local":"历史GOLEM局部搜索"}[v],key="unified_selection_mode")
+    st.caption("画像短组合与随机变异共用真实执行和质量门。通用NetCDF不等于模拟器原生输入。")
+    selection_mode=st.selectbox("选择机制",["PortraitMutation","Autonomous","AutonomousField","Profile"],format_func=lambda v:{"PortraitMutation":"当前数据自主判断 · 随机变异搜索","Autonomous":"自主组合 · 全注册库与统一真实误差","AutonomousField":"互补时空场 · 开放图与可见锚点验证","Profile":"模型需求与三画像 · 短组合 / 可选遗传寻优"}[v],key="unified_selection_mode")
     model_profile=None;selected_field=None
     if selection_mode=="Autonomous":
         st.caption("自主模式扫描全注册库，按实际接口逐层组合，不使用手写流程或画像软分。当前自动效果评价只支持单站逐日重建：从可见值构造隔离搜索与确认窗口；无可用参考时明确停止。资源用尽只报告当前最好，不能当作全局最优。")

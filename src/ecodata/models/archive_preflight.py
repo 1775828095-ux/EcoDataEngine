@@ -12,7 +12,6 @@ import zipfile
 
 
 def inspect_upload_archives(uploads, converter, folder):
-    from ecodata.interface.engineering_upload import MAX_FILE_BYTES, MAX_TOTAL_BYTES
     reports=[];issues=[];total=0;scientific=[];unread=[]
     probe=getattr(converter,'probe_sources',None)
     for upload in uploads:
@@ -33,8 +32,6 @@ def inspect_upload_archives(uploads, converter, folder):
                     issues.append(dict(file=name,message='压缩包路径重复'));continue
                 seen.add(name.casefold());total+=item.file_size
                 members.append(dict(file=name,bytes=item.file_size))
-                if item.file_size>MAX_FILE_BYTES or total>MAX_TOTAL_BYTES:
-                    issues.append(dict(file=name,message='压缩包展开后超过平台10 GiB限制'));continue
                 with archive.open(item) as stream:
                     prefix=stream.read(65536)
                     if probe:prefixes.append((name,prefix))

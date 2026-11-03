@@ -1,2 +1,0 @@
-# Optional isolated graph-search backend. Install into a dedicated environment.
-thegolem==0.5.0

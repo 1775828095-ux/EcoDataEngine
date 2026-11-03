@@ -7347,3 +7347,75 @@ FVC参考是Landsat派生端元代理，非地面真值。该测试年此前已�
 此前第90章更正的旧fixed分支前缀选图边界仍保留，本轮固定对照继续使用已存在、锁定完整图身份的graph-bank公共入口，没有把完整固定图与其前缀混比。页面薄客户端共用本公共服务及新版本指纹；本轮验收为文件/API流程，未另做浏览器点击或重启队友环境。
 
 证据目录：mechanism_acceptance.json、real_data_mechanism_receipt.json、protocol.json、source_executed、before、production.patch、run_receipts.json、predictions_frozen.json、effect_summary.json、test_metrics.json、independent_audit.json、audit_cost.json、release_tests.xml、run.log、audit.log及runs/*的原始候选、错误、折、轨迹、图与部署产品。
+
+
+## 2026-11-03 GitHub最新版更新与旧GOLEM退役
+
+- 更新来源：私有仓库1775828095-ux/EcoDataEngine的codex/latest-platform-20261103分支，提交5448623959fef7167eba002dde1830c26cf0e7ab。此时main尚未合并该最新版。
+- 已将最新版及本轮必要修复同步到D:/codex/EcoDataEngine；Git协作目录D:/codex/EcoDataEngine-GitHub保持对应修改。此次未推送、未合并远端分支。
+- 删除旧GOLEM优化器实现、独立启动脚本、requirements-golem.txt及pyproject的thegolem可选依赖，移除页面历史GOLEM选项及包公共导出。默认公共服务使用PortraitMutation；旧策略请求明确拒绝，不静默替代。
+- 保留当前随机变异、自动识别、融合、模型转换、科学算法及质量门。混合时间算法注册不再为取得算法而实例化旧GOLEM工厂。历史任务定义保留少量拒绝式兼容入口，不再加载或执行GOLEM。旧历史实验不再是受支持的在线入口；其原始源码可由Git提交或备份恢复。
+- 新分支漏带workbench.css，已复用原平台对应样式，修复主页面启动失败。
+- 定向验证：test_golem_retirement、test_current_input、test_minimal_workbench、test_workbench_folder_input共29项不同测试均通过。首次协作目录运行27通过、2失败，失败为协作目录缺少本地R/sinkr依赖，未改变算法和断言；同步原目录后两项及3项退役测试复测5通过。包含阻断golem导入后的算法注册、旧策略明确拒绝、主页面AppTest、真实小规模随机变异和文件夹输入检查；未执行全量回归或正式研究实验，未作浏览器人工验收。
+- 原数据、output、external、.venv及历史结果保留，未清理旧环境。源码修改前备份D:/codex/platform_update_20261103/before_source.zip；更新来源和逐文件SHA256见update_plan.json、sync_manifest.json；测试日志tests.txt、tests_local.txt，早期失败记录保留在测试临时产物中。
+- 本次仅确认上述工程更新与定向行为，不据此声称算法精度或全部模型原生执行均已验证。
+
+
+## 2026-11-03 CAMx EPA首日ZIP平台内部执行
+
+通过主工作台相同公共入口prepare_uploads，对CAMx_EPA首日工程与气象融合数据_20261102.zip执行两次。仅安装注册仓库内existing_air转换插件（--no-deps --no-build-isolation），未安装CAMx或第三方运行工具，未执行包内脚本。ZIP为5,170,342,324字节，56个文件，展开11,919,178,839字节；触发平台10 GiB安全限制。转换器需求检查还发现CAMx配置D:/EcoDataEngine/cases/CAMx740_20261020/official/native_complx_emission_probe/config.json不存在；现有插件只绑定7.40 NO/PEC排放更新，而输入是7.20气象及完整工程。未放宽限制或伪造替代配置。
+
+状态：公共入口实际调用完成，自动融合/格式转化未执行，CAMx原生模拟未执行。源文件未改动。运行证据output/camx_epa_platform_20261103/run_01.json、run_02.json、attempt_01与attempt_02的archive_preflight.json及scientific_inventory.json、summary.json、plugin_install.txt。前置检查只读取目录和有限科学头，不等同完整SHA256复核。该阻塞不是改一个路径即可修复，需要已有平台具备这套7.20工程的合法适配绑定及受控大文件处理；本轮未开发新科学转换算法，也未把7.40配置套用7.20。
+
+
+### 2026-11-03 取消平台10 GiB文件门槛
+按用户要求移除本地文件、目录、ZIP成员及总展开体积的人工大小限制，保留路径越界、符号链接、重复路径等安全检查。文件夹入口定向测试6通过。原CAMx ZIP重新通过公共入口：archive_preflight为CONTINUE，展开字节11919178839；后续仍因已有CAMx转换配置缺失阻止：缺少转换配置：D:\EcoDataEngine\cases\CAMx740_20261020\official\native_complx_emission_probe\config.json。未尝试将其他版本工程配置套入本案例。未修改科学算法，未重跑数值实验。证据output/camx_epa_platform_20261103/attempt_03_no_size_limit。此修改取消平台10 GiB业务门槛，不表示内存/磁盘或Streamlit HTTP上传层无限；大工程可用现有本机路径入口。
+
+
+## 2026-11-03 通用工程解析与上传依赖自动绑定
+
+本轮范围是把“解析上传工程→绑定其实际文件”从特定机器/特定案例配置中抽出；不是宣称所有环境模型已通用转换或完成融合。新增公共模块src/ecodata/models/project_binding.py，自动准备服务automatic_preparation.prepare_uploads在既有专项bundle处理器未接管时调用。主页面和工具包仍共用此服务；不在页面或实验中另维护工程选择策略。保留既有WRF/CMAQ/CALPUFF专项bundle入口及历史转换器，普通数据继续原流程。
+
+### 可复用开源实现
+
+直接安装并固定f90nml 1.5.0（Apache-2.0），源码https://github.com/marshallward/f90nml；相关JOSS软件论文https://doi.org/10.21105/joss.01474。其负责Fortran语法、数组、引号、注释等解析，不重写解析器。PseudoNetCDF https://github.com/barronh/pseudonetcdf （LGPL-3.0）仍是平台已有CAMx格式工具；本轮没有复制第三方源码或新增科学写出内核。来源及用途见output/project_binding_20261103/sources.json。
+
+### 机制与边界
+
+- 通用惰性文件资源层支持ZIP成员与本机目录，不将GB级工程全部读入内存；对控制文件及实际依赖流式SHA256核验，保留原始参数与引用。
+- 根据模型格式级文件角色绑定，不写死研究区、版本号、工程目录或队友配置。CAMx覆盖控制文件中已声明的化学参数、光解、初边界、排放、地表和气象输入，区分空路径、输出以及restart=false的无效重启分支。WRF覆盖明确max_dom下的初始与主边界依赖；WRF重启尚不支持。其他模型保留原驱动，不声称新增通用适配完成。
+- 相对路径严格以控制文件目录解析；旧绝对路径只能凭上传集合内至少两级路径后缀的唯一匹配迁移，并记录匹配依据。不打开上传资料之外的主机路径，不按单一文件名猜测。歧义、多个独立控制文件、重复成员、符号链接、越界、缺文件均拒绝。脚本里的内嵌namelist不当独立控制文件，更不执行脚本。
+- bound_resource按参数及数组偏移提供真实依赖流，使用前重新核验内容，防止绑定后换文件。参数数组保留f90nml原始start_index元信息；bindings.indexes是解析器列表的零基偏移，不是原生Fortran下标。
+- 输出ENGINEERING_BOUND及下载绑定记录，native_ready=false。记录包不含原始大文件，也不冒充可直接运行的模型工程。原生格式、时空网格/单位/版本科学一致性、融合写回及模型执行须另行真实验证。未静默替换旧工程、伪造产品或跳过为PASS。
+
+### 实际验收
+
+通过平台公共入口处理原CAMx EPA首日ZIP：12项文件引用绑定，逐内容SHA256核验，耗时131.98秒。再用最终代码处理原目录，绑定参数/内容指纹与ZIP完全一致；依赖总计11,877,477,180字节。通过bound_resource实际读取Met2D，网格396×246、25个时次、1层，t2单位K，首值292.35498046875；这是数据访问证据，不是气象精度或融合证据。目录绑定、重验该端口并读取数组共20.43秒。
+
+新增及受影响定向测试共24项不同检查通过（tests_accepted.txt的23项，tests_ui_final.txt的1项）。包括两套不同目录案例、CAMx与WRF格式、绝对路径迁移、歧义/缺失/越界、内容变化拒绝、真正读取绑定父资源、ZIP/目录一致、原有准备与融合回归、主页面提交/状态/下载AppTest。AppTest不是人工浏览器验收，本轮未进行人工浏览器操作。保留早期脚本内嵌配置误识别及UI测试缺导入的失败记录，并补针对性测试复测；未运行无关全量回归。
+
+### 交付与未完成
+
+已完成：公共工程解析、上传资源绑定、内容核验及消费接口，CAMx不再为建立工程绑定而读取固定7.40配置。尚未完成：本例7.20气象融合后的原生写回/完整科学契约验收、CAMx原生模拟；CMAQ shell等其他格式的通用绑定不在本轮新增支持范围，不宣称任意模型任意工程即插即用。工程级泛化已与模型格式驱动分离，今后相同已支持格式的其他工程无需逐个写死路径。
+
+证据根目录output/project_binding_20261103：summary.json、sources.json、real_zip与real_directory_final的project_binding.json/execution.json/绑定记录ZIP、测试日志、执行源码executed_source.zip。修改前快照位于同目录automatic_preparation.py、workbench_page.py、pyproject.toml。源码与本地Git协作目录同步，未自动推送GitHub。
+复现：.venv\Scripts\python.exe -m pytest tests/test_project_binding.py tests/test_minimal_workbench.py tests/test_workbench_folder_input.py -q -o addopts=''。真实调用为prepare_uploads(local_folder_uploads(工程目录, include_all=True), 'camx', 新输出目录)，ZIP则使用LocalUpload(文件名, Path(文件路径))。
+
+
+## 2026-11-03 CAMx气温融合与原生写回有界执行（按用户要求停止扩展）
+
+新增公共格式适配src/ecodata/models/native_meteorology.py，project_binding在CAMx工程带有明确NOAA解码气温及站点坐标字段时调用；缺观测时仍返回绑定记录。科学运算复用platform_search.process_current_input、spatial_fusion_task及其现有残差/IDW/校正/随机变异、DAG和质量门，不新增融合内核。几何复用已有CAMx球体LCC网格函数，网格参数从输入头读取，不写死地点/日期/工程路径。主页面增加真实写回与未运行模型的区分信息。
+
+实际执行：复用本轮真实工程绑定，调用公共气象适配及公共数值服务成功；real_run_03耗时31.12秒。此前real_run_01的NumPy整数日期兼容错误、real_run_02的已有_grid返回值数量适配错误已修复，失败记录保留。未反复调参。NOAA气温质量1/5的即时报告转换为K，仅匹配真实原生时刻，不做逐小时填造。8个时刻、站点逐时凸包交集内195个原生格点参与写回，共改变t2的1560个值；其余时空位置、风、三维场和全部其他变量/属性/时间标记逐项回读一致。
+
+公共服务实际评价25张不同图，单源15、多源10，均PASS；固定留站选择队列27个参考值上，最佳单源RMSE=2.0528626218 K、MAE=1.4585345070 K，多源选中图RMSE=1.2116471249 K、MAE=1.0052865191 K。此为小样本选型结果，不能称独立精度收益：五站不足外层独立留点，post_selection为NO_SEPARATE_LOCATION_TEST；源上游同化独立性未知，站点坐标基准采用已披露操作约定。
+
+native_project目录已按通用绑定复制全部11.88GB依赖，副本逐内容哈希核验；CAMx.in依赖改为该副本内相对路径，科学参数保留、输出路径沙箱化。更新的met2d仍为NETCDF3_CLASSIC，原生字段t2/形状/dtype/属性/其余数据均回读检查通过。原始工程未写入。下载EcoData-meteorology-update.zip为更新气象及控制/证据，不含其他大型输入；完整工程在本机native_project。native_writeback_verified=true，native_schema_verified=false，native_ready=false，CAMx模拟未运行；不把格式写回等同全物理平衡或模型原生读取。风的观测高度/旋转契约未解决，保留原值，不称全部气象变量已融合。
+
+用户要求快速结束后未继续追加开发/回归。新增适配模块尚未完成独立定向单元回归、最终页面人工验收和最终版本公共prepare_uploads全链再次执行；本次真实数值处理、原生写回、完整依赖复制及回读有执行记录，不能扩大为整个系统验收。现有project_binding入口接线已修改但尚无本轮最终入口独立验收。不自动启动CAMx或大实验。
+
+产物：output/native_meteorology_20261103/real_run_03/native_project（完整依赖工程）、EcoData-meteorology-update.zip、execution.json、native_validation.json、meteorology/protocol.json、observation_quality.json及search目录全部图/评分/成本/轨迹；此前失败在real_run_01、real_run_02。修改前快照在本轮output根目录。已同步本地Git协作源码，未推送。
+
+
+### 2026-11-03 GitHub同步
+按用户授权，将本地GOLEM退役、移除10GiB业务门槛、公共工程绑定、原生气温融合写回及相关页面/测试/报告提交至codex/latest-platform-20261103分支。原始数据、运行环境、12GB工程副本及output运行产物不纳入Git提交。native_meteorology已真实执行及原生写回回读，但独立定向回归尚未完成，CAMx原生运行未执行；本次同步不改变这些验收边界。

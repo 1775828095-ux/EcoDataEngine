@@ -79,7 +79,7 @@ def predict(batch,method,states=None):
     return np.concatenate(pieces)
 
 
-def setup():
+def setup(*, build_factory=True):
     registry=AlgorithmRegistry()
     for method in METHODS:registry.register(TemporalBaseline(method))
     adapters={};kernel_cache={};port=lambda kind:Port(kind,("unit","contract"))
@@ -158,7 +158,7 @@ def setup():
         adapter.decision_contract=declaration
     boundaries=("source.masked_batch","source.fitted_history","prepare.conditional_fallback","prepare.visible_gap_split","quality.mixed_gap")
     registry.register_task_adapters(TASK,adapters,algorithm_ids=IDS,boundary_ids=boundaries)
-    return registry,MixedGapFactory(adapters,IDS,max_nodes=18,max_depth=9)
+    return registry,(MixedGapFactory(adapters,IDS,max_nodes=18,max_depth=9) if build_factory else None)
 
 
 class MixedGapFactory(TypedGolemFactory):

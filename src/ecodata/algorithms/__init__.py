@@ -9,7 +9,6 @@ from ecodata.algorithms.semantic_requirements import (
     RequirementMapper,
     SemanticFeatureExtractor,
 )
-from ecodata.algorithms.golem_search import GolemCapabilitySearch, GolemSearchConfig
 from ecodata.evaluation.quality_gates import RawInputQualityGate, ResultQualityGate
 
 __all__ = [
@@ -17,5 +16,4 @@ __all__ = [
     "AlgorithmRegistry", "create_default_registry", "AlgorithmPlan", "AlgorithmSelector", "SelectionResult",
     "UnifiedAlgorithmPipeline", "ScaleDecision", "TargetScaleAdvisor", "RawInputQualityGate", "ResultQualityGate",
     "DataSemantics", "CapabilityRequirements", "SemanticFeatureExtractor", "RequirementMapper",
-    "GolemCapabilitySearch", "GolemSearchConfig",
 ]

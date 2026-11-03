@@ -24,7 +24,8 @@ def stage_strip(state="empty", fusion_status=None):
               "running": ("处理中", "自动执行", "等待处理"),
               "AWAITING_CONVERTER": ("已完成", "已完成", "待接入"),
               "CONVERTED": ("已完成", "已完成", "已完成"),
-              "CONVERSION_FAILED": ("已完成", "已完成", "转化失败")}
+              "CONVERSION_FAILED": ("已完成", "已完成", "转化失败"),
+              "ENGINEERING_BOUND": ("工程引用已绑定", "未执行", "待科学契约验证")}
     labels = states.get(state, states["empty"])
     if fusion_status in {'NOT_APPLICABLE_SAME_PRODUCT','PRESERVE_SINGLE_SOURCE'}:
         labels = (labels[0], '已检查，无需重复融合', labels[2])
@@ -109,12 +110,21 @@ def render_workbench(root, version):
                     return
             if result:
                 manifest = result["data"]["manifest"]
-                if manifest["status"] == "CONVERTED":
-                    if manifest.get('preparation',{}).get('route')=='wrf_daily_sst_bundle_v1':
+                if manifest["status"] == "ENGINEERING_BOUND":
+                    st.info("已自动解析上传工程并绑定其输入文件，未使用其他工程配置。融合及模型原生格式验收尚未完成。")
+                    st.caption("下载包含工程参数、文件绑定及校验记录；不含原始大文件，不是可运行模型包。")
+                    label = "下载工程绑定记录"
+                elif manifest["status"] == "CONVERTED":
+                    if manifest.get('preparation',{}).get('route')=='bound_native_meteorology_v1':
+                        st.success("气象处理及原生文件写回完成，完整依赖工程保存在本机；CAMx模拟尚未运行。")
+                        st.caption(manifest.get('complete_project_directory',''))
+                    elif manifest.get('preparation',{}).get('route')=='wrf_daily_sst_bundle_v1':
                         st.success("格式转化完成，可下载本次自动处理后的大气驱动与海温补充文件；尚未合并为可直接运行的完整 WRF 工程。")
                     else:
                         st.success("格式转化完成，可以下载。")
                     label = "下载模型输入包"
+                    if manifest.get('preparation',{}).get('route')=='bound_native_meteorology_v1':
+                        label = "下载原生气象更新包与核验记录"
                 else:
                     st.markdown('<div class="result-heading">数据已准备，等待格式转化</div>', unsafe_allow_html=True)
                     st.write("队友的格式转化模块尚未接入。已处理数据和交接清单已打包，接入后将自动完成最后一步。")

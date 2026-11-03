@@ -1,4 +1,4 @@
-"""Public upload/toolkit protocol over the existing numerical GOLEM service.
+"""Public upload/toolkit protocol for current random-mutation processing.
 
 Task adapters own scientific ports; this module owns parsing, dispatch and the
 common evaluation/execution envelope. No research runner is imported.
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from pyproj import CRS
-from ecodata.algorithms.numerical_search import run_numerical_search,record,save
+from ecodata.algorithms.numerical_search import record,save
 from ecodata.algorithms.contracts import AlgorithmContext,AlgorithmResult
 from ecodata.algorithms.registry import create_default_registry
 from ecodata.algorithms.router import AlgorithmSelector
@@ -49,7 +49,7 @@ def platform_registry(*,weights=None):
     from ecodata.interface.raster_upload import upload_registry
     from ecodata.algorithms.mixed_gap_dag import setup
     registry=upload_registry()
-    temporal,_=setup()
+    temporal,_=setup(build_factory=False)
     for spec in temporal.specs():registry.register(temporal.get(spec.id))
     from ecodata.algorithms.composition_decision import PrimaryWeightedMean
     registry.register(PrimaryWeightedMean())
@@ -469,7 +469,7 @@ class RegistryEvaluator:
         return info
 
 
-def submit_search(inputs,request,evaluation,folder,*,budget=None,mode="C-local",seed=11,progress=None,validation=None):
+def submit_search(inputs,request,evaluation,folder,*,budget=None,mode="PortraitMutation",seed=11,progress=None,validation=None):
     """Single public service used by pages, toolkit and research clients."""
     started=perf_counter();folder=Path(folder)
     if any((folder/name).exists() for name in ("request.json","summary.json")):raise ValueError("Immutable request directory already exists")
@@ -506,120 +506,8 @@ def submit_search(inputs,request,evaluation,folder,*,budget=None,mode="C-local",
                 raise ValueError("Source/time composition uses the three-portrait Profile entry")
             from ecodata.algorithms.composition_decision import submit
             return submit(inputs,request,evaluation,folder,budget=dict(DEFAULT_BUDGET,**(budget or {})),seed=seed,progress=progress,validation=validation)
-        if validation is not None:raise ValueError('Search validation feedback currently requires composition mode')
-        profile_model=None
-        if mode=="Profile":
-            from ecodata.algorithms.profile_matching import prepare_model_request
-            request,profile_model=prepare_model_request(request)
-            if request.get('task')=='hourly_recovery' or request.get('adapter')=='station_covariates':
-                raise ValueError('Profile mode currently uses reviewed gridded/temporal field contracts; specialised state/station ports retain their existing entry')
-        if request.get("task") not in FAMILIES and request.get("task")!="hourly_recovery":raise ValueError("Unsupported task; declare spatial, temporal or multisource")
-        if mode=="Profile" and evaluation is None:
-            from ecodata.algorithms.profile_matching import RecommendationOnly
-            evaluation=RecommendationOnly()
-        if evaluation is None or getattr(evaluation,"protocol",{}).get("kind") not in ({"reference_error","declared_task_metric","recommendation_only"} if mode=="Profile" else {"reference_error","declared_task_metric"}):raise ValueError("Missing legal independent evaluation resource or declared engineering metric; cannot rank")
-        unknown_constraints=set(request.get("constraints",{}))-{"nonnegative","unit","output_unit","forbid_spatial_shift"}
-        if unknown_constraints:raise ValueError("No implemented hard-constraint consumer: "+", ".join(sorted(unknown_constraints)))
-        request=dict(request,_local_problem_mode=mode in {"C-local","Profile"})
-        for name,value in request.get("constraints",{}).items():
-            if name in request and request[name]!=value:raise ValueError("Conflicting task/constraint declaration: "+name)
-            request[name]=value
-        if "nonnegative" in request and not isinstance(request["nonnegative"],bool):raise ValueError("nonnegative must be an explicit boolean")
-        if request["task"]=="hourly_recovery":
-            from ecodata.algorithms.temporal_search import _submit_hourly_service
-            # Parsed legacy ports are explicit, never automatically loaded.
-            requirements=dict(request['requirements'])
-            for key in ('feature_declarations','optional_scoring'):
-                if key in request:requirements[key]=request[key]
-            return _submit_hourly_service(inputs,requirements,evaluation,budget or DEFAULT_BUDGET,folder,mode=mode,seed=seed,progress=progress)
-        begin=perf_counter();parsed,audit=parse_inputs(inputs);parse_seconds=perf_counter()-begin
-        if mode=="C-local":
-            for role in {role for role,_ in parsed}:
-                same=[ds for r,ds in parsed if r==role]
-                if len(same)>1 and (any(not ds.attrs.get("source_id") for ds in same) or len({ds.attrs["source_id"] for ds in same})!=len(same)):raise ValueError("Repeated source roles require explicit distinct stable source_id declarations")
-            order={"primary":0,"background":1}
-            parsed.sort(key=lambda item:(order.get(item[0],2),item[0],str(item[1].attrs.get("source_id",""))))
-        begin=perf_counter()
-        if request.get("weights") and (not isinstance(request["weights"],str) or not Path(request["weights"]).is_file()):raise ValueError("Explicit AOD checkpoint path is absent or unsupported")
-        roles={role for role,_ in parsed}
-        station_task=request.get("adapter")=="station_covariates" or (request["task"]=="multisource" and roles=={"observations","query","covariates"})
-        if mode=="Profile" and station_task:raise ValueError('Profile mode needs a reviewed field contract for specialised station ports')
-        if request.get("adapter") not in {None,"station_covariates"}:raise ValueError("Unsupported task data contract")
-        if station_task:
-            from ecodata.algorithms.station_search import prepare_station_search
-            registry,factory,external,decision,excluded=prepare_station_search(parsed,request)
-            raw=[]
-        else:
-            context,raw,input_variable=make_context(parsed,request)
-            if profile_model is not None:
-                from ecodata.algorithms.profile_matching import validate_model_context
-                validate_model_context(context,profile_model)
-            registry=platform_registry(weights=request.get("weights"))
-            semantics=SemanticFeatureExtractor().extract(context.sources[0].dataset,input_variable,
-                confirmed=dict(variable_class=request["semantic_type"],unit=request["unit"],nonnegative=bool(request.get("nonnegative",False))))
-            target=dict(request.get("requirements",{}))
-            if request.get("purpose")=="features":request=dict(request,operation=request.get("operation","feature_encoding"))
-            target.update(operation="temporal_processing" if request["task"]=="temporal" else "spatial_processing" if request["task"]=="spatial" else "model_preprocessing" if request["task"]=="model_preprocessing" else "fusion",
-                          source_count=len(context.sources),output_representation=request.get("output_representation"),source_roles=[role for role,_ in parsed],working_assumptions=request.get("working_assumptions",[]),
-                          coarse_observations_available="degradation_operator" in context.parameters)
-            if "training_reference" in context.parameters and "historical_simulation" in context.parameters:
-                target["training_bias"]=SemanticFeatureExtractor.training_bias(context.parameters["training_reference"],context.parameters["historical_simulation"],context.sources[0].dataset[input_variable])
-            scientific=request.get("operation")
-            if scientific:
-                if scientific not in {"soil_profile","vertical_interpolation","curvilinear_regridding","terrain_pressure_adjustment","terrain_downscaling","bias_correction","extreme_value_correction","spatial_statistics","feature_encoding","feature_stack"}:raise ValueError("Unsupported scientific operation")
-                if scientific=="spatial_statistics" and context.parameters.get("spatial_statistic") not in {"min","max","mean","median"}:raise ValueError("Spatial statistics require an explicit min/max/mean/median output meaning")
-                target["operation"]=scientific
-            elif request["task"]=="spatial" and context.sources[0].dataset[input_variable].dims==("horizon",):target["operation"]="soil_profile"
-            elif request["task"]=="spatial" and "lat" in context.sources[0].dataset.coords and context.sources[0].dataset.lat.ndim==2:target["operation"]="curvilinear_regridding"
-            if target["operation"]=="spatial_processing" and context.target_lat is not None and context.target_lon is not None and {"lat","lon"}<=set(context.sources[0].dataset.coords):
-                ds=context.sources[0].dataset
-                target["grid_change"]=not (np.array_equal(ds.lat,context.target_lat) and np.array_equal(ds.lon,context.target_lon))
-                target["coarsening"]=all(np.median(np.abs(np.diff(values)))>np.median(np.abs(np.diff(ds[axis].values))) for axis,values in (("lat",context.target_lat),("lon",context.target_lon)))
-            if context.parameters.get("target_time_frequency"):target["temporal_resolution"]=context.parameters["target_time_frequency"]
-            primary=next((ds for role,ds in parsed if role=='primary'),context.sources[0].dataset)
-            identity='role:primary:'+str(primary.attrs.get('source_id',request['variable']))
-            semantics,target,_=SemanticFeatureExtractor.apply_declarations(semantics,target,request.get('feature_declarations',[]),source_id=identity)
-            decision=AlgorithmSelector(registry).decide(context,target,semantics=semantics,use_cache=True)
-            factory,external,excluded=bind_registry(registry,context,decision,request)
-        # Shared declarations/optional scoring, never a page or experiment policy.
-        declarations=request.get('feature_declarations',[])
-        if declarations:
-            if station_task:raise ValueError('Declared feature interface not yet supported for station/covariate ports')
-            records=[];recognized=set()
-            for role,ds in parsed:
-                if role not in {'primary','background'}:continue
-                identity='role:'+role+':'+str(ds.attrs.get('source_id',request['variable']))
-                recognized.add(identity)
-                s=SemanticFeatureExtractor().extract(ds,input_variable,confirmed=dict(variable_class=request['semantic_type'],unit=request['unit'],nonnegative=bool(request.get('nonnegative',False))))
-                t={}
-                if request.get('target_lat') is not None and request.get('target_lon') is not None and {'lat','lon'}<=set(ds.coords):
-                    t['grid_change']=not(np.array_equal(ds.lat,request['target_lat']) and np.array_equal(ds.lon,request['target_lon']))
-                records.extend(SemanticFeatureExtractor.check_declarations(s,t,declarations,source_id=identity))
-            if {x.get('source_id') for x in declarations}-recognized:raise ValueError('Unknown feature declaration source identity')
-            decision.feature_declarations=records
-        from ecodata.algorithms.capability_scoring import configure_optional_scoring
-        configure_optional_scoring(decision,request,evaluation.protocol,None if station_task else context)
-        config=dict(DEFAULT_BUDGET,**(budget or {}))
-        preparation_costs=dict(parse_seconds=parse_seconds,semantic_matching_binding_seconds=perf_counter()-begin,
-            decision_seconds=decision.seconds,matching_cache=getattr(decision,"cache_info",{}))
-        save(folder/"request.json",dict(version=VERSION,request=request,budget=config,mode=mode,seed=seed,inputs=audit,input_quality=raw,
-            source_sha256={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [Path(__file__),Path(__file__).with_name("numerical_search.py"),Path(__file__).with_name("router.py"),
-                *([Path(__file__).with_name("profile_matching.py"),Path(__file__).with_name("portrait_rules.py"),Path(__file__).with_name("profile_pool.py"),
-                   Path(__file__).with_name("attribute_registry.py"),Path(__file__).with_name("portrait_attributes_v1.json"),
-                   Path(__file__).with_name("scoring_calibration.py")] if mode=="Profile" else [])]},
-            evaluation=evaluation.protocol,excluded=excluded,preparation_costs=preparation_costs,effective_ports={k:dict(kind=a.kind,metadata=a.metadata,fingerprint=a.fingerprint()) for k,a in external.items()}))
-        evaluator=RegistryEvaluator(registry,factory,external,decision,evaluation,folder/"executions",task_id=getattr(factory,"task_id",VERSION))
-        evaluator.setup_seconds=perf_counter()-started
-        if mode=="Profile":
-            from ecodata.algorithms.profile_matching import run_profile_selection
-            result=run_profile_selection(evaluator,config,folder,request,profile_model,context,seed=seed,progress=progress)
-        else:result=run_numerical_search(mode,seed,evaluator,config,folder,progress=progress)
-        result.update(service="PlatformSearch/v3",task=request["task"],total_service_seconds=perf_counter()-started,preparation_costs=preparation_costs,
-            model_native_status="NATIVE_UNVERIFIED" if request["task"]=="model_preprocessing" else "NOT_APPLICABLE",
-            unsupported_soft_objectives=[s for s in decision.requirements.soft_objectives if s!="retained_observation_support"],
-            discrimination="NO_OBSERVED_OBJECTIVE_DIFFERENCE" if len({r.get("objective") for r in result["rows"] if r["status"]=="PASS"})<=1 else "OBSERVED_IN_EVALUATED_CANDIDATES")
-        save(folder/"summary.json",result)
-        return result
+        from ecodata.algorithms.numerical_search import RETIRED_MESSAGE
+        raise ValueError(RETIRED_MESSAGE)
     except Exception as exc:
         save(folder/"failure.json",dict(status="BLOCKED",error=str(exc),call_chain=traceback.format_exc(),request=request))
         raise
