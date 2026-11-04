@@ -33,3 +33,6 @@ logs/
 .DS_Store
 Thumbs.db
 ~$*
+
+# Streamlit local identity is machine-specific, never a project input
+.streamlit/credentials.toml

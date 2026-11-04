@@ -42,13 +42,9 @@ def read_weather_zip(payload):
 
 
 def _read_zip(payload):
-    if len(payload) > 100 * 1024**2:
-        raise ValueError('工程ZIP超过100 MiB限制')
     files = {}
     with zipfile.ZipFile(io.BytesIO(payload)) as z:
         infos = z.infolist()
-        if len(infos) > 3000 or sum(i.file_size for i in infos) > 100 * 1024**2:
-            raise ValueError('工程解压大小或文件数量超过限制')
         for i in infos:
             path = PurePosixPath(i.filename)
             reserved = {'con', 'prn', 'aux', 'nul', *(f'com{n}' for n in range(1, 10)), *(f'lpt{n}' for n in range(1, 10))}
@@ -144,7 +140,8 @@ def inspect_weather_project(payload):
 
 def _weather_metadata(data):
     lines = data.decode('utf-8-sig').splitlines()
-    if len(lines) < 3 or [v.upper() for v in lines[1].split()] != ['NBYR','TSTEP','LAT','LONG','ELEV']:
+    header = [{'LON':'LONG'}.get(v.upper(),v.upper()) for v in lines[1].split()] if len(lines)>1 else []
+    if len(lines) < 3 or header != ['NBYR','TSTEP','LAT','LONG','ELEV']:
         raise ValueError('转换天气表头需NBYR TSTEP LAT LONG ELEV，不猜测单位或列含义')
     row = lines[2].split()
     if len(row) != 5:

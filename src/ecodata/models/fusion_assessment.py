@@ -67,6 +67,8 @@ def assess_task(folder,task,product):
         product_path=product.relative_to(root).as_posix(),product_sha256=sha(product),
         numerical_source_influence='NOT_TESTED',accuracy_improvement='NOT_ESTABLISHED',
         independent_reference_verified=False,algorithm_implementation_changed=False)
+    report['post_selection_stability']=result.get('post_selection_stability',
+        dict(status='NOT_EVALUATED',reason='No post-selection stress evidence',accuracy_assessed=False))
     if result.get('status')=='DERIVED_FROM_COMPONENT_SEARCH':
         components=result.get('component_tasks',[])
         if not components:raise ValueError('Derived product has no upstream component searches')

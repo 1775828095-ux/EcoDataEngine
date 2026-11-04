@@ -68,14 +68,12 @@ def _sst_update_enabled(raw):
 
 
 def prepare(uploads, folder, progress=None):
-    from ecodata.interface.engineering_upload import MAX_FILE_BYTES, MAX_TOTAL_BYTES
     folder = Path(folder)
     inventory, sources, archives = [], [], []
     native = []
     namelist_settings = []
     catalog_files = []
     dependencies = []
-    total = 0
     for upload in uploads or []:
         if not str(upload.name).lower().endswith('.zip'):
             return None
@@ -92,9 +90,6 @@ def prepare(uploads, folder, progress=None):
                 if str(name).casefold() in seen:
                     raise ValueError('压缩包存在重复路径：'+str(name))
                 seen.add(str(name).casefold())
-                total += item.file_size
-                if item.file_size > MAX_FILE_BYTES or total > MAX_TOTAL_BYTES:
-                    raise ValueError('压缩包成员或解压总量超过10 GB限制')
                 base = name.name.lower()
                 record = dict(file=str(name), size=item.file_size)
                 if base.startswith('wrfout_') or 'reference_outputs' in name.parts:
@@ -143,9 +138,6 @@ def prepare(uploads, folder, progress=None):
                             p=PurePosixPath(member.name)
                             if p.is_absolute() or '..' in p.parts or ':' in p.parts[0]:
                                 raise ValueError('嵌套资料包路径不安全')
-                            total += member.size
-                            if member.size > MAX_FILE_BYTES or total > MAX_TOTAL_BYTES:
-                                raise ValueError('嵌套资料展开后超过10 GB限制')
                             stream=tar.extractfile(member); magic=stream.read(8)
                             if magic[:4]!=b'GRIB' or magic[7] not in (1,2):
                                 raise ValueError('嵌套资料不是可识别的GRIB气象场：'+member.name)

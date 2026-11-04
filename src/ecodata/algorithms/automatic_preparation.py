@@ -3,7 +3,24 @@ from pathlib import Path
 import json
 
 
-def prepare_uploads(uploads, model_id, folder, progress=None):
+def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
+    """Shared input roles apply to page, toolkit and research callers alike."""
+    from ecodata.models.source_catalog import partition_uploads
+    import hashlib,zipfile
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    active,roles=partition_uploads(uploads,folder)
+    result=_prepare_uploads(active,model_id,folder,progress,task=task)
+    if roles['references']:
+        raw=json.dumps(roles,ensure_ascii=False,indent=2).encode('utf8')
+        name='_ecodata/input_roles_'+hashlib.sha256(raw).hexdigest()[:16]+'.json'
+        with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
+            if name in archive.namelist():raise ValueError('输入角色核验路径冲突，未覆盖已有产物')
+            archive.writestr(name,raw)
+        result['input_roles']=roles
+    return result
+
+
+def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
     # Lazy scientific imports keep the input screen responsive.
     import numpy as np
     from ecodata.recognition import recognise_file
@@ -11,8 +28,6 @@ def prepare_uploads(uploads, model_id, folder, progress=None):
     from ecodata.models.scientific_schema import match_fields
     from ecodata.engines.units import UnitEngine
     from ecodata.evaluation.quality_gates import RawInputQualityGate, ResultQualityGate
-    from ecodata.algorithms.profile_matching import model_table
-    from ecodata.algorithms.platform_search import SearchInput, process_current_input
     from ecodata.models.conversion_bridge import finish_preparation
     from ecodata.models.converter_contract import preparation_table, coordinate_references
 
@@ -21,16 +36,64 @@ def prepare_uploads(uploads, model_id, folder, progress=None):
     from ecodata.models.converter_contract import load_converter
     converter = load_converter(model_id)
     from ecodata.models.archive_preflight import inspect_upload_archives
-    inspect_upload_archives(uploads,converter,folder)
+    archive_probe = inspect_upload_archives(uploads,converter,folder,native_required=False)
+    if task is None:
+        from ecodata.models.engineering.preparation import prepare_engineering_inputs
+        prepared = prepare_engineering_inputs(uploads, model_id, folder, progress=progress)
+        if prepared is not None:
+            return prepared
+    from ecodata.models.component_service import prepare_components
+    component = prepare_components(uploads, model_id, folder, progress=progress, task=task)
+    if component is not None:
+        return component
+    from ecodata.models.task_dispatch import dispatch_preparation
+    dispatched = dispatch_preparation(uploads, model_id, folder, progress=progress, task=task)
+    if dispatched is not None:
+        return dispatched
+    from ecodata.models.swat_editor_project import prepare_editor_project
+    edited = prepare_editor_project(uploads, model_id, folder, progress=progress)
+    if edited is not None:
+        return edited
+    # A collection of inner project ZIPs is not the project they contain. Do
+    # not let a legacy converter substitute a machine-local default case.
+    for archive in archive_probe['archives']:
+        members = [m['file'].lower() for m in archive['members']]
+        if any(n.endswith('.zip') for n in members) and all(
+                n.endswith(('.zip', '.csv', '.txt', '.md', '.json')) for n in members):
+            raise ValueError('尚未展开嵌套工程ZIP：请分别上传内层工程ZIP及其观测文件；'
+                             '不会使用本机默认工程替代。来源：'+str(archive['file']))
+    # Native-format claims still require native checks; data-only tasks above
+    # cannot execute unknown scripts or claim a complete native engineering run.
+    from ecodata.models.project_inventory import prepare_project_inventory
+    # The old converter probe rejects all C-shell syntax. The public bounded
+    # binder validates supported declarations before that legacy fallback.
+    if model_id=='cmaq':
+        from ecodata.models.project_binding import prepare_project_binding
+        bound=prepare_project_binding(uploads,model_id,folder,progress=progress)
+        if bound is not None:return bound
+    try:
+        inspect_upload_archives(uploads,converter,folder,native_required=True)
+    except ValueError:
+        # A read-only dependency report is allowed even when native delivery
+        # cannot be certified. It never becomes CONVERTED/native_ready.
+        inspected = prepare_project_inventory(uploads, model_id, folder)
+        if inspected is not None:
+            return inspected
+        raise
+    from ecodata.models.project_binding import prepare_project_binding
+    bound = prepare_project_binding(uploads, model_id, folder, progress=progress)
+    if bound is not None:
+        return bound
     prepare_bundle = getattr(converter, 'prepare_uploads', None)
     if prepare_bundle:
         prepared = prepare_bundle(uploads, folder, progress=progress)
         if prepared is not None:
             return prepared
-    from ecodata.models.project_binding import prepare_project_binding
-    bound = prepare_project_binding(uploads, model_id, folder, progress=progress)
-    if bound is not None:
-        return bound
+    inspected = prepare_project_inventory(uploads, model_id, folder)
+    if inspected is not None:
+        return inspected
+    from ecodata.algorithms.profile_matching import model_table
+    from ecodata.algorithms.platform_search import SearchInput, process_current_input
     table = preparation_table(model_id, model_table(model_id))
     contract = table.get("converter_contract")
     scan = scan_model_uploads(uploads, include_all=True)

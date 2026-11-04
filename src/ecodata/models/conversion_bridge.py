@@ -77,7 +77,7 @@ def finish_preparation(folder, model_id, products, receipt):
                     raise ValueError('转换器返回的文件不存在、为空或超出输出目录')
                 outputs.append(item)
                 inventory.append(dict(path=item.relative_to(folder).as_posix(), size=item.stat().st_size, sha256=digest(item)))
-            manifest.update(status='CONVERTED', native_ready=True, conversion=result,
+            manifest.update(status='CONVERTED', native_ready=result.get('native_ready', True), conversion=result,
                             converter_input_manifest_sha256=converter_input_hash, output_inventory=inventory)
     except Exception as exc:
         outputs=[]

@@ -44,7 +44,9 @@ def test_invalid_folder_is_actionable(tmp_path, kind):
         local_folder_uploads(path)
 
 
-def test_folder_and_zip_use_same_preparation_pipeline(tmp_path):
+def test_folder_and_zip_use_same_preparation_pipeline(tmp_path, monkeypatch):
+    from ecodata.models import conversion_bridge
+    monkeypatch.setattr(conversion_bridge, 'entry_points', lambda **kw: [])
     source = source_file(tmp_path / "输入" / "嵌套")
     zip_data = BytesIO()
     with zipfile.ZipFile(zip_data, "w") as archive:
@@ -61,7 +63,9 @@ def test_folder_and_zip_use_same_preparation_pipeline(tmp_path):
         xr.testing.assert_equal(a.air_temperature_max, b.air_temperature_max)
 
 
-def test_folder_drives_real_ui_and_stale_result_is_cleared(tmp_path):
+def test_folder_drives_real_ui_and_stale_result_is_cleared(tmp_path, monkeypatch):
+    from ecodata.models import conversion_bridge
+    monkeypatch.setattr(conversion_bridge, 'entry_points', lambda **kw: [])
     from streamlit.testing.v1 import AppTest
     source_file(tmp_path / "用户数据")
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "src/ecodata/interface/app.py").run(timeout=30)

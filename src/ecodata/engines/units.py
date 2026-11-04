@@ -10,6 +10,9 @@ from cf_xarray.units import units as registry
 from ecodata.core.exceptions import SchemaError
 
 registry.force_ndarray_like = True
+# Published CALMET surface-format units. These are units, not data estimates.
+registry.define('hundred_ft = 100 * foot')
+registry.define('tenths = 0.1')
 
 
 class UnitEngine:
@@ -18,7 +21,8 @@ class UnitEngine:
         if not unit or str(unit).casefold() in {"unknown", "未知"}:
             raise SchemaError("源单位未知，不能自动换算")
         aliases = {"℃": "degC", "°C": "degC", "Celsius": "degC", "degrees_Celsius": "degC",
-                   "µ": "u", "μ": "u", "UG/M3": "ug/m3"}
+                   "µ": "u", "μ": "u", "UG/M3": "ug/m3",
+                   "fraction": "1", "unitless": "1", "code": "1"}
         value = aliases.get(str(unit), str(unit)).replace("µ", "u").replace("μ", "u")
         try:
             return registry.parse_units(value)

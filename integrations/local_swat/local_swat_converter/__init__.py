@@ -24,7 +24,7 @@ def _binding():
     return json.loads(Path(__file__).with_name('binding.json').read_text(encoding='utf8'))
 
 
-def convert(manifest_path, output_dir):
+def _convert_hubbard_legacy(manifest_path, output_dir):
     from ecodata.models.adapters.swat_plus import SWATPlusWriter
     from .weather_attachment import attach_weather, _read_zip, _check_refs
     from .project_dependencies import weather_dependencies
@@ -119,7 +119,15 @@ def convert(manifest_path, output_dir):
     return dict(status='PASS',files=resultfiles,validation=validation)
 
 
-from .contracts import requirements as _requirements
+def convert(manifest_path, output_dir):
+    from ecodata.models.component_service import unsupported_conversion
+    return unsupported_conversion(manifest_path, output_dir)
+
+
+def _requirements():
+    from ecodata.models.component_service import generic_requirements
+    return generic_requirements('swat_plus')
+
 convert.requirements = _requirements
 
 def _inspect_sources(files, records):

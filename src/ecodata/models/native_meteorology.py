@@ -25,7 +25,12 @@ def save(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, indent=2, default=str), encoding='utf8')
 
 
-def read_observations(uploads):
+def read_observations(uploads, *, times=None):
+    decoded=_load_observations(uploads)
+    return _scope_observations(decoded,times) if decoded is not None else None
+
+
+def _load_observations(uploads):
     """Existing decoded NOAA schema: units/UTC/QA are explicit field names.
 
 Other CSV tables remain unclassified; never infer quantities from file names.
@@ -36,29 +41,50 @@ Other CSV tables remain unclassified; never infer quantities from file names.
         for name in sorted(files.files):
             if not name.lower().endswith('.csv'):
                 continue
-            header = files.prefix(name).splitlines()[0].decode('utf-8-sig').split(',')
+            import csv
+            header = next(csv.reader([files.prefix(name).splitlines()[0].decode('utf-8-sig')]))
+            if {'STATION','DATE','TMP','REPORT_TYPE','LATITUDE','LONGITUDE','ELEVATION'} <= set(header):
+                with files.files[name][0]() as stream:
+                    raw = pd.read_csv(stream,dtype=str)
+                parts=raw.TMP.str.split(',',expand=True)
+                if parts.shape[1]!=2:raise ValueError('NOAA Global Hourly TMP格式无效')
+                values=pd.to_numeric(parts[0],errors='raise')
+                readings.append(pd.DataFrame(dict(station=raw.STATION,time_utc=raw.DATE,
+                    temperature_C=values.where(values!=9999)/10,temperature_quality=parts[1],
+                    report_type=raw.REPORT_TYPE,source_member=name,source_row=raw.index+2,
+                    source_sha256=files.identity(name)['sha256'])))
+                locations.append(pd.DataFrame(dict(station=raw.STATION,
+                    latitude=pd.to_numeric(raw.LATITUDE,errors='raise'),longitude=pd.to_numeric(raw.LONGITUDE,errors='raise'),
+                    elevation_m=pd.to_numeric(raw.ELEVATION,errors='raise'),source_member=name)).drop_duplicates())
+                # DATE is UTC; TMP is tenths Celsius + a QA flag per NOAA ISD.
+                continue
             observation = {'station', 'time_utc', 'temperature_C', 'temperature_quality', 'report_type'} <= set(header)
             location = {'station', 'latitude', 'longitude', 'elevation_m'} <= set(header)
             if not observation and not location:
                 continue
             with files.files[name][0]() as stream:
                 frame = pd.read_csv(stream, dtype={'station':str, 'temperature_quality':str})
-            frame['source_member'] = name
-            (readings if observation else locations).append(frame)
+            if observation:
+                selected=frame[['station','time_utc','temperature_C','temperature_quality','report_type']].copy()
+                selected['source_member']=name;selected['source_row']=frame.index+2
+                selected['source_sha256']=files.identity(name)['sha256'];readings.append(selected)
+            if location:
+                frame['source_member']=name;locations.append(frame)
     if not readings:
         return None
     if not locations:
         raise ValueError('气温观测存在但缺少明确的站点坐标表')
     obs = pd.concat(readings, ignore_index=True)
     stations = pd.concat(locations, ignore_index=True)
+    stations=stations.drop_duplicates(['station','latitude','longitude','elevation_m'])
     if stations.duplicated('station').any():
         raise ValueError('站点元数据重复，不能自动选择坐标')
-    obs = obs.merge(stations[['station','latitude','longitude']], on='station', how='left', validate='many_to_one')
+    obs = obs.merge(stations[['station','latitude','longitude','elevation_m']], on='station', how='left', validate='many_to_one')
     if obs[['latitude','longitude']].isna().any().any():
         raise ValueError('气温记录没有对应站点坐标，未静默丢弃')
-    if obs.duplicated(['station','time_utc']).any():
-        raise ValueError('站点时间重复，不平均不同报告')
-    obs['time'] = pd.to_datetime(obs.time_utc, utc=True, errors='raise').dt.tz_localize(None)
+    obs['time'] = pd.to_datetime(obs.time_utc, utc=True, errors='raise',format='ISO8601').dt.tz_localize(None)
+    obs['observation_namespace']='NOAA_GLOBAL_HOURLY:TMP'
+    obs['temperature_C']=pd.to_numeric(obs.temperature_C,errors='raise')
     # NOAA Global Hourly quality 1/5: passed all quality checks. SOD is not an
     # instantaneous report; its missing QA/value must never enter calibration.
     good = obs.temperature_quality.isin(['1','5']) & obs.report_type.isin(['FM-12','FM-15','FM-16'])
@@ -70,6 +96,25 @@ Other CSV tables remain unclassified; never infer quantities from file names.
                   coordinate_interpretation='EPSG:4326 operational convention for supplied geographic station metadata; survey datum not independently verified',
                   rejected=obs.loc[~good,['station','time_utc','temperature_quality','report_type']].to_dict('records'))
     obs = obs.loc[good].copy()
+    return obs,report
+
+
+def _scope_observations(decoded,times):
+    """Only requested native instants may train/evaluate the processing task."""
+    from ecodata.models.source_catalog import reconcile_records
+    obs,original=decoded;report=dict(original)
+    if times is not None:
+        support=pd.DatetimeIndex(times)
+        if support.hasnans or support.has_duplicates:raise ValueError('观测目标时间支持缺失或重复')
+        if support.tz is not None:support=support.tz_convert('UTC').tz_localize(None)
+        mask=obs.time.isin(support)
+        report['outside_time_support']=int((~mask).sum());obs=obs.loc[mask].copy()
+        report['requested_UTC_instants']=[str(t) for t in support]
+    else:report['outside_time_support']=0
+    report['accepted_in_time_support']=len(obs)
+    obs,reconciliation=reconcile_records(obs,['observation_namespace','station','time'],
+        ['temperature_C','temperature_quality','report_type','latitude','longitude','elevation_m'])
+    report['reconciliation']=reconciliation
     obs['value'] = obs.temperature_C.astype(float) + 273.15
     return obs, report
 
@@ -175,13 +220,11 @@ def materialize_project(uploads, binding, folder):
 
 
 def prepare_meteorology(uploads, binding, folder, progress=None):
-    decoded=read_observations(uploads)
+    decoded=_load_observations(uploads)
     if decoded is None:return None
     rows=[r for r in binding['bindings'] if r['parameter']=='met2d_grid']
     if len(rows)!=1:raise ValueError('气象处理需唯一二维气象绑定，嵌套网格尚未支持')
-    from ecodata.algorithms.platform_search import SearchInput, process_current_input
     folder=Path(folder);stage=folder/'meteorology';stage.mkdir(exist_ok=False)
-    obs,report=decoded;save(stage/'observation_quality.json',report)
     source=stage/'original_met2d.nc'
     with bound_resource(uploads,binding,'met2d_grid',tuple(rows[0]['indexes'])) as stream, source.open('wb') as dest:
         shutil.copyfileobj(stream,dest,8*1024**2)
@@ -189,54 +232,12 @@ def prepare_meteorology(uploads, binding, folder, progress=None):
         if 't2' not in ds.variables or str(ds['t2'].units).strip()!='K' or str(ds['t2'].long_name).strip()!='temperature at 2 m':
             raise ValueError('未确认原生2米气温定义和K单位，不猜测其他变量')
         times=native_times(ds);lon,lat=geometry(ds);background=np.asarray(ds['t2'][:,0,:,:])
-    coords=obs.drop_duplicates('station')[['longitude','latitude']].to_numpy(float)
-    if len(coords)<3 or not np.isfinite(coords).all():raise ValueError('至少需要三个合法气温站点')
-    obs=obs[obs.time.isin(times)].copy()
-    counts=obs.groupby('time').station.nunique()
-    selected_times=pd.DatetimeIndex(counts[counts>=3].index).sort_values()
-    if not len(selected_times):raise ValueError('无至少三站共同覆盖的原生时刻；不跨小时借值')
-    # Per-time convex support: no continental correction from five local stations.
-    xy=np.column_stack([lon.ravel(),lat.ravel()]);masks=[]
-    for time in selected_times:
-        points=obs.loc[obs.time.eq(time),['longitude','latitude']].to_numpy(float)
-        masks.append(Delaunay(points).find_simplex(xy)>=0)
-    common=np.logical_and.reduce(masks);cells=np.flatnonzero(common)
-    if not len(cells):raise ValueError('站点共同有效域内无原生格点中心')
-    obs=obs[obs.time.isin(selected_times)].copy()
-    frame=pd.DataFrame(dict(time=obs.time,station_id=obs.station,longitude=obs.longitude,latitude=obs.latitude,
-        value=obs.value,unit='K',variable='air_temperature',split='train',temporal_semantics='instantaneous',crs='EPSG:4326'))
-    attrs=dict(units='K',physical_variable='air_temperature',physical_definition='air temperature at 2 m',
-               temporal_semantics='instantaneous',spatial_semantics='grid_estimate',data_kind='continuous')
-    model=xr.Dataset({'air_temperature':(('time','point'),background.reshape(len(times),-1),attrs)},
-        coords=dict(time=times,point=np.arange(len(xy)),lon=('point',xy[:,0]),lat=('point',xy[:,1])),
-        attrs=dict(crs='EPSG:4326',source_id='bound_met2d:'+rows[0]['sha256']))
-    target=xr.Dataset(coords=dict(time=selected_times,point=np.arange(len(cells)),
-        lon=('point',xy[cells,0]),lat=('point',xy[cells,1])),attrs=dict(crs='EPSG:4326'))
-    inputs=[SearchInput('background.nc','primary',model.to_netcdf()),
-            SearchInput('observations.csv','observations',frame.to_csv(index=False).encode()),
-            SearchInput('target.nc','target',target.to_netcdf())]
-    for item in inputs:(stage/item.filename).write_bytes(item.content)
-    request=dict(task='multisource',processing_goal='spatial_fusion',variable='air_temperature',unit='K',
-        semantic_type='continuous',physical_variable='air_temperature',temporal_semantics='instantaneous',
-        allow_training=True,mutation_control='random',soft_guidance=False,nonnegative=True,
-        observation_crs='EPSG:4326',target_times=[str(t) for t in selected_times])
-    budget=dict(objective_limit=240,total_call_limit=240,proposal_limit=120,wall_seconds=90,probe_call_limit=0)
-    save(stage/'protocol.json',dict(request=request,budget=budget,seed=11,observation_quality=report,
-        native_times=[str(t) for t in times],processed_times=[str(t) for t in selected_times],
-        exact_time_match_only=True,processed_cell_count=len(cells),total_cell_count=len(xy),
-        spatial_scope='intersection of per-time station convex hulls; all other native values preserved',
-        limitations=['Station geographic datum operational EPSG:4326; not independent survey validation',
-                     'Only 2m temperature; wind height/rotation contracts unresolved, preserved unchanged',
-                     'No 3D temperature adjustment or claim of dynamically balanced meteorology']))
-    if progress:progress('调用平台已有站点/背景比较、真实留站评价与随机变异')
-    result=process_current_input(inputs,request,stage/'search',budget=budget,seed=11,progress=progress)
-    if result.get('status')!='PASS' or not result.get('product'):raise ValueError('平台气象处理未产生合格产品')
-    with xr.open_dataset(result['product']) as ds:
-        updated=ds.air_temperature.values.copy()
+    obs,report=_scope_observations(decoded,times);save(stage/'observation_quality.json',report)
+    updated, ti, cells, result = fuse_temperature(obs, report, background, times, lon, lat,
+        'bound_met2d:'+rows[0]['sha256'], stage, progress)
     if progress:progress('复制绑定工程，保留全部依赖；写回并逐变量核对原生气象')
     project=folder/'native_project';mapping,inventory=materialize_project(uploads,binding,project)
     target_path=project/mapping[rows[0]['target']]
-    ti=times.get_indexer(selected_times)
     validation=write_native_copy(source,target_path,'t2',updated,ti,cells)
     validation.update(native_CAMx_execution='NOT_RUN',station_accuracy='NOT_INDEPENDENTLY_VERIFIED',
         wind_and_3d_unchanged=True,selection=result['selection_comparison'],
@@ -264,3 +265,53 @@ def prepare_meteorology(uploads, binding, folder, progress=None):
     with zipfile.ZipFile(archive) as z:
         if z.testzip() is not None:raise ValueError('下载更新包CRC失败')
     return dict(manifest=manifest,archive=str(archive))
+
+
+def fuse_temperature(obs, report, background, times, lon, lat, source_id, stage, progress=None):
+    """Shared existing spatial fusion task; format adapters provide only arrays."""
+    from ecodata.algorithms.platform_search import SearchInput, process_current_input
+    coords=obs.drop_duplicates('station')[['longitude','latitude']].to_numpy(float)
+    if len(coords)<3 or not np.isfinite(coords).all():raise ValueError('至少需要三个合法气温站点')
+    obs=obs[obs.time.isin(times)].copy()
+    counts=obs.groupby('time').station.nunique()
+    selected_times=pd.DatetimeIndex(counts[counts>=3].index).sort_values()
+    if not len(selected_times):raise ValueError('无至少三站共同覆盖的原生时刻；不跨小时借值')
+    # Per-time convex support: no continental correction from five local stations.
+    xy=np.column_stack([lon.ravel(),lat.ravel()]);masks=[]
+    for time in selected_times:
+        points=obs.loc[obs.time.eq(time),['longitude','latitude']].to_numpy(float)
+        masks.append(Delaunay(points).find_simplex(xy)>=0)
+    common=np.logical_and.reduce(masks);cells=np.flatnonzero(common)
+    if not len(cells):raise ValueError('站点共同有效域内无原生格点中心')
+    obs=obs[obs.time.isin(selected_times)].copy()
+    frame=pd.DataFrame(dict(time=obs.time,station_id=obs.station,longitude=obs.longitude,latitude=obs.latitude,
+        value=obs.value,unit='K',variable='air_temperature',split='train',temporal_semantics='instantaneous',crs='EPSG:4326'))
+    attrs=dict(units='K',physical_variable='air_temperature',physical_definition='air temperature at 2 m',
+               temporal_semantics='instantaneous',spatial_semantics='grid_estimate',data_kind='continuous')
+    model=xr.Dataset({'air_temperature':(('time','point'),background.reshape(len(times),-1),attrs)},
+        coords=dict(time=times,point=np.arange(len(xy)),lon=('point',xy[:,0]),lat=('point',xy[:,1])),
+        attrs=dict(crs='EPSG:4326',source_id=source_id))
+    target=xr.Dataset(coords=dict(time=selected_times,point=np.arange(len(cells)),
+        lon=('point',xy[cells,0]),lat=('point',xy[cells,1])),attrs=dict(crs='EPSG:4326'))
+    inputs=[SearchInput('background.nc','primary',model.to_netcdf()),
+            SearchInput('observations.csv','observations',frame.to_csv(index=False).encode()),
+            SearchInput('target.nc','target',target.to_netcdf())]
+    for item in inputs:(stage/item.filename).write_bytes(item.content)
+    request=dict(task='multisource',processing_goal='spatial_fusion',variable='air_temperature',unit='K',
+        semantic_type='continuous',physical_variable='air_temperature',temporal_semantics='instantaneous',
+        allow_training=True,mutation_control='random',soft_guidance=False,nonnegative=True,
+        observation_crs='EPSG:4326',target_times=[str(t) for t in selected_times])
+    budget=dict(objective_limit=240,total_call_limit=240,proposal_limit=120,wall_seconds=90,probe_call_limit=0)
+    save(stage/'protocol.json',dict(request=request,budget=budget,seed=11,observation_quality=report,
+        native_times=[str(t) for t in times],processed_times=[str(t) for t in selected_times],
+        exact_time_match_only=True,processed_cell_count=len(cells),total_cell_count=len(xy),
+        spatial_scope='intersection of per-time station convex hulls; all other native values preserved',
+        limitations=['Station geographic datum operational EPSG:4326; not independent survey validation',
+                     'Only 2m temperature; wind height/rotation contracts unresolved, preserved unchanged',
+                     'No 3D temperature adjustment or claim of dynamically balanced meteorology']))
+    if progress:progress('调用平台已有站点/背景比较、真实留站评价与随机变异')
+    result=process_current_input(inputs,request,stage/'search',budget=budget,seed=11,progress=progress)
+    if result.get('status')!='PASS' or not result.get('product'):raise ValueError('平台气象处理未产生合格产品')
+    with xr.open_dataset(result['product']) as ds:
+        updated=ds.air_temperature.values.copy()
+    return updated, times.get_indexer(selected_times), cells, result

@@ -273,41 +273,35 @@ render_swat_run_page()
         start.assert_not_called()
 
 
-def test_ui_attachment_calls_existing_writer():
-    from types import SimpleNamespace
-    from unittest.mock import patch
+def test_ui_attachment_calls_existing_writer(tmp_path):
+    # The removed legacy UI helper is not restored. Exercise the current public
+    # page and preserve the old writer/readback/invalidation behavior checks.
     from streamlit.testing.v1 import AppTest
-    case = ROOT/'examples/ai_round1/swat_plus'
+    base = ROOT/'examples/ai_round1/swat_plus'
+    config = json.loads((base/'config_ui.json').read_text())
+    config['station']['name'] = 'a'
+    source = (base/'daymet_2021_complete.nc').read_bytes()
+    files, _ = convert('swat_plus', source, config)
     original = project()
     original['time.sim'] = original['time.sim'].replace(b'2 2021', b'365 2021')
-    uploads = {'导入源数据': (case/'daymet_2021_complete.nc').read_bytes(),
-               '导入字段、单位与版本配置JSON': (case/'config_ui.json').read_bytes(),
-               '上传已有流域工程ZIP（不是天气转换ZIP）': pack(original)}
-    def upload(label, **kwargs):
-        value = uploads.get(label)
-        return SimpleNamespace(getvalue=lambda: value) if value else None
-    with patch('streamlit.file_uploader', side_effect=upload):
-        # This test exercises the attachment helper's writer and invalidation
-        # contract. The current full-page continuation has its own tests in
-        # test_conversion_continuation.py; it no longer renders this helper.
-        app = AppTest.from_string('''
-from pathlib import Path
-import json
-import streamlit as st
-from ecodata.round1 import convert
-from ecodata.interface.round1_page import render_weather_attachment
-root = Path(ROOT_PATH)
-files, report = convert('swat_plus', (root/'examples/ai_round1/swat_plus/daymet_2021_complete.nc').read_bytes(), json.loads((root/'examples/ai_round1/swat_plus/config_ui.json').read_text()))
-st.session_state['round1_result'] = (files, report)
-render_weather_attachment(files)
-'''.replace('ROOT_PATH', repr(str(ROOT))), default_timeout=30).run()
-        next(s for s in app.selectbox if '哪个站点' in s.label).set_value('a').run()
-        app.checkbox[0].check().run()
-        next(b for b in app.button if b.label == '自动接入并检查工程').click().run()
-        assert not app.exception and not app.error
-        result, report = app.session_state['swat_attach_result']
-        assert unpack(result)['ecodata_a.pcp'] == app.session_state['round1_result'][0]['station.pcp']
+    original['old.pcp'] = files['station.pcp']
+    original['old.tmp'] = files['station.tem']
+    folder = tmp_path/'input';folder.mkdir()
+    (folder/'project.zip').write_bytes(pack(original))
+    (folder/'source.nc').write_bytes(source)
+    task = dict(schema='ecodata.model-task.v1',model_id='swat_plus',operation='weather',input='source.nc',configuration=config)
+    request = folder/'request.json';request.write_text(json.dumps(task),encoding='utf8')
+    app = AppTest.from_file(ROOT/'src/ecodata/interface/app.py').run(timeout=30)
+    app.text_input[0].set_value(str(folder)).run()
+    app.button[0].click().run(timeout=30)
+    assert not app.exception and not app.error
+    result = app.session_state['workbench_result']['data']
+    assert result['manifest']['status'] == 'PROJECT_UPDATED'
+    with zipfile.ZipFile(result['archive']) as z:
+        assert z.read('ecodata_a.pcp') == files['station.pcp']
+        report = json.loads(z.read('ecodata_weather_attachment.json'))
         assert report['weather_records'] == 365
-        # A different target must invalidate the previous download.
-        next(s for s in app.selectbox if '哪个站点' in s.label).set_value('b').run()
-        assert not any('接好天气' in d.label for d in app.get('download_button'))
+    task['configuration']['station']['name'] = 'b'
+    request.write_text(json.dumps(task),encoding='utf8')
+    app.run()
+    assert not app.get('download_button')

@@ -10,6 +10,30 @@ import re
 from ecodata.models.native_control_readers import _groups, _integer, _stamp, weather_dependencies, control_values, PATTERN
 
 
+def check_native_values(attrs, proposed):
+    """Shared final native-domain acceptance, independent of processing route."""
+    import numpy as np
+    if 'flag_masks' in attrs:raise ValueError('位掩码字段尚无自动原生写回契约')
+    if 'flag_values' in attrs and not np.isin(proposed,np.asarray(attrs['flag_values'])).all():
+        raise ValueError('写回引入原生flag_values未允许的类别')
+    bounds=np.asarray(attrs['valid_range']) if 'valid_range' in attrs else None
+    low=attrs.get('valid_min',bounds[0] if bounds is not None else None)
+    high=attrs.get('valid_max',bounds[-1] if bounds is not None else None)
+    if low is not None and (proposed<low).any() or high is not None and (proposed>high).any():
+        raise ValueError('写回超出原生字段声明的有效范围')
+
+
+def native_container_evidence(model, attributes, variables):
+    """Header evidence only; never certify a complete simulator input schema."""
+    families=[]
+    title=str(attributes.get('TITLE',''))
+    if ('REAL_EM' in title or 'OUTPUT FROM WRF' in title) and 'Times' in variables:families.append('wrf')
+    if 'CAMx_NAME' in attributes and 'TFLAG' in variables:families.append('camx')
+    if 'IOAPI_VERSION' in attributes and 'TFLAG' in variables and 'CAMx_NAME' not in attributes:families.append('cmaq')
+    if families!=[model]:raise ValueError('原生文件模型类型未知、冲突或与目标不符：'+str(families))
+    return dict(model_id=model,evidence='actual native header and time-control variables',native_schema_verified=False)
+
+
 def probe_sources(model, prefixes):
     """Reject unsupported native controls before materialising large data."""
     issues=[];controls=[]

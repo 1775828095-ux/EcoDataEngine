@@ -48,7 +48,6 @@ def attach_inputs(files,payload,mode):
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as z:
             entries=z.infolist()
-            if len(entries)>100 or sum(e.file_size for e in entries)>64*1024**2:raise SchemaError('转换包超过限制')
             if len({e.filename for e in entries})!=len(entries):raise SchemaError('转换包重名')
             for e in entries:
                 name=e.filename

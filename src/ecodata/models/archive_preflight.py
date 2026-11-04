@@ -11,8 +11,8 @@ import hashlib
 import zipfile
 
 
-def inspect_upload_archives(uploads, converter, folder):
-    reports=[];issues=[];total=0;scientific=[];unread=[]
+def inspect_upload_archives(uploads, converter, folder, *, native_required=True):
+    reports=[];issues=[];native_issues=[];total=0;scientific=[];unread=[]
     probe=getattr(converter,'probe_sources',None)
     for upload in uploads:
         if not str(upload.name).lower().endswith('.zip'):continue
@@ -55,9 +55,11 @@ def inspect_upload_archives(uploads, converter, folder):
                             role='not_classified',facts=facts,cf_mappings=cf_evidence(facts),
                             scientific_variables=describe_variables(facts)))
             result=probe(prefixes) if probe else dict(issues=[])
-            issues.extend(result.get('issues',[]))
+            native_issues.extend(result.get('issues',[]))
             reports.append(dict(file=upload.name,members=members,native_probe=result))
+    if native_required:issues.extend(native_issues)
     record=dict(schema='ecodata.archive-preflight.v1',status='BLOCK' if issues else 'CONTINUE',
+        native_contract_issues=native_issues,native_contract_required=native_required,
         archives=reports,unpacked_bytes=total,issues=issues,full_CRC_verified=False,
         scope='目录/控制前缀与有限科学头检查；不代替完整读取、科学检查或模型运行')
     if reports:

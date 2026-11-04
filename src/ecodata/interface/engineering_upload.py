@@ -26,6 +26,16 @@ class LocalUpload:
         return self.path.read_bytes()
 
 
+def local_path_uploads(location, *, include_all=False):
+    """Accept a local file/archive or reuse recursive folder ingestion."""
+    root = Path(str(location).strip().strip('\"').strip("'")).expanduser()
+    if root.is_file():
+        return [LocalUpload(root.name, root.resolve())]
+    if root.is_dir():
+        return local_folder_uploads(root, include_all=include_all)
+    raise ValueError("文件或文件夹不存在或无法访问，请填写运行平台这台电脑上的完整路径。")
+
+
 def local_folder_uploads(folder, *, include_all=False):
     """Collect supported files recursively, retaining relative source names."""
     root = Path(str(folder).strip().strip('"')).expanduser()

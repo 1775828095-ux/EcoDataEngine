@@ -7419,3 +7419,533 @@ native_project目录已按通用绑定复制全部11.88GB依赖，副本逐内�
 
 ### 2026-11-03 GitHub同步
 按用户授权，将本地GOLEM退役、移除10GiB业务门槛、公共工程绑定、原生气温融合写回及相关页面/测试/报告提交至codex/latest-platform-20261103分支。原始数据、运行环境、12GB工程副本及output运行产物不纳入Git提交。native_meteorology已真实执行及原生写回回读，但独立定向回归尚未完成，CAMx原生运行未执行；本次同步不改变这些验收边界。
+
+
+### 2026-11-03 页面上传200MB遗漏修复
+此前取消10GiB后台门槛未取消Streamlit默认200MB页面门槛，已承认并修复。.streamlit/config.toml显式maxUploadSize=102400 MB（100 GiB）；Streamlit该选项要求数值，因此不称浏览器无限大小。现有本机文件夹入口不设平台体积门槛。桌面快捷方式原本已指向最新源码；为避免旧服务缓存，保留旧进程不终止，在8502端口启动新服务，并将桌面启动器的健康检查、端口参数和打开网址改到8502。AppTest实际上传控件proto.max_upload_size_mb=102400，页面无异常，8502健康检查200。自动打开浏览器操作被工具策略拒绝，用户可手动访问http://localhost:8502。证据output/desktop_upload_fix_20261103/verification.json，配置及启动器修改前已备份。未启动融合或模型实验。
+
+
+### 2026-11-03 WRF大小常量残留引用修复
+用户页面报MAX_FILE_BYTES导入失败；不是旧目录未覆盖，而是此前取消公共常量时遗漏integrations/existing_air/existing_air_converters/wrf_bundle_pipeline.py中的导入及ZIP/嵌套tar体积检查。已一并移除，不恢复体积门槛；路径、链接和重复检查保留。源码src及integrations检索无剩余常量引用。新增2项回归加文件夹入口6项，共8项通过，记录output/desktop_upload_fix_20261103/tests_wrf_fix.txt。原插件源码已备份，修复同步本地Git协作目录。未运行数据融合或模型模拟。
+
+
+### 2026-11-03 WRF旧大小常量引用修复
+真实页面错误ImportError: MAX_FILE_BYTES定位到integrations/existing_air/existing_air_converters/wrf_bundle_pipeline.py仍导入已移除的MAX_FILE_BYTES/MAX_TOTAL_BYTES。移除其旧导入以及ZIP/嵌套TAR体积拒绝分支，未恢复大小限制，保留路径和链接安全检查。新增三项定向测试实际通过：WRF ZIP分派不再导入失败、非ZIP输入正常交还公共路径、路径越界仍拒绝。src及integrations已无上述常量引用。未运行数据实验。证据output/upload_limit_import_fix_20261103/tests.txt，修改前文件同目录备份。
+
+
+### 2026-11-03 新WRF 20080205数据公共入口试跑
+按用户要求仅使用现有平台，以WRF_20080205_完整工程与多源观测补缺数据_20261103.zip调用prepare_uploads，耗时5.68秒。旧MAX_FILE_BYTES导入错误未再出现；当前WRF专项入口识别原生工程后因没有SST资料拒绝，明确错误：已识别WRF原生工程，但没有识别到本入口可自动处理的SST资料。不会把工程或嵌套资料当作站点文本；请核对待更新变量及支持格式。。这不是证明数据缺失或格式错误，而是当前专项入口仅支持SST用途，尚未把该包站点气象补缺任务分派到适用流程。未融合、未转换、未运行WRF；按用户快速停止要求未继续修代码或重跑。日志output/wrf_20080205_platform_try_20261103/execution.json，原数据未改。
+
+
+## 2026-11-03 数据任务先行的公共模型入口分派
+
+### 原因与最小公共修复
+
+原WRF入口先进入SST专项处理器，并可能把“没有SST”当成整个WRF请求不可处理；模型配置也可能在实际任务匹配前被读取。现在automatic_preparation.prepare_uploads先调用公共task_dispatch.dispatch_preparation，以实际CF变量身份、单位、时间声明与观测缺失事实匹配任务，再调用既有数值公共服务。科学数据任务与下游模型格式写出分层。请求可选task仅声明type/quantity，不指定算法；页面仍无需选算法。WRF SST专项入口保留其现有sst_update契约，不替换新的独立SST检查逻辑。
+
+新增格式级任务适配src/ecodata/models/task_dispatch.py：按CF标准名/physical_variable与单位匹配，使用平台scientific_schema、UnitEngine、cf-xarray及xarray/HDF按需读取；不从文件名、案例地区或模型编号决定任务。已声明的解码观测表覆盖气温、气压、相对湿度、露点字段；匹配同物理量背景后自然缺失可进入恢复。无匹配/完整观测不制造遮挡，未知单位和无时区静态日期明确拒绝。HDF头不连续时复用h5netcdf按需元数据读取，避免将“64KiB没有完整头”误当文件无效。数据别名按内容指纹去重，不当独立来源。
+
+地理共址报告从训练队列排除（不平均，不按目标值择优）；原始QC非零值不参与拟合；自然缺测输出仅新增estimate和状态，保留原始值、QC及其来源。只使用背景明确时刻，未默认为±1小时平均/借值；后台使用当前公共空间数值任务自己的分块验证、DAG执行、质量门和随机变异，未写另一套算法偏好/赢家/搜索循环。空间坐标按披露的操作约定解释，近地面代表性与上游同化依赖未宣称已证实。
+
+### GitHub可复用成果调查
+
+HydroMT：https://github.com/Deltares/hydromt ，官方架构https://deltares.github.io/hydromt/v1.4.1/dev/architecture/architecture.html ，采用其数据目录/模型组件职责分离思路；Intake：https://github.com/intake/intake ，参考数据读取与处理链分离；WRF-Python：https://github.com/NCAR/wrf-python ，核对原生变量/诊断量读取边界，不为已经规范化的数组重新安装Fortran环境。实际运行继续复用平台已有CF、Pint单位、文件目录及数值引擎，没有复制第三方算法或把架构参考写成库已集成。NCAR QC说明https://www2.mmm.ucar.edu/wrf/users/wrfda/Tutorials/2017_July/docs/WRFDA_obs.pdf 作为解码QC 0/缺失-88的依据；其他非零不自行宣称有效。机器可读来源sources.json。
+
+### 新WRF真实执行
+
+原始WRF_20080205_完整工程与多源观测补缺数据_20261103.zip通过prepare_uploads入口实跑，10.17秒完成TASK_PROCESSED。识别air_temperature/K与明确analysis_time_utc=2008-02-05T12:00:00Z，使用638条非共址的可用报告；同一时刻546条共址报告不当独立训练位置，55条非零QC不进入拟合。40条原有自然缺失均在背景支持域内，输出40个估计值；原值和QC未改，自然缺失无真值，未虚构恢复误差。
+
+共16张图实际评价，单源12、多源4；444个固定验证值上，最佳单源RMSE=3.8935689136 K、MAE=2.8537200584 K，最佳多源RMSE=3.9826277065 K、MAE=3.1125059712 K。因此本次选择原背景来源spatial.source，没有强制融合。194个未参与选型的分块位置上，最终方案RMSE=4.6897656327 K、MAE=3.2343199582 K、Bias=1.8531546524 K。这里只是内部空间分块复核，上游背景可能同化过相关观测，不能称全新独立科研确认；40个自然缺失的真实恢复精度仍未知。
+
+### 页面与定向验收
+
+最终23项定向测试通过：不同物理量驱动（气温/气压）、无关文件名/顺序、内容别名、无自然缺失不造遮挡、缺时间和单位冲突、WRF/CAMx共用分派消费者、SST处理器不垄断其他任务、大小常量回归、原主页面与文件夹入口等。测试不靠固定伪造RMSE证明实跑。主页面AppTest加载同批真实platform_inputs，选择WRF、提交、成功展示并提供“下载任务处理结果”，18.05秒，无异常；这是页面处理函数验收，不冒称人工浏览器操作。
+
+首次页面验收发现公共入口/页面文件已恢复成此前内容，接线未保留；保存当时快照后，仅重新合入dispatch_preparation调用和TASK_PROCESSED展示，保留当前SST新契约，复测通过，并新增生产入口行为测试防止“只测适配模块而未测接线”。初始HDF头探测未匹配的失败也保留，不用它认定资料无效。
+
+### 完成范围及限制
+
+已完成：任务识别和分派不再限定WRF=SST；同一公共任务机制按声明数据与实际问题调用已有能力，WRF/CAMx等目标模型共享，未按工程名称加接口。SST旧路线仍可适用，是否调用由其契约决定。气温/气压匹配变化有机制测试；新WRF气温缺失恢复有完整真实数值证据。
+
+尚未完成：任意原始格式、任意任务的自动理解；多背景用途歧义自动决断；三维平衡初始场生成与WRFDA同化；本次任务结果的原生WRF状态写回及wrf.exe运行。TASK_PROCESSED、native_ready=false，不称模型原生转换完成。本次没有更换测试数据、调参争取融合获胜、扩算法库或启动研究对照。
+
+证据根目录output/task_dispatch_20261103：real_zip_01的execution.json、task_dispatch.json、task-1/contract.json、recovered_observations.csv、search下实际图/评分/成本/轨迹、EcoData-task-products.zip；ui_real_final/verification.json、tests_final.txt、sources.json、summary.json。修改前源文件快照及final_integration_snapshot保留。代码与本地Git协作目录同步，未擅自推送。复现入口prepare_uploads([LocalUpload(文件名,Path(ZIP路径))], 'wrf', 新目录)；测试命令.venv\Scripts\python.exe -m pytest tests/test_data_task_dispatch.py tests/test_upload_limit_import_fix.py tests/test_minimal_workbench.py tests/test_workbench_folder_input.py -q -o addopts=''。
+
+
+## 2026-11-03 WRF融合落后背景的定点诊断（不调参、不重搜）
+
+复用real_zip_01保存的16张候选图和固定分块划分，仅回放原背景、已选中的最佳融合（affine）、原残差IDW基线三条固定图；6折固定支持指纹完全一致，三条总体RMSE与原记录误差小于1e-10。未改算法、参数、数据掩码或选图规则，未重新搜索，不读取外层测试标签来调整方法。保存逐站预测、逐折诊断及真实DAG边/执行轨迹。
+
+### 已定位的主要原因
+
+1. 验证场景与真实补缺场景明显不同。444个分块验证位置距离最近保留训练站的中位数289.05 km、90分位978.33 km；40个实际自然缺失位置对最终可用638条观测的对应距离中位数16.82 km、90分位66.40 km。当前评分主要衡量跨远距离地理块迁移，对真实缺失附近仍有观测的场景代表性不足。因此“当前分块验证融合落后”不能直接推出“站点对这些自然缺失没有价值”。这些自然缺失没有真值，不能反向宣称局部融合一定能改善。
+
+2. 站点实际进入计算，不存在本次图未读取站点的证据。affine每折从保留站点y和对应背景拟合slope/intercept，残差图也有真实observations父边，完整回放可重复；无未识别退回identity的日期。背景RMSE/MAE/Bias为3.89357/2.85372/+1.27649 K，affine为3.98263/3.11251/+0.46697 K，残差IDW为4.72363/3.40269/+0.28996 K。校正减小整体偏差，但放大部分区域误差，不能将偏差减少当成整体精度提升。
+
+3. 地区偏差不一致，简单校正难以跨块传播。例如第2折（零基fold2）训练观测减背景的均值-1.77648 K，留出地区却为+1.44084 K；残差修正方向错误，该折RMSE由3.38462增至6.65383 K。第0折训练偏差-0.28491 K、留出-5.65395 K，最近训练站中位451.34 km。残差修正与真实所需修正的总体相关为-0.35690；其MSE变化分解E[c²]-2E[c*(truth-bg)]=4.64222-(-2.51062)=+7.15285 K²。说明当前残差传播在此验证设定下确实不可靠，而非单纯搜索器没有挑到一条已评价的更优路线。
+
+4. 当前数据利用和搜索覆盖有限，不能归结为数据本身信息不足。只用精确12 UTC背景的一帧；3143条报告中1239条同一时刻，638条最终有效非共址条件观测。546条共址报告未当独立训练位置，55条非零QC不用于拟合；其他时刻未强行混合。HGT、地形高差、其他气象变量没有作为本任务辅助输入，当前背景在站点处为现有paired-point最近格点采样。站点减网格高程差与背景误差相关约0.299（仅关联，不证明因果）。16张图只有4张多源，5张与已有图预测相同，实际11种验证行为，40次提议后停止。因此这不是全算法库或所有合理融合的失败证明。
+
+### 判断与后续边界
+
+主要可证实问题是评价场景错位，以及当前简单全局/远距离残差处理的局限；并无“站点未参与计算”的证据，也不足以认定站点本身没有信息。现有平台在这套验证目标下选择背景有依据，但不能据此替代对真实近邻补缺场景的判断。后续应先在开发范围预先固定与自然缺失的可用站点距离/覆盖相符的遮挡验证，并保留原地理分块压力测试；这是一项待执行的协议修正，不能按结果追选有利划分。不得通过增加搜索次数、换种子或调权重追求提升。本轮未修改这些协议或开展新效果实验。
+
+诊断证据output/wrf_fusion_diagnosis_20261103：summary.json、frozen_validation_predictions.csv、fold_diagnostics.csv、actual_gap_support.csv、execution_traces.json、diagnose.py、run.log、source_fingerprints.json。以上诊断针对当前验证结果；自然缺失精度、长期泛化及WRF原生模拟收益仍未证明。
+
+
+## 2026-11-03 其余四模型入口限定审计（只读及有界分派探针）
+
+范围SWAT+、CAMx、CMAQ、CALPUFF。未改算法、搜索、模型入口代码，不运行原生模型、不重做融合实验。只读检查当前源码及已安装entry points，并用明确标为合成的微型合法NetCDF做分派探针。源码当前指纹及全部探针在output/model_entry_audit_20261103，不把测试输入当真实环境实验。
+
+|模型|当前实况|案例/任务限定|判断|
+|---|---|---|---|
+|SWAT+|源码在库，但本机ecodata.model_converters未注册swat_plus|local_swat_converter.convert及contracts绑定Hubbard W2/HQ单站、站点坐标、固定日期和原工程SHA256，只收日降水/最高最低温；其他变量源代码明确拒绝|仍有，而且未注册是额外接入缺口。不能说页面可选就已接通原生转换|
+|CAMx|已安装existing_air_converters|旧通用回退实际是CAMx7.40 NO/PEC排放专项，读取固定config；本机该路径缺失|部分缓解，未完全解决。公共工程绑定及t2原生写回已实现，但其余任务仍可能掉回旧固定入口|
+|CMAQ|已安装existing_air_converters|cmaq_reviewed.prepare按整个ZIP大小/哈希认领，固定LAI、2018-07-01、25×1×105×100网格和特定卫星产品；普通回退仍固定NO配置。cmaq原生csh预检查可在公共分派前直接拒绝|限定最明显，尚未通用工程/任务分派|
+|CALPUFF|已安装existing_air_converters|有按实际控制内容和引用解析的CALMET/CALPUFF5.8+SURF2.0路线，非固定ZIP；限IPROG0/4等已支持契约，MM4风融合还限特定空间/高度条件；其他输入回退固定受体配置，路径本机缺失|比固定案例绑定好，但仍只覆盖部分任务/格式，非全任务通用|
+
+### 实际验证及公共缺口
+
+1. 用相同微型NetCDF逐模型调用converter_requirements及prepare_uploads。CAMx/CMAQ/CALPUFF普通回退均因各自固定配置路径缺失报错；SWAT+未安装插件，落到默认模型需求，无匹配字段。该探针只说明回退分支行为，不表示这些数据已齐备整个模型输入或本应原生成功。
+2. 四模型分别提供相同“不支持的声明任务”探针，均到公共task_dispatch并返回共享的不支持原因，4/4通过；证明普通数据的公共分派不是WRF独有。但不等于四种原生格式都接通。
+3. CMAQ额外提供一个合成的未审查csh控制包，公共archive_preflight先拒绝，task_dispatch.json尚不存在。证实模型原生脚本限制仍可能提前挡住数据级任务分派。这既不是应执行上传脚本的理由，也不能用放宽路径/科学安全校验来解决；应区分数据任务和原生模型交付的验收阶段。
+4. 公共preparation_table当前仍用converter.requirements替换模型需求，而这些requirements常依赖固定机器config；automatic_preparation中上传工程又须匹配pinned engineering SHA，否则拒绝。新的数据级公共任务在识别成功时可先返回，不代表后续原生适配已摆脱旧分支。
+5. 合理限制与工程耦合要区分：原生格式、模型版本、单位/网格、状态依赖必须检查，不能简单删掉。固定某流域、日期、站点、完整ZIP哈希及他人绝对路径则不应作为模型所有任务的公共门槛。历史专项路线可保留，但未匹配时应交由任务能力分派或给出具体缺口，不能冒充全部模型能力。
+
+建议优先处理CMAQ的全包匹配及分派前拦截、SWAT+的注册与单流域契约；随后补CAMx/CALPUFF其他任务的合法资源契约。修复应继续复用公共任务和工程绑定机制，不为每个案例新增入口。本轮仅完成审计，不宣称上述剩余问题已修复。
+
+证据：live_entry_probes.json、shared_dispatch_and_swat_contract.json、cmaq_preflight_probe/execution.json及archive_preflight.json、entry_matrix.csv/json、source_fingerprints.json。入口级合成探针4种回退+4种公共分派+1种CMAQ前置拦截；未执行科学数值效果测试，未新增大量测试或启动原生模型。
+
+
+## 2026-11-03 四模型入口泛化接入与有界验收
+
+### 原问题与本次修改
+
+承接前节审计，范围为SWAT+、CAMx、CMAQ、CALPUFF。原普通回退依赖固定开发机config；SWAT+未注册且默认Hubbard工程；CMAQ整包哈希专项在数据分派前可能拦截其他合法任务。本轮未更改融合、评分、变异或数学内核，未运行原生求解器或开展效果调参。
+
+公共链路为页面/工具包 → automatic_preparation.prepare_uploads → 安全预检查 → component_service.prepare_components（明确原生组件任务）/现有task_dispatch（真实数据处理任务）→ 原生格式严格检查与既有工程驱动/已有一般数据准备。安全路径检查共同执行；未审查原生脚本不再阻挡无需执行该脚本的数据任务，原生工程交付仍严格检查，上传程序从不执行。
+
+新增公共ecodata.model-task.v1契约，声明目标模型、科学任务、输入资源和所需单位/时间/网格等configuration；引用只在本次上传资料中解析，可带内容指纹。该契约不接受算法赢家、可执行程序或开发机配置路径。普通用户页面布局及模型选项不变，可在ZIP/本地资料中带任务JSON；工具包也可通过task参数传入同一契约。资料不足或用途有歧义仍明确拒绝，不根据文件名猜科学含义。完整、无歧义且元数据齐备的单源SWAT+逐日天气有自动识别路径；本轮真实NASA数据采用显式合法科学配置，并非证明任意天气文件都能免声明识别。
+
+实际复用ecodata.round1.convert及既有23项写出任务，非新增23个算法：SWAT+天气、土壤、土地利用、WGN、HRU、含水层、连接、空间土地利用、管理日历；CAMx排放、初始、边界及字段更新；CMAQ排放、边界、官方剖面及字段更新；CALPUFF地面气象、降水、探空、地理、受体、点源。模型版本/机制/物种、单位和支持域等仍由原写出器检查，未放宽科学契约。entry_matrix.csv逐项区分真实执行、合成执行及仅绑定未重执行，不能把23项全部说成本轮真实验收。
+
+四模型requirements不再装载旧机器固定case，SWAT+插件已安装注册，setup_handoff.bat增加内部两转换包安装以保留接入。旧专项实现保留，CMAQ/CALPUFF已认领的历史工程路线仍保留；未匹配输入不再默认调用不相关NO/受体/Hubbard工程。缺原生用途契约时保留已准备数据并返回明确缺项，不能宣称完整转换成功。
+
+原生NetCDF字段更新复用既有native_netcdf_update，不重写CAMx/CMAQ内核：目标来自本次上传，检查目标SHA及产品native_reference_sha256、维度顺序、形状和单位；只修改声明变量/掩码，保持其他数据和元数据。没有原生目标或来源绑定证据时拒绝，不能按相同形状猜同网格/时间。
+
+### GitHub成果及证据边界
+
+查阅HydroMT的模型组件与驱动分层（https://github.com/Deltares/hydromt），沿用“公共数据与任务机制＋模型原生组件”的已有平台结构；未声称安装或移植HydroMT模型插件。独立科学格式读取继续复用已安装PseudoNetCDF（https://github.com/barronh/pseudonetcdf，LGPL-3.0），原生写出复用项目已有成熟实现。SWAT+天气索引/站点文件与官方Editor说明核对（https://swat-model.github.io/swatplus-editor-documentation/edit-inputs/weather/）。没有复制新的第三方核心代码，也没有把GitHub项目存在等同于本平台已实现全部能力。
+
+### 真实运行与泛化行为验收
+
+|模型|实际输入及任务|本轮结果|明确范围|
+|---|---|---|---|
+|SWAT+|NASA POWER 365日天气；官方13土壤/52层记录|两条公共入口真实导出；土壤独立shlex/Decimal回读与官方内容一致|不是固定Hubbard站点/日期；天气、土壤组件，不是完整流域工程或SWAT+运行|
+|CAMx|已有EPA首日真实Met2D及此前实际处理产品|25×1×246×396的t2原生写回，实际改变1560值；其他变量/元数据/原文件保持，约7.87秒|复用旧真实融合产物验收写回；本轮没有重新证明精度提高|
+|CMAQ|真实EDGAR区域排放；官方BCON静态剖面值|两条公共入口真实导出及回读；EDGAR面积/摩尔换算由独立数值断言检查|官方静态剖面不是动态真实化学场；不等于CMAQ原生运行|
+|CALPUFF|NOAA实际地面气象；NOAA USCRN实际降水|两条公共入口真实导出；降水独立读回并与原始NOAA记录逐值/时间核对|气象组件，非完整CALMET/CALPUFF工作流运行|
+
+另有CAMx排放LATLON及初始场LCC两项明确标注的合成格式验收，不能算真实排放验证。网格位置受控改变会进入相应原生输出，不再由旧固定区域覆盖；既有内核定向测试还覆盖其他时间、单位、网格和非法条件。泛化含义是同一任务/格式契约可接受不同合法资料与参数，不是所有未知格式、全部版本和任意用途无需元数据即可运行。
+
+四模型均通过当前主页面AppTest从本地目录提交、调用公共prepare_uploads、生成真实原生组件包及下载按钮；与直接工具包调用比较所有科学数组和元数据一致。CMAQ I/O API的CDATE/CTIME/WDATE/WTIME仅是生成/写入时钟，单独排除后科学内容一致。曾出现的哈希差异及测试比较数组字典错误均保留失败日志，修正的是验证方法，没有更改科学产品追求通过。AppTest不等于人工浏览器操作，本轮未做人工浏览器验收。
+
+最终定向测试147通过、0失败、0跳过（9.00秒）；没有跑无关全量回归。涉及公共组件入口、数据级任务分派、工程绑定、CAMx排放、CALMET降水、SWAT+土壤、CMAQ排放。包括任务/模型冲突、缺输入、越界、源指纹、mode冲突、程序注入拒绝、原生写回缺目标绑定、未审查脚本的数据/原生阶段区别及四模型页面/工具包一致性。初次pytest因旧.pytest_tmp目录权限错误未进入相关用例，随后使用新验收目录，不删除原目录；失败记录保留。
+
+### 状态与尚未证明部分
+
+四个模型公共任务入口：PASS（已列契约范围）；移除旧案例作为默认门槛：PASS；真实组件与输出回读：PASS（上述7项真实任务）；合成格式变化：PASS（2项）；页面处理函数/工具包共用：PASS；全部23任务本轮逐一真实重跑：未运行；人工浏览器验收：未验收；任意完整工程自动解析与绑定：未全面支持；原生模型读取及求解运行：未运行；融合精度提高：本轮未评价。
+
+尤其不能把原生组件包当成完整模型工程：SWAT+多工程根/多站点关联仍需明确目标；CMAQ任意csh/MPI工程不执行未知脚本；CALPUFF既有驱动仍受已支持版本、SURF/IPROG等条件约束；CAMx/CMAQ字段写回不认证跨变量平衡。普通资料缺乏原生任务或目标工程时会明确失败，不回退到他人的固定案例。本轮没有消除这些科学/格式边界，也没有宣称四个模型所有任务都已经通用。
+
+证据目录output/four_model_integration_20261103：before修改前快照、executed_source执行源码、source_fingerprints.json、entry_matrix.csv/json、summary.json、real_acceptance各案例execution.json/handoff/原生产品包、camx_real_update/execution.json及产品、verified_tests.txt与全部失败日志。源码及报告同步本地EcoDataEngine-GitHub工作区，未擅自推送远端。历史数据和实验结果未删除或覆盖。
+
+复现定向测试：.venv\Scripts\python.exe -m pytest tests/test_public_model_components.py tests/test_data_task_dispatch.py tests/test_project_binding.py tests/test_camx_emissions.py tests/test_calmet_precipitation.py tests/test_swat_plus_soil.py tests/test_cmaq_gridded_emissions.py -o addopts='' -q --basetemp=output/新测试目录。实际请求来自本次上传，不在工具包或页面分别维护case选择策略。
+
+2026-11-04收尾核验：补充CAMx/CMAQ公共掩码写回测试，发现写出器要求传入完整合法目标数组，已在公共适配层按明确掩码与原生原值组合，不改底层写出内核。独立回读同时验证掩码内采用真实产品、掩码外及其他变量保持。合成默认CDF5在本机原生库无法r+更新，失败日志保留，改用实际CAMx同类NETCDF3_CLASSIC验证已支持格式；不能宣称全部NetCDF编码都可更新。最终release_tests.txt为149通过、0失败、0跳过，9.30秒，取代上面的147项中间统计。原23项任务目录未扩大。
+
+
+## 2026-11-04 GitHub工程解析复用核查与公共依赖盘点补充
+
+### 搜索结论及本轮边界
+
+用户要求查找现有方法复用，目标为完整工程的通用解读。当前找到的成熟成果均有模型/语法边界，不能据此承诺任何完整工程均可自动理解。工程完整是必要条件，不能代替语法、版本及运行时条件。此项“任意完整工程均适用”未达到，不写成PASS。
+
+核对上游源码并保存原文、许可及版本证据：
+
+|上游|实际发现|复用方式与限制|
+|---|---|---|
+|swat-model/swatplus-editor，6ce225dc8ac58989d49c9ebaf8b7b3846e4b2b09，src/api/fileio/config.py|File_cio.read明确raise NotImplementedError；write支持多种配置/NetCDF天气|不能把官方Editor当成现成任意工程读取器。沿用平台既有weather_dependencies，并依官方readcio_read的按位置读入规则补充CIO直接引用，支持已声明rev.60/61/62的已知布局|
+|swat-model/swatplus/src/readcio_read.f90|各组按位置读取，标签文本不作为语义判据；有天气路径/输出路径|公共盘点不再依赖climate等固定标签字符串来定位CIO各组；未知版本/字段数量不符保留UNKNOWN。未复制其数学内核|
+|Pavinberg/calpy，5c0571907d3ae34544d89b0949a8b9b6a7b87273，MIT|load_calpuff要求22组，部分组特殊处理；类含默认网格、日期、运行器与绘图库|不导入整个包，避免套用默认项目和额外执行依赖；继续复用平台已有control_values及dependency_plan，后者负责激活输入而非另建第二张规则表|
+|USEPA/CMAQ，树版本13c473c8e834ca6ee5fcff468e16b015362e83be|官方脚本依赖source、变量、条件、日期循环和命令替换，非静态文件目录|只读识别I/O API输入声明及可直接绑定的字面路径，运行时变量/激活条件保留UNKNOWN，未伪造静态求值结果|
+|marshallward/f90nml|已安装使用的Fortran namelist读取器|现有CAMx/WRF绑定继续复用；它不能解释SWAT+表或C-shell脚本，不将其宣传为通吃解析器|
+
+来源：https://github.com/swat-model/swatplus-editor/blob/6ce225dc8ac58989d49c9ebaf8b7b3846e4b2b09/src/api/fileio/config.py ；https://github.com/swat-model/swatplus/blob/main/src/readcio_read.f90 ；https://github.com/Pavinberg/calpy/tree/5c0571907d3ae34544d89b0949a8b9b6a7b87273 ；https://github.com/USEPA/CMAQ/tree/13c473c8e834ca6ee5fcff468e16b015362e83be/CCTM/scripts 。本轮未新增外部大型依赖、未声称calpy已作为新生产后端集成。
+
+### 实际补充的公共能力
+
+新增models/project_inventory.py复用ProjectFiles安全资源解析、内容SHA、SWAT既有天气依赖检查、CALPUFF既有控制读取与激活输入闭包。多个SWAT工程根分别盘点，不替用户选出“最佳”工程，不混合它们的站点和输入；索引到观测文件的真实父子引用保留。缺文件不因目录看似完整而放过。CMAQ脚本从不执行，不读取宿主环境变量来猜本次输入；引用有行号，分支激活未知单独记录。
+
+接到公共prepare_uploads的只读工程兜底，并给未通过原生控制预检查但可以安全盘点的工程返回ENGINEERING_INSPECTED、native_ready=false。安全路径检查仍在最先；未知脚本不被执行。既有组件导出、数据任务、已支持原生处理优先级保留；CAMx/WRF现有工程绑定不改。本轮没有把盘点包包装成融合成果或模型可运行包。页面增加原状态展示分支和下载文案，未增加控件。
+
+### 真实现有工程与行为验证
+
+1. Humaya真实原始SWAT+整包，经公共prepare_uploads读取四个工程根：共1348条直接/天气索引引用全部绑定，各工程仍有“深层数据库/版本未原生验证”提示。返回ENGINEERING_INSPECTED，15.14秒；不读取或复制整个压缩包到内存，不选一个方案覆盖其他方案。没有运行模型或改原工程。
+2. 官方CALMET5.8.4与CALPUFF5.8.4两个原ZIP一起上传，公共入口识别两个控制工程，复用dependency_plan绑定9条已有激活输入引用；其余原生兼容性未认证，返回ENGINEERING_INSPECTED，约0.084秒。
+3. 本地官方CMAQ首日运行脚本作为真实语法小样本（本项仅脚本，非完整数据工程验收），识别55条输入声明，当前均需运行时变量展开，0条可确认为已激活绑定；返回ENGINEERING_INSPECTED，约0.048秒。不能据此说完整CMAQ工程已自动绑定。本轮没有扫描全部GB级CMAQ数组，也没有运行csh。
+
+51项定向测试通过、0失败、0跳过，8.16秒。包含按位置读取与自定义组标签、索引子依赖、缺文件、来源内容变化、多工程分离、未知版本、文件名/顺序无关、引用越界、CMAQ引用中的引号/#处理、未知变量与无脚本执行、页面警告与下载；同时回归已有工程绑定和四模型组件入口。合成边界测试不作为真实环境精度证据。页面处理函数AppTest已验，人工浏览器未验。未重跑研究实验或无关全量测试。
+
+### 明确剩余项
+
+“通用工程解析”的公共资源与依赖表示得到补充，已覆盖的格式不再绑定某流域、日期或ZIP名称；但全部模型深层跨表语义、未知版本、任意C-shell程序的实际路径及所有完整工程仍未解决。CMAQ要获得可证明的实际闭包，需要可信运行环境导出的明确输入清单，或覆盖相应脚本语义的求值器；不能执行不受信任上传脚本来凑成功，也不能把大模型猜测当确定绑定。SWAT+完整深层引用与所有版本、CALPUFF未支持驱动仍需各原生格式能力。当前有据可查的结论是部分泛化解析/绑定与明确未知诊断，非“任意完整工程都已适用”。
+
+证据：output/project_generalisation_20261104内before、上游源码/许可/API树及upstream_fetch.json、source_fingerprints.json、executed_source、real_cases与public_real的project_inventory.json/产品包/summary、tests_final.txt、summary.json。原数据/旧结果未改，修改同步本地Git协作目录，未推送。复现：.venv\Scripts\python.exe -m pytest tests/test_project_inventory.py tests/test_project_binding.py tests/test_public_model_components.py -o addopts='' -q --basetemp=output/新目录。
+
+
+## 2026-11-04 统一工程上下文、自动绑定与原生写回验收（engineering_writeback_v2）
+
+### 实际实现与复用边界
+
+在既有EngineeringProject、ProjectFiles、原生格式写出器、bind_project与prepare_uploads上补工程产物挂接，不建立新算法、模型内核或优化器。公共component_service调用新增engineering/native.py：使用源资源SHA256、实际变量、网格/时间支持签名、原生头和单位绑定，而不是ZIP名、固定流域或开发机路径。上下文中的资源、变量、端口映射和控制引用参与写回前验证；写出复制工程，保留非目标成员及原始文件，产品ZIP逐成员SHA及CRC读回。
+
+新增WRF/CAMx/CMAQ的update_project操作；实际从原生资源提取并合法处理、保留溯源的产品可自动触发。旧v1签名按原算法校验，当前v2使用规范数组序列化；未知版本拒绝。错误模型族、单位、网格、时间、原生范围/类别、错控制端口、来源变化均拒绝；掩码外/非有限位置保留原值，质量门分别记录，不以格式通过证明环境准确性。WRF显式域尺寸和起始日期与实际目标核对；未声明默认值UNKNOWN。没有控制文件的单资源写回不声称完整工程。
+
+SWAT+复用现有attach_weather/attach_inputs：按真实file.cio工程根、站名、站表引用、原生站点元数据挂接；官方站表LON与LONG别名统一，不改科学算法。CALPUFF复用控制dependency_plan及read_surface，通过实际激活SRFDAT、站序、时区和时间轴挂接，声明CALMET的METDAT下游依赖NOT_REGENERATED。当前桥接不是所有CALPUFF驱动。移除的旧大小限制限于本轮天气/表附件路径，不能宣称所有历史UI/扫描器都无限制。
+
+GitHub一手复用核查沿用上一节已有取证：swat-model/swatplus-editor的simulation.py及license、USEPA/CMAQ目录、Pavinberg/calpy接口和许可（output/project_generalisation_20261104/upstream_fetch.json）。没有将上游目录存在当成可运行证据，也没有复制第三方模型数学内核。
+
+### 真实执行结果及独立回读
+
+|真实案例|结果|实际证据与限制|
+|---|---|---|
+|WRF20230331初始场d01/d02|PROJECT_UPDATED|真实T2做单位往返再写回，最终约31.29/30.07秒；两个域属于同一工程，不计独立工程数。控制端口、显式网格/日期重新核对通过；字节相同是预期往返，不是融合提高。更早冷启动耗时另留日志，不宣称总成本优势。|
+|CAMx EPA真实Met2D|PROJECT_UPDATED|复用此前实际融合产品；原生t2实际1560值变化，其他内容保持；最终约6.22秒。未重新做融合精度实验。|
+|CMAQ真实MCIP METCRO2D|PROJECT_UPDATED|TEMP2单位往返及读回，约1.66秒；这是资源级更新，未解决任意csh动态CCTM闭包。|
+|Humaya SWAT+ Gauge|PROJECT_UPDATED|真实8036日PCP/TMP，6项新增/修改，约1.72秒；独立读回日期、值差0。天气往返不是新预测收益。|
+|官方CALMET/CALPUFF5.8.4|PROJECT_UPDATED|168小时5站SRFDAT，约1.48秒；独立读回值、缺失掩码、站序、时区一致。未生成新的METDAT，未运行求解器。|
+|Humaya Daymet固定首站|BLOCKED|原PCP六处-99（闰年day366），另有不完整2002年末行；保留原始失败，不换站、不填造，未完成工程写回。|
+
+新包状态及现有工程状态分开记录。上面PROJECT_UPDATED均native_ready=false、complete_model_input=false、native_model_executed=false；CMAQ、CAMx资源级产物不能算整个模拟工程已通过。最终新增原生头/控制约束通过115项定向回归，并对真实已有输入重新检查头、签名、WRF实际控制绑定；没有为每次保护性检查反复重跑全部大型数组。
+
+### 用户新增“轻量案例包_工程与观测.zip”最终验收
+
+原包495311011字节，SHA256=2e3559f76fedadf442c9df26881404718704fbfa1e3597d582743933c27187d1；解出6个直接成员到新验收目录，逐文件SHA、内层清单和原包前后相同证据保留。包内程序未执行。公共prepare_uploads实际结果：
+
+|上传范围|实际结果|原因及阶段|
+|---|---|---|
+|外层总包|BLOCKED|当前公共资源层不递归展开工程ZIP。首次误入旧WRF本机默认配置路径；本轮修复为明确要求分别上传内层工程ZIP与观测，修复后0.54秒明确拒绝，旧失败日志保留。不是自动处理通过。|
+|WRF内层ZIP＋NOAA观测|ENGINEERING_BOUND|57.78秒，实际控制和资源绑定；tasks为空、fusion NOT_EXECUTED，未融合写回。|
+|CALPUFF内层工程ZIP|CONVERSION_FAILED|53.56秒，真实SURF产物和检查已产生，但原有原生流水线依赖的本机CALMET/CALPUFF程序路径不存在；不能宣称完整运行。|
+|Robit_demo_4.0.zip＋NASA POWER|BLOCKED|有QGIS/SQLite、地理资料和天气，未提供当前路径可直接挂接的file.cio。不能从GIS工程生成TxtInOut的现有缺口未解决；未把未知文件强行当融合输入。|
+|CAMx目录EPA臭氧ZIP|STOPPED/未完成|其中只有观测CSV，无CAMx工程；公共尝试180秒墙钟到限停止，日志和停止记录保留，没有结果或精度成功声明。|
+
+因此这个新增总包没有完整跑通；它揭示包装、GIS工程导出、旧原生运行时依赖及缺CAMx工程四类边界，不能用之前格式往返通过替代。本轮不绕过缺失依赖、不执行上传未知脚本、不挑换数据凑通过。
+
+### 测试、保护与交付
+
+最终定向回归115通过、0失败、117条警告，13.34秒；没有跑无关全量或研究搜索。覆盖公共入口、工程绑定/库存、实际父子资源、状态/来源变化、错误模型/单位/支持域、掩码、原生范围、SWAT站表及天气、当前页面处理和下载。旧测试调用已移除页面函数的失败被保留，迁到当前页面公共入口，不跳过原有科学断言；独立验证器曾假定.tem，改为读取真实站表.tmp引用，未改变正确产品。
+
+仅新产物/复制工程被写入；用户原始数据、历史结果不删除、不覆盖。证据集中output/engineering_writeback_20261104：before修改前源码、executed_source执行源码、source_fingerprints.json、acceptance_matrix.csv、summary.json、real_final/text_final、final_context_acceptance、独立数值读回JSON、tests_user_pack.txt及user_light_case完整清单/失败/停止记录。当前AppTest不等于人工浏览器，人工浏览器未验收。本轮未进行精度提高评价、任意完整工程认证或模型求解。
+
+复现：.venv\Scripts\python.exe -m pytest tests/test_engineering_writeback.py tests/test_public_model_components.py tests/test_project_inventory.py tests/test_project_binding.py tests/test_swat_weather_project.py tests/test_swat_inputs_project.py tests/test_data_task_dispatch.py -o addopts='' -q --basetemp=output/新的定向测试目录。
+
+结论：已实现并真实验证已列原生资源/天气契约的统一上下文—绑定—写回；任意完整工程全链路仍未完成。具体未完成项如上，不能称全面泛化。修改同步本地Git协作工作区，未推送远端；没有删除任何新增案例数据。
+
+
+## 2026-11-04 三项工程集成缺口修复与轻量案例包最终验收（engineering_three_fixes_v1）
+
+本轮范围为WRF绑定后处理衔接、CALPUFF转换/求解分离、SWAT+编辑工程导出。未新增科学算法，未改融合内核、评分、变异或选择策略，未重跑历史研究对照，未启动模型求解。主页面控件和布局保持。所有公开处理仍从prepare_uploads进入。
+
+### GitHub复用与实际调用
+
+- SWAT+直接复用官方swat-model/swatplus-editor的SetupProject、Swat2012WeatherImport/WeatherImport、WgnImport及WriteFiles。固定v4.0.0，commit `3606ac4c3b54585072a557382b8e3b60b44dd354`；目标文本契约rev62.0.0。官方源码/许可在external/swatplus-editor；上游文件SHA、网址和环境版本在upstream_sources.json。隔离环境.venv-swat-editor使用peewee3.18.3；复建命令为powershell -File integrations/swat_editor/setup.ps1。不在上传时联网安装或执行上传脚本。
+- WRF核查NCAR/wrf-python及官方WRF工具资料，未为此另装/改写诊断框架。复用现有xarray/Scipy配对坐标插值（公共spatial_fusion_task.sample）、既有fuse_temperature与原生字段写出器。xarray-regrid仅支持其已有规则网格契约，未将其冒充原生WRF曲线网格直接重网格。
+- CALPUFF核查Pavinberg/calpy等已有控制/运行管理，继续使用平台已有CALMET SURF导出、独立读取器、数据处理及依赖规划；不新建另一套转换算法，不把第三方运行脚本当自动上传后端。相关一手链接： https://github.com/swat-model/swatplus-editor 、https://github.com/Pavinberg/calpy 、https://github.com/pydata/xarray 、https://docs.xarray.dev/en/stable/user-guide/interpolation.html 。
+
+### 具体修复与公共调用链
+
+|原问题|修改位置|现在实际行为|验收|
+|---|---|---|---|
+|WRF识别后直接ENGINEERING_BOUND，不组织处理|automatic_preparation.py、project_binding.py、新wrf_meteorology.py；native_meteorology.py提取原有公共温度调用|原生控制绑定优先于旧专项补充包入口；从真实初始场读取变量/网格/时间，识别实际观测及OISST，按适用条件调用已有处理，再将真实产品送公共component_service更新工程|真实SST更新通过；合成三站T2真实数值入口及写回通过；真实包单站T2明确不适用|
+|CALPUFF把本机求解器路径当转换硬门槛|integrations/existing_air/.../calpuff_native_bundle.py、conversion_bridge.py|普通转换不检查/启动CALMET或CALPUFF；直接调用已安装SURF写出器并回读、复制实际控制/输入。仅显式run_models阶段保留求解器要求；桥接遵守转换器native_ready=false|同一真实包转换通过，未要求旧开发机程序路径|
+|SWAT+只有TxtInOut挂接，不能读GIS/Editor数据库|新swat_editor_project.py与独立worker、公共automatic_preparation.py|识别数据库schema并解析实际资源引用；在副本调用官方GIS初始化、天气及WGN导入、文本导出；原始工程不改。先校验天气文件名/外键/月表/路径，再调用上游代码；生成后检查CIO及天气依赖|原包生成file.cio及WGN；68条直接引用全部绑定|
+
+任务绑定不是按Robit、ZIP名、站点名或固定开发机路径选择。SWAT+WGN通过字段及月份外键识别同工程下唯一的统计站/月表；显式配置的WGN数据库按实际上传资源绑定并校验月份契约。CSV列顺序只做可追溯规范化，不改系数。未知版本、缺资源、多个工程根/配对歧义、路径越界均明确拒绝。Editor副本中的输出/天气/数据库路径导出后还原相对路径，便于移动；安装环境和可信上游代码独立于科学数据。
+
+### 真实轻量包验收（不是科研效果实验）
+
+继续使用用户原495311011字节轻量包及此前已解出的内层资源，未下载替代实验数据，原6份输入SHA均未变化。总包递归拆包仍未实现；本轮分别向同一个公共入口上传其内层工程及对应资料，不把此步骤写成总包直接上传成功。
+
+1. **WRF：PROJECT_UPDATED。** 输入同一WRF工程ZIP及NOAA Memphis观测。公共入口实际读取OISST原始有效范围/填值、K单位、原生日期、海陆/冰及可用湖泊掩码，将同日海温分析采样到原生初始网格，通过既有字段写出器改1640个SST值。约124.79秒；独立比较所有其他变量、维度、类型和属性保持，下载包CRC通过；最大SST变化约6.82953K，仅表示数值改动。d02没有有效海温交集，保持原值。
+
+   时间约定明确是**回顾性日分析初始化**：在OISST实际UTC覆盖日内用于初始SST，不将每日12点标签伪装为整日真实瞬时扫描，不用于证明实时预报。多日期派生子集携带单日覆盖元数据时不猜改，改用包内覆盖区间明确的原始逐日分析；同日重叠冲突拒绝。LANDMASK/SEAICE、明确LAKEMASK（存在时）及OISST无效覆盖处保留原值，未推断缺失的湖泊边界。
+
+   **这不是单站气温融合成功。** NOAA TMP按官方Global Hourly字段及QA解码（与ISD-Lite不同），实际同期只有1站；现有留站评价至少3个同期位置，因此T2保持不变并记录NOT_APPLICABLE，不把单站偏差推广到整个WRF域。T2与SST绝不混为同一变量；气温的高度/代表性等仍有适用边界。SST更新、自动工程衔接通过，不等于精度或动态平衡提高。
+
+2. **CALPUFF：CONVERTED，native_ready=false。** 同一真实工程包先经过既有风分量处理，再把本次产品导出为SURF输入，约52.75秒，168小时×5站。最终版转换函数另复用已生成真实处理产品回读验证，未重复搜索。实际8字段数值、站序、时区和缺失掩码与本次产品一致；没有运行求解器，也不依赖旧D:/EcoDataEngine程序目录。
+
+   输出仅为已处理原生输入及工程依赖。新的CALMET METDAT未生成；若将来要求完整运行CALPUFF，需单独运行CALMET并验证结果。这是运行阶段的合理依赖，不再阻止普通融合/格式转换。未宣称模型浓度运行或融合精度提高。
+
+3. **SWAT+：PROJECT_UPDATED。** 同一Robit工程ZIP及NASA POWER文件经公共入口实际调用官方Editor。导出69份原生文本文件（含file.cio、天气及weather-wgn.cli），68条直接引用全部绑定、无缺失引用或天气关联错误，约5.84秒；未运行SWAT+。
+
+   **纠正本轮中间判断：** 起初看到项目库WGEN_User/WGEN_User_mon、配套库wgn/wgn_mon均0行，且未生成weather-wgn.cli，误以为原包缺WGN资料。随后完整核查发现原包Wgn目录已有两份真实CSV；问题实际是未配置/未导入，不是原始资料缺失。已补公共字段识别及官方two_file导入，天气站实际链接bdrwgn。独立比较原CSV的12个月×14项统计与原生输出，最大差约0.000004986，符合官方五位小数输出；没有用零、其他流域或新造统计替代。早期失败、部分产物及初判记录全部保留，最终结论以real_swat_wgn和independent_readback_final.json为准。
+
+   原NASA POWER辅助文件保留，但本轮未将其与原天气强行融合；其高程/代表性及融合任务不在这个编辑工程导出修复中解决。官方GIS初始化使用官方默认参数，记录official_gis_defaults_used，不声称还原作者未保存的标定参数。当前核验Editor4.0.0/QSWAT+4.x的已列数据库/天气契约；GWFlow等尚缺完整绑定条件时明确拒绝，不宣称所有版本自动可用。
+
+### 功能回归、页面和信息边界
+
+最终tests_signedoff.txt：**141通过、0失败、135 warnings，17.00秒**。包含端口写回、原始输入保护、格式/单位/时间/范围错误、WGN真实月份支持及空表拒绝、CSV外键/无关分支/改名、工程路径越界、未知版本、模型运行与转换分离、页面/工具包一致性等。未执行无关全量回归，未降低物理门槛。
+
+真实Robit额外通过当前主页面AppTest提交并产生可下载产品，与直接工具包调用比较全部69份原生文件，排除官方第一行生成时间注释后内容一致，实际下载控件可见。小型WRF同一请求经页面和工具包的原生输出及计划一致。AppTest不是人工浏览器验收，本轮没有声称做了人工浏览器上传。
+
+合成三站T2另做有界链路检查（不是环境精度证据）：通过公共输入→共享处理→真实数值搜索→产品→原生写回。固定种子11，15提议上限、20秒，公共记账实际32次算法调用（搜索30、部署2），9个候选记录，0.1秒左右服务计时；不报告合成RMSE为科学成果。首次测试误设10次总调用，小于服务既有96次部署预留，未能执行；根据明确资源契约校正到144次上限（至多48次搜索空间调用余量），未改优化器或按误差追调，失败及校正协议保留。另有一次测试输出目录复用错误日志保留。
+
+本轮修复了时间字符数组S19/S1解析与写回目录创建两个实际接口错误。旧基础页面测试默认“未装转换器”，在当前已安装转换器环境原本也失败；已保存旧入口复现CONVERSION_FAILED证据，在这些无转换器测试显式隔离发现接口，原有内容、CRC、页面及异常断言未删除。
+
+### 交付、保护及复现
+
+证据集中output/three_integration_fixes_20261104：before修改前快照、executed_source及source_fingerprints.json、upstream_sources.json、各真实receipt/产品/质量记录、独立读回、page_real_swat.json、acceptance_matrix.csv、summary.json、所有失败日志及合成协议。已验证原始输入未变，未删除数据、未覆盖历史研究结果；没有新增算法、训练模型或启动正式研究对照。
+
+桌面当前主运行目录仍为D:/codex/EcoDataEngine，服务按现有launch_platform.ps1重启至127.0.0.1:8502，health=200；修改同步本地EcoDataEngine-GitHub工作区并核对内容，未推送远端。源码和环境安装成本未完整单独计时；上面的秒数是各处理入口墙钟，不声称总成本优势。
+
+复现定向测试：.venv\Scripts\python.exe -m pytest tests/test_three_engineering_fixes.py tests/test_engineering_writeback.py tests/test_project_binding.py tests/test_project_inventory.py tests/test_public_model_components.py tests/test_data_task_dispatch.py tests/test_swat_weather_project.py tests/test_swat_inputs_project.py tests/test_minimal_workbench.py tests/test_workbench_folder_input.py -o addopts='' -q --basetemp=output/新的验收目录。
+
+最终判定：三个指定工程集成方向已实现并有上述边界内的真实证据；WRF真实单站T2融合不适用、原生模型求解未运行、精度增益未评价、外层总包递归仍未实现。这些限制不因工程功能通过而改称完成。
+
+
+## 2026-11-04 五模型通用性只读复核：专项通过不等于整体通用
+
+本次仅核对当前公共入口及实际调用，不运行新实验、不修改科学代码。验收口径是：在已声明科学/格式契约内，普通用户更换同类工程与数据后，不必增加任务专用入口，即可由平台识别任务、组织适用处理并写回；不是要求无视模型版本或未知科学含义。
+
+按整个模型的“数据识别→任务推导→融合组织→原生写回”口径，当前五模型均不能标记整体通用已完成（0/5）；已支持格式/任务的部分通用能力仍成立，不能反过来说所有工作都没做。
+
+|模型|确有的通用部分|尚未贯通或限定点|整体判断|
+|---|---|---|---|
+|SWAT+|按真实数据库/字段识别的官方GIS与天气/WGN导出；多类组件写出及部分工程挂接|普通上传自动任务以完整天气识别及编辑工程导出为主；其他组件通常依赖明确任务声明，未统一自动推导所有合法处理/融合任务|部分建立；工程导出层较完整|
+|WRF|原生初始/边界绑定、来源和支持域校验、公共字段写回|自动处理明确分支仍为T2气温与OISST/SST，且不覆盖全部工程模式；不能从SST路径成功推断新变量自动适配|部分建立；仍有专项路径|
+|CAMx|namelist输入引用绑定、资源复制、多个组件与通用字段更新|自动气象路径只消费唯一met2d_grid内t2及现有观测契约；其他变量/目标仍需相应任务绑定|部分建立；未统一所有处理任务|
+|CMAQ|排放/边界等组件及带溯源的原生NetCDF字段更新|C-shell的运行时变量、条件、循环与source仍UNKNOWN；缺完整工程实际激活依赖解析及后续自动任务组织|部分基础可用；完整工程链路未建立|
+|CALPUFF|支持格式内的控制依赖解析、SURF等组件、转换与运行分离|完整自动处理受5.8格式、IFORMS/IRTYPE/IPROG等已审查条件约束；当前融合组织偏地面气象/风分量专项，未形成所有受支持任务的统一推导|部分建立；格式/任务有边界|
+
+判断依据为automatic_preparation.prepare_uploads的调用次序、component_service.CATALOG及自动识别分支、project_binding.bind_project、wrf_meteorology.prepare_wrf_meteorology、native_meteorology.prepare_meteorology、project_inventory._cmaq及CALPUFF原生driver的实际适用条件。组件需要格式适配/科学声明本身并不是缺陷；这里未完成的是普通入口的任务推导与处理编排尚不能完整覆盖已有可执行组件，不能用“存在组件目录”替代贯通证据。
+
+上节三项工程修复及141项定向测试仍然有效，范围是已列任务和格式的行为正确性；不再将其解释为五个模型整体泛化完成。本次没有新测试，因此不增加通过数量，也未改写旧实验结论。
+
+
+## 2026-11-04 五模型公共工程输入端口机制与有界验收
+
+### 验收结论与边界
+
+**五模型共用输入端口处理机制：5/5已接入并有真实原生格式往返证据。任意完整工程、任意任务或任意版本的全部自动理解：未验收通过。** 两者不能合并为“五模型全功能通用PASS”。本轮没有运行五种模型求解器，没有证明新多源融合精度改善，也没有将同一原生场的派生副本伪装成独立来源。
+
+上一节指出的专项入口缺口确实存在。本轮新增公共scientific-input-port编排，而非再为T2/SST或某个包名写分支。现有专业组件/历史路线保持兼容；本轮公共自动端口覆盖范围如下：WRF/CAMx/CMAQ为已登记、时空支持明确的固定水平原生数值场；SWAT+为原生逐日天气各站各变量；CALPUFF为现有SURF编解码及活动SRFDAT输入。其他组件原有显式科学任务仍可调用，但不把它们登记为本轮已自动推导。
+
+### GitHub复用与实际调用链
+
+已核查[Basic Model Interface](https://github.com/csdms/bmi-python)、[HydroMT](https://github.com/Deltares/hydromt)、[PseudoNetCDF](https://github.com/barronh/pseudonetcdf)。前两者提供具名变量/网格/单位与模型组件组织的架构参考；未安装新框架或复制其模型内核。实际直接复用当前xarray、Pint/pint-xarray、既有原生编解码器和写出器，以及上轮已核验的[SWAT+ Editor](https://github.com/swat-model/swatplus-editor)4.0.0，commit 3606ac4c3b54585072a557382b8e3b60b44dd354。版本及用途见upstream_sources.json、environment.json。
+
+页面和工具包继续共同调用 `ecodata.algorithms.automatic_preparation.prepare_uploads` → `models.engineering.preparation.prepare_engineering_inputs`。`engineering.ports`仅提供各格式实际输入资源、变量、单位、时间、坐标/站点及原生写回绑定；公共模块据物理变量与支持域匹配来源，经既有UnitEngine与空间采样，再消费AlgorithmSelector.decide的实际eligible结果、既有recommend/execute_with_fallback/Pipeline及双层质量门，最后调用原生写出器。单来源只作明确的对齐/换算，标SINGLE_SOURCE_ALIGNED，不冒称融合或精度选优。多来源必须有现有算法真实要求的资源；本轮测试的逆方差融合需要实际标准差，不默认等权，不能安全传播协方差时拒绝标准差重采样。
+
+修改位置：`src/ecodata/models/engineering/ports.py`、`engineering/preparation.py`，公共入口的前置衔接；`native_source_inspection.check_native_values`由旧组件与新公共写回共用；UnitEngine补CALMET格式明确单位和无量纲别名；页面只在本路线成功后替换“接口预留”旧提示，未增加控件或更改布局。没有改科学融合内核、评分、搜索器或第三方源码。
+
+科学声明协议 `ecodata.engineering-semantics.v1`允许确认资源角色、变量物理意义、时间基准/统计区间、支持高度及方向等，不允许指定算法、赢家、运行命令、单位覆盖或填造数据。实际文件已经给出的事实不允许被声明覆盖。未知的CMAQ脚本激活资源需要明确的可移植输入角色；这不是“任意C-shell已被自动解析”。普通带source_id及科学变量元数据的CF来源也可识别；纯数据上传仍回到兼容的既有入口，不静默套用其他工程。
+
+安全要求：时间基准和统计含义一致；SWAT日区间另核86400秒，不仅匹配日期；原生时间缺失/重复/非递增拒绝；移动网格、未支持垂直/边界支持拒绝；源CRS/站点身份明确、无覆盖不交付空更新；QA规则未绑定不静默忽略；原生范围/类别/位掩码守卫统一消费；风分量方向未知不猜地理风，WRF Q2保留混合比定义，不当作比湿。输出工程副本逐个非目标成员SHA256复核，源文件不修改，ZIP CRC及原生产品回读。
+
+### 五种真实格式验收
+
+|模型|实际变量|处理数值位置数|总耗时|结果|
+|---|---|---:|---:|---|
+|wrf|PSFC;T2|19602|36.05s|PASS：输入端口处理/原生回读|
+|camx|sfctemperature;t2|4870800|12.19s|PASS：输入端口处理/原生回读|
+|cmaq|PRSFC;TEMP2|525000|2.58s|PASS：输入端口处理/原生回读|
+|swat_plus|precipitation;relative_humidity|17532|1.13s|PASS：输入端口处理/原生回读|
+|calpuff|wind_speed;temperature|1680|4.74s|PASS：输入端口处理/原生回读|
+
+证据位于 `output/unified_five_model_20261104/real_signedoff_*` 的receipt.json、native_sources.json、public/engineering_inputs下的实际product.nc、源/结果质量门、plan.json、decision.json及工程ZIP。真实输入复用已有WRF20230331原生初始场、CAMx官方met2d、CMAQ20180701 MCIP、已由官方Editor导出的Robit工程及原CALMET/CALPUFF示例。
+
+**上述新验收的来源是这些原生真实数值的可追溯抽取，必要时作K↔degC或Pa↔hPa往返；它们不是独立观测，没有虚构新的测量或不确定性。** 因而证明的是多变量公共适配/单位/支持/写回，不是五个真实多源融合实验。独立脚本又比较了产品与原生写回字段、全部非目标成员SHA、CRC和源数据清单。SWAT天气/ CALMET保持其原生日期/站号含义；模式网格经纬度按现有适配器的操作约定处理，不由数值回读宣称测绘精度已独立证实。
+
+### 行为测试与页面
+
+tests_signedoff.txt：182通过、0失败、159条第三方deprecation warnings，26.14秒；强化真实融合输出值断言后再执行tests_values.txt，结果据该实际日志记录，不重复无关全量回归。涵盖五模型同一公共服务、原生写回、改名/排列/无关文件保持、新压力变量和单位换算、单位/时间统计/时间基准/物理定义冲突、区间长度、声明冲突、无不确定性拒绝、不安全标准差重采样拒绝、类别/范围守卫、语义eligible确实阻止执行、已存在的工程绑定/组件/界面回归。逆方差内核用明确标注的合成数据，独立断言输出为283K或4mm/day，不以算法名称出现代替数值执行。
+
+五个模型的新公共路线均经Streamlit AppTest与工具包比较原生输出及实际选择算法，下载控件可见。**签收版另有真实浏览器验收**：通过文件选择器上传Robit原生工程包和两个实际来源文件，点击处理，看到“公共工程输入端口已处理”，实际下载包重开CRC正常，原生目标字段逐字节等于工具包结果。也核验本地路径输入。浏览器只覆盖这个真实SWAT案例，不能称五个模型均人工浏览器验收；AppTest和真实浏览器分开记录。详见browser_acceptance_signedoff.json、browser_upload_download_signedoff.zip；桌面8502已从实际主目录重启，健康检查200。
+
+### 未通过的更强标准
+
+|要求|状态|具体缺口|
+|---|---|---|
+|五模型共用实际输入端口处理与原生更新|PASS（上述输入契约范围）|不依赖包名、固定位置或指定赢家|
+|五模型全部任务由普通上传完全自动推导|未完成|SWAT非天气表、复杂垂直/边界及部分格式仍走已有显式科学任务，未统一自动推导|
+|CMAQ任意完整脚本工程的激活依赖闭环|未完成|动态source、环境、循环和条件不安全执行；明确资源声明可更新真实MCIP，但不证明CCTM完整激活输入|
+|所有版本/网格/变量无条件适用|不支持此宣称|未知科学定义、方向、QA、区间、格式必须有真实契约，不能靠数值或文件名猜|
+|新公共机制在五个真实多源案例提升精度|未评价|新真实验收是原生数据往返；多源内核行为有合成证据，旧真实融合保留原适用边界|
+|五模型求解器原生运行|未运行|本轮验收输入准备和写回，不替代各模型运行及科学验证|
+
+因此本轮提供了可复用的跨模型公共底座和五种真实格式证据，**仍不得用“共同函数存在”或“5份文件成功”把用户要求的任意完整工程整体通用标成全部完成**。未知项和失败没有降级为PASS。第一轮坐标发现漏扫、原生单位尾空格、单位别名和错误变量声明等失败记录保留；已修复有因问题。处理先前CALPUFF导出综合包时发现含多套不同控制方案，按歧义拒绝；最终改用原始完整明确工程验收，未把拒绝记录删去或称综合包也通过。
+
+### 复现与历史保护
+
+复现命令：`.venv\Scripts\python.exe -m pytest tests/test_unified_engineering_ports.py -q -o addopts=''`；真实验收脚本是run_real_ports_signedoff.py，需新建输出目录后运行，不能覆盖已有签收产物。其源数据、声明和输出路径均在脚本及机器清单中固定。独立核验见verify_delivery_signedoff.py。protocol.json写明支持/拒绝范围，source_fingerprints_signedoff.json与executed_source_signedoff保存实际生产源码；最终增强测试快照另存delivery_source。没有新增大数据下载、删除资料、改变旧实验、运行GOLEM研究、启动任意上传脚本或运行求解器。
+
+SHARED_INPUT_PORT_MECHANISM = 5/5（明确契约范围）  
+ARBITRARY_COMPLETE_PROJECT_GENERALITY = NOT_VERIFIED  
+NEW_REAL_INDEPENDENT_FUSION_ACCURACY = NOT_EVALUATED  
+NATIVE_MODEL_EXECUTION = NOT_RUN
+
+
+## 2026-11-04 五套原始输入公共入口复测（不是字段往返验收）
+
+用户要求测试之前五个数据。本次输入版本和完整路径固定于 `output/five_original_inputs_retest_20261104/cases.json`：WRF采用轻量包中的完整WRF ZIP与NOAA Memphis CSV；CALPUFF采用轻量包原工程ZIP；SWAT+采用原Robit ZIP与NASA POWER CSV；轻量包没有CAMx/CMAQ完整工程，因此CAMx采用既有5,170,342,324字节原工程与气象融合ZIP，CMAQ采用既有firstday_delivery完整交付目录（76文件、10,417,050,933字节）。没有以EPA观测ZIP冒充CAMx工程。
+
+全部从当前 `automatic_preparation.prepare_uploads` 正常入口执行，未制作字段往返来源，未补匹配清单/算法/人工处理图，未改平台源码、质量门、策略、预算实现或原始资料。每个输入逐文件运行前后SHA256一致；使用新目录保留全部结果及失败。仅设有界测试墙钟上限，未新增数据大小限制；五项均在上限内返回，未发生超时。返回码0只表示测试runner记账完成，下面的FAILED按实际平台异常统计，不把它们当成功。
+
+|模型|公共入口结果|实际产品独立回读|入口及回读耗时|原件SHA不变|
+|---|---|---|---:|---|
+|wrf|PROJECT_UPDATED|PASS|152.50s|是|
+|calpuff|CONVERTED|PASS|52.41s|是|
+|swat_plus|PROJECT_UPDATED|PASS|6.42s|是|
+|camx|FAILED|NOT_RUN|64.20s|是|
+|cmaq|FAILED|NOT_RUN|0.64s|是|
+
+**WRF：** 实际更新d01的1640个SST值，最大数值改动6.82953K；逐变量核验其他变量、维度、类型、属性保持，陆地/海冰位置未修改，ZIP CRC通过。同期气温只有1站，T2保持不变，不称气温融合成功，不将SST数值变化解释为精度收益。
+
+**CALPUFF：** 原始工程实际经已有平台处理与转换，SURF的168小时×5站×8字段逐项等于本次surface_product.nc，独立编解码回读及CRC通过；未运行CALMET/CALPUFF，也未生成新的METDAT。没有绕过运行程序路径检查来假装模型求解成功，本次本来只要求输入准备/转换。
+
+**SWAT+：** 官方Editor实际导出69份原生文件，68条直接引用绑定；WGN的12×14月统计与原包CSV最大差4.986e-6（官方输出舍入），file.cio及WGN关联存在，CRC通过。NASA POWER保留，但本次成功是工程导出，不是NASA POWER融合完成，也未运行SWAT+。
+
+**CAMx：FAILED，观测入口重复。** 公共读入器合并了原始全年NOAA、当日子集和decoded表；质检接受65416条记录后发现218组站点/时间重复，共631条重复记录，其中5组温度不同。按实际namelist的UTC工程窗口2021-12-22 00:00至2021-12-23 00:00检查，窗口内195组、585条重复记录的温度均一致。当前重复守卫在工程时窗筛选前触发，未区分原始/子集/解析表的来源重叠，故未进入数值融合和原生写回。不能简单说观测全部冲突，也不能无条件平均或把全过程重复都自动去掉。诊断调用原公共解析器，仅观察duplicated的原返回值，没有改变它或给算法传入筛选后的数据。详见duplicate_accepted_observations.csv及block_diagnosis.json。
+
+**CMAQ：FAILED，原目录中的源码归档触发安全检查。** CMAQ官方源码ZIP有95个符号链接，典型为同仓库机制文件的相对引用。目录收集将源码归档也作为上传输入，统一archive_preflight在工程处理前按符号链接拒绝；没有跟随/解压这些链接。这不证明MCIP气象文件损坏，也不能把本次失败泛化为“气象融合算法不支持CMAQ”：本次尚未走到那里；排除该前置问题后动态C-shell工程闭包仍需另验。应由公共输入角色分层区分源码/参考归档与运行输入，而不是为了这个包放宽全部链接安全检查。
+
+**结论：五套原输入已全部真实测试；3套完成上述有限处理和产品回读，2套未通过。不能宣称五模型原工程完整自动链路均通过。** 也不能将3套产物成功解释为三套均完成融合或精度提高。所有模型求解器本次均未运行；本轮只测试和定位，没有偷偷修复/裁剪输入后把结果改成PASS。未重复无关全量回归。
+
+可复现入口：本目录run_retest.py（须使用新的输出目录，避免覆盖此次结果）；协议、源代码指纹、逐输入/输出清单、receipt.json、original_unchanged.json、独立回读、完整异常及summary.csv均保留。报告是唯一交付文档，机器证据独立保存。
+
+
+## 2026-11-04 观测身份归并与软件参考隔离：CAMx/CMAQ公共修复及原件重测
+
+### 修复内容
+
+本轮只修两处公共入口组织问题，不改算法、融合内核、随机变异、评分、物理约束或原始数据。没有按CAMx/CMAQ包名、日期或路径写特殊放行规则。
+
+1. **观测身份与来源归并。** 复用 `models/source_catalog.py` 增加reconcile_records公共操作；实际身份是提供方/变量通道、站点、规范化UTC时刻，温度、QA、报告类型、坐标与高程必须全部相同才归并。每条保留记录携带稳定record_id及所有实际source_member/source_sha256/source_row；相同数值但报告或QA不同仍拒绝，不同提供方不因数值相近被合并。未知身份/科学字段不当作已确认值。没有平均、挑选报告优先级或改变测量数值。
+
+2. **先按任务支持核验，再检查当前任务内冲突。** `native_meteorology`的公共解析与最终核验分开；CAMx、WRF均在读取实际原生TFLAG/Times后，用同一_scope_observations进行最终处理。ISO时间转换UTC后比较，datetime64微秒/纳秒结果一致；精确匹配，不向整点取整或借跨时刻值。没有声明目标时间支持时，仍核查全部记录。时窗外数据保留在原件，记录排除数量；当前支持内有冲突仍阻止。此修改调整的是核验顺序，不改既有fuse_temperature的时间匹配或科学计算。
+
+3. **输入角色公共隔离。** 正常页面/工具包/实验仍调用 `automatic_preparation.prepare_uploads`；该公共边界先调用source_catalog.partition_uploads，再进入原有_prepare_uploads。只有本地下载清单中的固定GitHub提交、文件实际SHA256/字节数、仓库提交目录及源码/README/许可结构一致，且未发现支持的运行数据容器时，ZIP才作为software_reference保留为不执行的参考资料。归档原文件名不是判据，清单中的旧文件名也不作匹配依据。不是所有GitHub ZIP都忽略；缺证据、校验不符、混有科学容器（含改名的NetCDF/HDF/TIFF）、运行控制等均保留原安全检查。参考包不解压到磁盘、不跟随符号链接、不导入/执行，原件不移动、不删除；分类理由和SHA存入input_roles.json并附入下载包。实际未重新联网下载或验证上游URL，记录的是本地来源声明与内容核验。
+
+修改文件：`src/ecodata/models/source_catalog.py`、`native_meteorology.py`、`wrf_meteorology.py`、`src/ecodata/algorithms/automatic_preparation.py`；新增 `tests/test_input_roles_observation_identity.py`。archive_preflight的活动输入符号链接安全守卫没有放宽，模型接口及页面布局没有改变。
+
+### 行为测试
+
+初始复现测试7失败、1通过，失败记录保留。最终tests_signedoff.txt为**136通过、0失败、126条依赖deprecation warnings，98.44秒**，为新增及受影响的定向回归，非全量实验。新增文件11项（含参数化）：原始/子集/解析别名归并、UTC等价表达、输入顺序、冲突及QA/报告差异、提供方身份隔离、未知身份拒绝、微秒/纳秒及重复目标时刻、无清单/错误校验/混合数据与改名容器不得隔离、公共入口真实消费分类等。相关WRF、工程绑定、组件、五模型公共端口、页面与工具包测试仍通过。
+
+### 完全相同原件的真实重测
+
+没有手动删减原输入、没有新增匹配数据/字段往返产品或人工指定算法。继续使用前次cases.json中的CAMx 5.17GB完整ZIP，以及CMAQ firstday_delivery原目录76文件/10.42GB。逐输入执行前后SHA256均一致；原始失败及本轮所有日志保留在新目录 `output/input_roles_observation_fix_20261104`。
+
+|对象|修复前|修复后|实际验收与限制|
+|---|---|---|---|
+|CAMx原完整包|合格观测站点时间重复，FAILED|CONVERTED|真实数值处理、当前产品原生写回及下载包回读通过；未运行CAMx求解器|
+|CMAQ原完整目录|源码包95个符号链接被当运行输入，FAILED|ENGINEERING_INSPECTED|源码拦截已消除，正常完成工程引用盘点并生成带角色记录的下载包；尚未融合或生成新的完整原生工程|
+
+CAMx：原生气象文件实际有25个整点TFLAG。65416条QA合格记录中，65303条不属于这些精确时刻；当前支持内113条归并为41个科学观测，72条完全同值/同QA/同报告记录保留为溯源别名。先前按全天窗口诊断的195组重复包含非整点报告，因此不是同一个分母；本轮没有把非整点观测移到整点。9个至少3站同期覆盖时刻实际处理195个共同有效域格点，写回**1755个t2值**。
+
+独立验证从本次search/product.nc反查原生时刻与格点，逐项构造预期写回值，确认全部输出对应当前产品，其他变量、属性、时间与未处理区域保持。完整工程各依赖的SHA256复核通过，下载ZIP中更新气象文件与当前工程副本一致。平台实际选中MULTISOURCE，但post_selection记录为NO_SEPARATE_LOCATION_TEST、上游观测独立性未证实，所以**不宣称精度改进**。实际公共入口加回读约494.50秒，含原件前后指纹及启动的总计约509.17秒；耗时包括读取/复制与核验约12GB依赖，不把它和修复前提前失败的耗时当性能对照。
+
+CMAQ：76个原上传资源中，校验匹配的18,837,775字节源码快照独立列为software_reference，75个资源继续进入原流程；95个源码符号链接未跟随。源代码原ZIP仍存在，SHA一致。输出清单包含相同的输入角色记录，实际识别3份C-shell控制声明并保留UNKNOWN。**剩余的是既有动态C-shell条件、循环、source和日期展开未闭合；本轮没有把工程盘点标成融合或CCTM成功。** 实际公共入口加回读约50.31秒，总计约82.66秒。
+
+完整原件执行时源码快照为executed_source_real_v1；最终另加强了“无扩展名科学容器也不能伪装源码”的拒绝守卫，补测全部136项。对两套原件再次执行最终分类，与真实重测的分类逐项相同；观测与数值执行代码SHA没有变化。没有重复CAMx的8分钟处理以制造新运行次数。分类等价证据为classification_equivalence.json；最终源码为delivery_source。独立产品核验为independent_verification.json，计数及原件清单在对应case目录；summary.csv、protocol_signedoff.json及源码指纹均保留。
+
+本轮两项指定入口故障均有修复及原件证据；CMAQ完整融合链路仍未通过，不用此次修复替代它的后续验收。未运行无关全量回归、正式GOLEM科研对照或原生模型求解器。
+
+
+## 2026-11-04 CMAQ动态C-shell输入绑定、参考场处理与原生写回闭环
+
+本节接续上轮ENGINEERING_INSPECTED限制；不改写历史失败结论。复用原76份、10,417,050,933字节输入，未下载、删除或改变原件。源码快照继续隔离为software_reference，其余75份经同一公共入口处理。本次不是CCTM求解器运行，也不是精度提升研究。
+
+### 公共实现与范围
+
+页面、工具包仍调用`automatic_preparation.prepare_uploads` → `project_binding.prepare_project_binding` → 公共CMAQ声明绑定 → `native_reference`的产品格式/空间时间适配 → 原`platform_search.process_current_input`、Pipeline和质量门 → `component_service`/既有原生字段writer → `engineering.native.finish_project`。没有新增页面、人工指定赢家、重写融合内核或修改GOLEM。
+
+`models/control_flow.py`仅解释有界声明：变量、三值条件、有限while/foreach、受支持的日期/整数表达式及上传域内source；不执行上传shell、命令替换、mpirun或模型。未知分支不同值保留UNKNOWN；循环/分析步数有上限；未知条件中的模型调用不能冒充确定执行帧。`models/cmaq_binding.py`按实际I/O API端口及日期绑定，不按工程名、日期、尺寸、包SHA或开发机路径分派。仅未知机器根可用实际唯一的至少两段路径后缀重定位；内部未知、歧义不能猜选。
+
+本原件实际选择有数据覆盖的一日运行声明，绑定37个端口；两日声明因下一日核心MET/GRID缺失被拒绝，证据完整保留。`config_cmaq.csh`及编译环境未提供，source保持UNKNOWN，另有1项未解决输入声明。因此只认证本次MCIP输入准备与写回，不认证完整运行闭包或任意C-shell语言。
+
+`models/native_reference.py`按真实MCD15A3H产品元数据复用已有MODIS QA、尺度解码、有效域/无外推及公共空间处理；不是针对本包写死的入口，也未冒称支持所有卫星产品。原生LCC参数和MCIP声明地球半径与GRID经纬度交叉核对，最大差2.5915676e-05度；这验证文件内部几何一致性，不是仪器地理精度。128,659/160,801像元通过QA；部分QA覆盖明确保留，不填造像元。四日合成区间实际覆盖全部25个原生时刻，采用“静态植被参考增量＋保留MCIP逐小时异常”操作约定，绝不当成逐小时卫星观测；植被类型/覆盖率科学一致性未得到独立验证。运行起点还须与CTM_STDATE/CTM_STTIME和TFLAG一致。
+
+### 真实结果与选择边界
+
+|验收|结果|实际证据|
+|---|---|---|
+|原上传目录自动输入绑定|PASS|retest_v2/cmaq/public/project_binding.json；37条真实资源边与SHA|
+|公共数值处理及多源候选|PASS|search/candidate_results.json、graphs.json和逐节点真实轨迹|
+|原生MCIP写回及质量门|PASS|writeback/components/native_updated.nc、raw_quality.json、result_quality.json|
+|完整工程副本与全部成员回读|PASS|receipt.json、output_members.json；ZIP CRC及成员SHA一致|
+|独立I/O API读取及数值核验|PASS|independent_verification.json；PseudoNetCDF ioapi|
+|原始输入保护|PASS|original_unchanged.json全部76份一致|
+|CCTM原生求解|未运行|运行环境/source/部分依赖未闭合，native_ready=false|
+|环境精度增益|未评价|没有独立LAI真值；不能用自留出误差宣称提升|
+
+公共选择在186个相同自留出参考位置评价了61个单源和29个多源候选，均真实执行通过。最佳单源IDW RMSE=0.64842415，最佳多源RMSE=0.65732591，单位为LAI无量纲。这是卫星主源重建代理指标，**不是独立环境精度**。平台保留其真实选择SINGLE_SOURCE，未为本轮任务强制选择多源赢家；最终应用将选中参考场与原MCIP背景的逐小时异常组合。多源运算链已实际跑通，但本例不能宣称多源融合优于单源。完整图、所有失败/成本及选择依据均保留，原有策略与预算未改。
+
+原生输出形状25×1×105×100，实际更新184格×25时刻=4,600个LAI值，范围0–8，最大绝对变化2.25390577；其余41个变量、全部原生全局/字段属性及TFLAG保持。未处理网格保持；产品与当前处理场数值一致；逐小时异常在2e-6容差内保持。独立读取成功后PseudoNetCDF/netCDF4清理阶段出现Not a valid ID析构警告，日志保留；不影响已完成的数组读取与断言，但不把它隐去。工程ZIP约2.591GB，SHA256=86acf9ee62650b383f3d516fdd7daab82a7ef28285dfe885205fea66a75999b0。
+
+### 发现、修复与定向测试
+
+首轮真实融合成功但写回被严格支持域校验拒绝：netCDF4属性序列化将大端float32的VGLVLS数组误解释为主机字节。已在公共`engineering/native.extract_native_field`中仅规范属性数组字节序、保持值及支持域指纹，不关闭验收；新增往返回归通过。首轮failure.txt和全部产物保留，修复后才完成第二轮原件验收。
+
+126项不同的新增/受影响定向用例通过；tests_03为52通过，tests_04为73通过，最终tests_final为19通过（含重复复测，增加1项未知条件调用用例，不重复计数）。覆盖安全条件/循环/source/未知日期、歧义配置、跨年日期、数据覆盖选控、QA/解码、属性字节序、公共绑定、原生状态、页面同服务及下载。较早扩展检查中有2项旧`test_cmaq_external_project`因缺固定历史run.csh而失败、2项跳过，保留tests_02，不算本轮通过，也没有伪造那份历史依赖。未运行无关全量回归。
+
+最终解析器又加强未知条件调用守卫；通过final_binding_equivalence.json确认原件全部绑定、参数与已执行版本逐项相同，未重复数值处理。源码前后快照、最终源码及SHA保存在本轮目录。公共入口含工程复制和回读耗时575.71秒，加原件前后指纹总计596.52秒；数值公共服务约169.29秒，其余主要为10GB输入流式读写/压缩/校验。不同阶段和失败成本均保留，不宣称性能优势。
+
+### 文件与复现
+
+全部证据根目录：`output/cmaq_dynamic_binding_20261104`。成功原件验收位于`retest_v2/cmaq`；下载产品为其`public/native_reference/writeback/EcoData-updated-project.zip`。只使用原始工程与配套实际卫星参考，没有新增模拟数据或手工指定图。核验命令：`.venv\Scripts\python.exe output/cmaq_dynamic_binding_20261104/verify_real.py`（先已有成功receipt）；定向测试见tests_03/tests_04/tests_final及对应源码。最终源码在executed_source_final，签署协议在protocol_signedoff.json，运行环境为现有.venv。
+
+本机协作checkout仅同步本轮文件并核对前版本，未远程推送。实际桌面8502进程已按原启动器重启，健康200，runtime_before/after保留；本轮没有另做浏览器交互验收。原生文件写回与独立格式读取已完成，运行CCTM及证明科学精度改善仍未完成。
+
+官方依据（只用于模型脚本与运行输入角色，不替代本包实际核验）：[USEPA运行说明](https://github.com/USEPA/CMAQ/blob/main/DOCS/Users_Guide/CMAQ_UG_ch05_running_a_simulation.md)、[官方运行控制示例](https://github.com/USEPA/CMAQ/blob/main/CCTM/scripts/run_cctm_Bench_2018_12NE3_CB6R5.csh)。未复制第三方模型或shell内核。
+
+
+## 2026-11-04 公共无真值诊断：SALib有界输入偏移敏感性接入
+
+按用户“选择一个合理好用的，直接接进去”授权，复用SALib 1.5.2 Morris方法和既有冻结图执行器，接入源共同偏移压力诊断。不新增融合算法、不改变异/fitness/验证/选图、原产品或模型writer，不把稳定性当精度。无新页面控件，无大型实验、下载数据、重做原生工程或覆盖历史结果。
+
+公共消费者：`platform_search.process_current_input`完成原处理并冻结方案后 → `stability.attach/assess` → 原`execute_frozen_graph` → 原解析、Pipeline与质量检查 → 输出`stability/stability.json`及逐次真实产品/执行成本。原公共结果增加`post_selection_stability`，summary更新；`models/fusion_assessment.assess_task`将它原样纳入既有交接/下载评价记录，accuracy_improvement仍为NOT_ESTABLISHED。CMAQ等原生适配器接收的公共结果同样包含本诊断，不需要模型单独规则。页面当前处理与工具包共用上述服务；低层`submit_search`和直接冻结部署不自动触发此诊断，防递归和历史实验预算污染，可明确调用公共assess，不声称迁移全部历史入口。
+
+### 冻结协议及边界
+
+`source_offset_morris_v1`：仅对目标连续变量、已有单位、1—3个非恒定输入源，按可见数据标准差的1%为偏移尺度，固定2条Morris轨迹、4级、seed11，最多8次部署。不是估计出的仪器误差，不承诺已收敛的全局敏感度。首轮发现负偏移会让背景原有零值变负，3/6次被原质量机制拒绝，记录为INCOMPLETE并完整保留；修正是**事先将因子采样域限制在显式nonnegative契约内**，不截断结果、不放松质量门、不按效果追调扰动幅度。未声明非负则不猜测非负要求。
+
+每次使用同一冻结图及原训练/状态契约。原始字节、坐标、时间、缺失位置保持；参考、观测、历史状态和目标资源不参与扰动，维持原执行侧用途。不同变量辅助场、未知单位、恒定源、分类输入、超过3源等给出排除/未评价原因，不静默截断、不伪造0风险。源顺序按角色/稳定身份/内容指纹排序，因子有原内容SHA；图/基线产品SHA均记录。
+
+报告每次整场响应RMS、最大变化、负值数量、产品与成本；SALib的mu_star/sigma仅描述**平均输出**的响应及变化，不是测量误差、95%置信区间、精度收益或来源权重。平均响应可能掩盖局部抵消，故同时保留整场差分；零响应只能限定于该偏移方向，不能自动判某来源无用。没有主观稳定性通过阈值，DIAGNOSTIC_COMPLETE只表示规定检查做完。失败为INCOMPLETE/NOT_EVALUATED，不影响原合格产品，但诊断未完成状态保留。60秒仅在部署之间检查，不强杀在途内核；一次部署仍受原执行器预算控制。独立记账，不并入搜索评价数，缓存命中不冒充重算。
+
+### 当前真实案例与行为结果
+
+全部复用上节CMAQ已经生成的真实primary/background/target及历史图，不改原件、不重新做完整工程。
+
+|案例|实际动作|结果与范围|
+|---|---|---|
+|历史已选单源图|6次冻结图真实部署|DIAGNOSTIC_COMPLETE，零失败；卫星平均输出mu_star约0.01692879、背景为0，与图中无背景有效路径一致|
+|历史最佳多源图|1次基线部署＋6次真实扰动部署|DIAGNOSTIC_COMPLETE，零失败；卫星mu_star约0.01269659、背景约0.00290514，证明检查能检测实际双源数值影响，不仅查节点名称|
+|公共当前输入入口|预设小预算objective12、总调用200、提议4、搜索墙钟15秒，实际只评价2个候选、0次提议；之后6次诊断部署|处理PASS，诊断DIAGNOSTIC_COMPLETE；未用它声称验证了变异或搜索优势|
+
+单源诊断约11.60秒，多源诊断约8.43秒，公共入口附加诊断约11.72秒，均记录真实cost事件；额外部署由1—3源数量决定，成本不隐藏。这些结果说明来源影响检查可用，**没有证明多源更准确或改进旧排名**，原90候选比较及原生工程产物不变。
+
+### 测试、依赖、部署与复现
+
+34个不同定向用例通过：tests_02为33通过（新增6＋原空间回归27），最终新增下载记录消费者测试后tests_signedoff为7通过（含重复复测，不合计40独立用例）。覆盖真实SALib消费、无参考读取、源指纹及原字节不变、非负域、执行失败不报通过、无图/分类/无变化时未知、预算停止、公共入口附加而不改产品、交接记录不升级精度结论，以及原空间契约/真实DAG/信息隔离回归。测试合成边界不作环境精度证据。真实数值证据在`real_cmaq_v2`、`real_multisource`、`real_public_bound`，第一轮失败在`real_cmaq`，没有删除。
+
+安装仅增加SALib 1.5.2、multiprocess 0.70.19、dill 0.4.1，未升级原科学依赖。已写入pyproject的既有verification extra及requirements-verification.txt，缺依赖时返回明确NOT_EVALUATED，不影响原处理。pip check仍有环境既存python-dateutil与aiobotocore/botocore、Pillow与Streamlit版本约束冲突；均为本轮未改动的原版本，记录pip_check.txt，不冒称环境依赖全绿。
+
+本轮目录`output/robustness_integration_20261104`含前快照、最终执行源码、指纹、依赖安装/检查、配置、测试与全部失败记录。复现诊断测试：`.venv\Scripts\python.exe -m pytest tests/test_stability_diagnostic.py -q -o addopts=''`。实际多源重算脚本multi_check.py使用独立新输出目录运行，已存在的验收目录保持不可覆盖。最终元数据添加response_unit/排除原因及下载消费者后，针对性复测通过；真实多源验收使用最终源码。
+
+本机协作checkout仅同步本轮文件并前版本核对，未推远程。实际桌面8502按原启动器重启，健康200，runtime记录保留。本轮没有新增浏览器交互验收，界面布局及控件未变。此版本支持数值源偏移诊断，不是任意模型/所有误差形式的自动科学认证。
+
+方法来源：[SALib源码及方法](https://github.com/SALib/SALib)、[官方使用说明](https://salib.readthedocs.io/en/main/)。复用库函数，没有复制其敏感性算法。

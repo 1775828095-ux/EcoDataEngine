@@ -12,6 +12,8 @@ if errorlevel 1 goto :failed
 if errorlevel 1 goto :failed
 ".venv\Scripts\python.exe" -m pip install -c requirements-handoff-constraints.txt -e ".[test,ml,galileo,verification,composition-search,environment-algorithms,raster-complements,advanced-complements,climate-statistics,terrain-components]"
 if errorlevel 1 goto :failed
+".venv\Scripts\python.exe" -m pip install --no-deps -e integrations/existing_air -e integrations/local_swat
+if errorlevel 1 goto :failed
 ".venv\Scripts\python.exe" verify_handoff.py
 if errorlevel 1 goto :failed
 echo [OK] Use start_handoff.bat to open EcoData.

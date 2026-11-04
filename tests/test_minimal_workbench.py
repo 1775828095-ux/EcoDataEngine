@@ -29,7 +29,9 @@ def upload(index=0, missing=False, unit="degC"):
     return stream
 
 
-def test_complete_upload_reuses_units_and_prepares_portable_handoff(tmp_path):
+def test_complete_upload_reuses_units_and_prepares_portable_handoff(tmp_path, monkeypatch):
+    # This case tests converter absence, independently of installed plugins.
+    monkeypatch.setattr(conversion_bridge, 'entry_points', lambda **kw: [])
     result = prepare_uploads([upload()], "swat_plus", tmp_path)
     assert result["manifest"]["status"] == "AWAITING_CONVERTER"
     assert not result["manifest"]["native_ready"]

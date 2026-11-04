@@ -533,6 +533,13 @@ def submit_file_request(config,folder):
 
 
 def process_current_input(inputs,request,folder,*,budget=None,seed=11,progress=None):
+    result=_process_current_input(inputs,request,folder,budget=budget,seed=seed,progress=progress)
+    from .stability import attach
+    if progress:progress('方案已冻结；执行有界无真值稳定性检查（不参与选型）')
+    return attach(inputs,request,result,folder,execute_frozen_graph)
+
+
+def _process_current_input(inputs,request,folder,*,budget=None,seed=11,progress=None):
     """Normal reconstruction entry: new input, new decision, no old graph."""
     if {'fixed_graph','composition'}&set(request):raise ValueError('Declare the target, not a prescribed graph, for current-input search')
     if request.get('semantic_type')!='continuous':raise ValueError('Current-input reconstruction requires a continuous variable and a defined numerical error metric')

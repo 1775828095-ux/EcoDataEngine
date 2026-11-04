@@ -165,7 +165,8 @@ def contract(manifest):
         station_binding_sha256=r['station_binding_sha256'],
         coordinates=dict(time=dict(datetime=True,interval_seconds=3600,dimension=True),
             station_id=dict(size=len(r['station_ids']),dimension=True)),
-        dependencies=[dict(name=k,path=str(ENGINE_ROOT/p),sha256=h) for k,(p,h) in ENGINES.items()],
+        dependencies=([dict(name=k,path=str(ENGINE_ROOT/p),sha256=h) for k,(p,h) in ENGINES.items()]
+                      if r.get('run_models') is True else []),
         metadata=dict(time_basis='UTC'),required_references=['station_id'])
 
 def prepare(uploads,folder,progress=None):
@@ -248,7 +249,7 @@ def prepare(uploads,folder,progress=None):
         'software_or_reference_not_executed' if n.lower().endswith(('.exe','.for','.bat','.zip')) else 'unreferenced_reference_or_prior_output_not_used') for n in names],
         policy='Only declared input dependencies enter a fresh native work directory; no archived model output is reused'))
     save(folder/'native_plan.json',receipt);receipt['handoff_dependencies'].append(dict(path='native_plan.json',sha256=digest(folder/'native_plan.json')))
-    if progress:progress(f'本次{len(clocks)}小时×{len(stations)}站数据已规范化，保留原缺测；调用已有写出器，随后实际运行CALMET和CALPUFF')
+    if progress:progress(f'本次{len(clocks)}小时×{len(stations)}站数据已规范化；导出原生输入，不启动CALMET/CALPUFF')
     from ecodata.models.conversion_bridge import finish_preparation
     return finish_preparation(folder,'calpuff',[product]*len(FIELDS),receipt)
 
@@ -276,8 +277,12 @@ def convert(manifest_path,output_dir):
     frame.to_csv(out/'current_surface.csv',index=False)
     cfg=dict(version='CALMET-5.8.5-SURF-2.0',timezone_west_hours=r['timezone_west_hours'],time_label='hour_end',
         station_ids=r['station_ids'],missing_policy='preserve',columns={f:f for f in FIELDS},units=dict(zip(FIELDS,UNITS)))
-    bindings=json.loads(Path(__file__).with_name('bindings.json').read_text(encoding='utf8'))
-    job=dict(action='surface',frame=str(out/'current_surface.csv'),config=cfg,output=str(out/'SURF.DAT'))
+    # Input conversion uses the installed public writer, not a developer's
+    # Python path or a model executable. Solver invocation is a separate stage.
+    from ecodata.models.adapters.calmet_surface import export_surface
+    payloads,surface_report=export_surface(frame,cfg)
+    (out/'SURF.DAT').write_bytes(payloads['SURF.DAT'])
+    save(out/'surface_export.json',surface_report)
     worker=Path(__file__).with_name('calpuff_native_worker.py')
     def run_worker(job,label):
         p=out/(label+'_request.json');save(p,job)
@@ -286,7 +291,6 @@ def convert(manifest_path,output_dir):
                 env=dict(os.environ,PYTHONPATH=bindings['legacy_source'],PYTHONIOENCODING='utf8',PYTHONNOUSERSITE='1'),
                 timeout=300,creationflags=subprocess.CREATE_NO_WINDOW if sys.platform=='win32' else 0)
         if proc.returncode:raise ValueError(label+'失败：'+(out/(label+'.log')).read_text(encoding='utf8',errors='replace')[-2400:])
-    run_worker(job,'surface_export')
     actual,times,ids,zone=read_surface((out/'SURF.DAT').read_bytes())
     for i,f in enumerate(FIELDS):
         expected=ds[f].transpose('time','station_id').values
@@ -296,8 +300,27 @@ def convert(manifest_path,output_dir):
         source_archive_sha256=r['source_archive_sha256'],surface_readback_equal=True,source_missing_masks_preserved=True,
         scientific_settings_modified=False,uploaded_executables_used=False,old_model_outputs_reused=False)
     save(out/'lineage.json',lineage)
+    if r.get('run_models') is not True:
+        import shutil
+        for kind,c in r['native_plan'].items():
+            work=out/kind;work.mkdir(exist_ok=False)
+            shutil.copyfile(base/c['control_path'],work/'control.inp')
+            for dep in c['inputs']:
+                source=out/'SURF.DAT' if kind=='CALMET' and dep['key']=='SRFDAT' else base/dep['path']
+                ref=safe_name(dep['reference'])
+                ref=ref.lower() if scalar(c['values'],'LCFILES','T').upper()=='T' else ref.upper()
+                dest=work/ref;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source,dest)
+        validation=dict(status='PASS',native_model_executed=False,full_model_ready=False,
+            surface_readback_equal=True,source_missing_masks_preserved=True,accuracy_assessed=False,
+            lineage=lineage,downstream_meteorology='NOT_REGENERATED; requires explicit CALMET execution',
+            scope='Native surface input conversion and uploaded control/dependency copy, not model execution')
+        save(out/'validation.json',validation)
+        save(out/'native_run.json',dict(status='NOT_REQUESTED',stages=[],completed=False))
+        return dict(status='PASS',native_ready=False,validation=validation,
+            files=[p.relative_to(out).as_posix() for p in out.rglob('*') if p.is_file()])
     # Fresh per-stage directories; only actual uploaded INPUT bytes are copied.
     import shutil
+    bindings=json.loads(Path(__file__).with_name('bindings.json').read_text(encoding='utf8'))
     stages=[]
     for kind in ('CALMET','CALPUFF'):
         c=r['native_plan'][kind];work=out/kind;work.mkdir(exist_ok=False)

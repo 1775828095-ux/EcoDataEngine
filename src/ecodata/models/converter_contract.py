@@ -38,6 +38,8 @@ def preparation_table(model_id, fallback):
     contract = converter_requirements(model_id)
     if not contract:
         return fallback
+    if contract.get('component_dispatch'):
+        return fallback
     return dict(id=model_id, roles=[dict(role=contract['role'], record_only=False,
                 fields=contract['fields'])], converter_contract=contract)
 

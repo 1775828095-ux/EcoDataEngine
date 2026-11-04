@@ -119,6 +119,9 @@ def _values(value, indexes=()):
 
 def bind_project(uploads, model_id):
     """Return None for ordinary data; fail closed for recognised broken projects."""
+    if model_id=='cmaq':
+        from .cmaq_binding import bind_cmaq
+        with ExitStack() as stack:return bind_cmaq(ProjectFiles(uploads,stack))
     if model_id not in {'camx', 'wrf'}:
         return None  # Other native formats retain their existing drivers.
     import f90nml
@@ -206,15 +209,38 @@ def bound_resource(uploads, binding, parameter, indexes=()):
 def prepare_project_binding(uploads, model_id, folder, progress=None):
     if progress:
         progress('解析上传工程引用，流式校验实际依赖文件')
-    binding = bind_project(uploads, model_id)
+    try:
+        binding = bind_project(uploads, model_id)
+    except ValueError as exc:
+        if model_id != 'cmaq':raise
+        # Unresolved declarations still receive the existing read-only report;
+        # never turn a partial binding into a native product.
+        from .project_inventory import prepare_project_inventory
+        result=prepare_project_inventory(uploads,model_id,folder)
+        if result is None:raise
+        result['manifest']['binding_failure']=str(exc)
+        failure=json.dumps(dict(status='UNRESOLVED',reason=str(exc)),ensure_ascii=False,indent=2)
+        (Path(folder)/'binding_failure.json').write_text(failure,encoding='utf8')
+        with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('binding_failure.json',failure)
+        return result
     if binding is None:
         return None
     folder = Path(folder)
     path = folder / 'project_binding.json'
     path.write_text(json.dumps(binding, ensure_ascii=False, indent=2, default=str), encoding='utf8')
+    if model_id=='cmaq':
+        from .native_reference import prepare_bound_reference
+        result=prepare_bound_reference(uploads,binding,folder,progress=progress)
+        if result is not None:return result
     if model_id == 'camx':
         from ecodata.models.native_meteorology import prepare_meteorology
         result = prepare_meteorology(uploads, binding, folder, progress=progress)
+        if result is not None:
+            return result
+    if model_id == 'wrf':
+        from ecodata.models.wrf_meteorology import prepare_wrf_meteorology
+        result = prepare_wrf_meteorology(uploads, binding, folder, progress=progress)
         if result is not None:
             return result
     manifest = dict(protocol='ecodata.converter.v1', model_id=model_id,
@@ -224,11 +250,14 @@ def prepare_project_binding(uploads, model_id, folder, progress=None):
                                      binding='project_binding.json'),
                     remaining=['原生格式与科学契约验证', '待处理变量及融合路线绑定（如需要）'],
                     note='工程引用已自动绑定；下载为绑定记录，不含原始大文件，不是可直接运行的模型包')
+    plan = folder/'wrf_meteorology/plan.json'
+    if model_id == 'wrf' and plan.is_file():
+        manifest['preparation']['processing_plan'] = json.loads(plan.read_text(encoding='utf8'))
     handoff = folder / 'handoff.json'
     handoff.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf8')
     archive = folder / 'EcoData-project-binding.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
-        for item in (path, handoff, folder / 'archive_preflight.json', folder / 'scientific_inventory.json'):
+        for item in (path, handoff, folder / 'archive_preflight.json', folder / 'scientific_inventory.json', plan):
             if item.is_file():
                 z.write(item, item.name)
     return dict(manifest=manifest, archive=str(archive))

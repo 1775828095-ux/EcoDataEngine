@@ -89,32 +89,37 @@ def wrf(manifest_path,output_dir):
         from .wrf_sst_convert import convert
         return convert(manifest_path,output_dir)
     return _convert('wrf',manifest_path,output_dir)
-def camx(manifest_path,output_dir):return _convert('camx',manifest_path,output_dir)
+def camx(manifest_path,output_dir):
+    from ecodata.models.component_service import unsupported_conversion
+    return unsupported_conversion(manifest_path,output_dir)
 def cmaq(manifest_path,output_dir):
     manifest=json.loads(Path(manifest_path).read_text(encoding='utf8'))
     if manifest.get('preparation',{}).get('route')=='cmaq_reviewed_lai_v1':
         from .cmaq_reviewed import convert
         return convert(manifest_path,output_dir)
-    return _convert('cmaq',manifest_path,output_dir)
+    from ecodata.models.component_service import unsupported_conversion
+    return unsupported_conversion(manifest_path,output_dir)
 def calpuff(manifest_path,output_dir):
     manifest=json.loads(Path(manifest_path).read_text(encoding='utf8'))
     if manifest.get('preparation',{}).get('route')=='calpuff_native_58_v1':
         from .calpuff_native_bundle import convert
         return convert(manifest_path,output_dir)
-    return _convert('calpuff',manifest_path,output_dir)
+    from ecodata.models.component_service import unsupported_conversion
+    return unsupported_conversion(manifest_path,output_dir)
 
 
 from .contracts import requirements as _requirements
+from ecodata.models.component_service import generic_requirements as _generic_requirements
 wrf.requirements = lambda: _requirements('wrf')
 from .wrf_bundle_pipeline import prepare as _prepare_wrf_bundle, contract as _wrf_bundle_contract
 wrf.prepare_uploads = _prepare_wrf_bundle
 wrf.requirements_for_manifest = _wrf_bundle_contract
-camx.requirements = lambda: _requirements('camx')
-cmaq.requirements = lambda: _requirements('cmaq')
+camx.requirements = lambda: _generic_requirements('camx')
+cmaq.requirements = lambda: _generic_requirements('cmaq')
 from .cmaq_reviewed import prepare as _prepare_cmaq_reviewed, contract as _cmaq_reviewed_contract
 cmaq.prepare_uploads = _prepare_cmaq_reviewed
 cmaq.requirements_for_manifest = _cmaq_reviewed_contract
-calpuff.requirements = lambda: _requirements('calpuff')
+calpuff.requirements = lambda: _generic_requirements('calpuff')
 from .calpuff_native_bundle import prepare as _prepare_calpuff_native, contract as _calpuff_native_contract
 calpuff.prepare_uploads = _prepare_calpuff_native
 calpuff.requirements_for_manifest = _calpuff_native_contract

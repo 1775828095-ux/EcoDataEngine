@@ -25,7 +25,11 @@ def stage_strip(state="empty", fusion_status=None):
               "AWAITING_CONVERTER": ("已完成", "已完成", "待接入"),
               "CONVERTED": ("已完成", "已完成", "已完成"),
               "CONVERSION_FAILED": ("已完成", "已完成", "转化失败"),
-              "ENGINEERING_BOUND": ("工程引用已绑定", "未执行", "待科学契约验证")}
+              "ENGINEERING_BOUND": ("工程引用已绑定", "未执行", "待科学契约验证"),
+              "ENGINEERING_INSPECTED": ("工程已盘点", "未执行", "存在待确认依赖"),
+              "PROJECT_UPDATED": ("工程目标已绑定", "产品已核验", "原生副本已更新"),
+              "TASK_PROCESSED": ("任务已识别", "数值处理已完成", "非原生模型更新"),
+              "COMPONENT_EXPORTED": ("任务已匹配", "按任务契约处理", "原生组件已生成")}
     labels = states.get(state, states["empty"])
     if fusion_status in {'NOT_APPLICABLE_SAME_PRODUCT','PRESERVE_SINGLE_SOURCE'}:
         labels = (labels[0], '已检查，无需重复融合', labels[2])
@@ -56,13 +60,13 @@ def render_workbench(root, version):
                 type=["nc", "nc4", "tif", "tiff", "csv", "tsv", "xlsx", "parquet", "h5", "zip"],
                 help="可直接拖入 ZIP 压缩包或多个数据文件。文件应保留变量、单位、时间及坐标信息。")
             st.markdown('<div class="file-help">NetCDF · GeoTIFF · CSV / Excel · 数据 ZIP</div>', unsafe_allow_html=True)
-            folder_path = st.text_input("或输入本地文件夹路径", placeholder=r"例如 D:\数据\流域气象",
-                help="读取运行平台这台电脑上的文件夹，自动包含子文件夹。可与上方上传文件一起提交。")
+            folder_path = st.text_input("或输入本地文件、压缩包或文件夹路径", placeholder=r"例如 D:\数据\数据.zip 或 D:\数据\流域气象",
+                help="读取运行平台这台电脑上的文件、ZIP 或文件夹；文件夹自动包含子文件夹。输入后按回车或移开焦点即可读取，可与上方上传文件一起提交。")
             input_error = None
             if folder_path.strip():
-                from ecodata.interface.engineering_upload import local_folder_uploads
+                from ecodata.interface.engineering_upload import local_path_uploads
                 try:
-                    local_uploads = local_folder_uploads(folder_path, include_all=True)
+                    local_uploads = local_path_uploads(folder_path, include_all=True)
                     uploads = [*(uploads or []), *local_uploads]
                     st.caption(f"已找到 {len(local_uploads)} 个数据文件或压缩包，将自动读取。")
                 except (ValueError, OSError) as exc:
@@ -74,7 +78,7 @@ def render_workbench(root, version):
                 identity = input_identity(uploads, model)
             except (OSError, ValueError):
                 identity = "unreadable"
-                input_error = "文件已移动或无法读取，请检查文件夹路径。"
+                input_error = "文件已移动或无法读取，请检查本地路径。"
                 st.error(input_error)
             if input_error:
                 identity += folder_path
@@ -110,7 +114,21 @@ def render_workbench(root, version):
                     return
             if result:
                 manifest = result["data"]["manifest"]
-                if manifest["status"] == "ENGINEERING_BOUND":
+                if manifest["status"] == "PROJECT_UPDATED":
+                    st.success("已绑定本次工程目标并写回副本，原始文件保留。")
+                    st.caption("已完成本次资源写回；完整工程依赖和原生运行尚未全部验收，详见核验记录。")
+                    label = "下载更新工程与核验记录"
+                elif manifest["status"] == "COMPONENT_EXPORTED":
+                    st.success("已生成本次任务的模型组件文件，未套用固定案例。")
+                    st.caption("组件文件不等于完整工程；模型原生运行未执行。")
+                    label = "下载模型组件与质量记录"
+                elif manifest["status"] == "ENGINEERING_INSPECTED":
+                    st.warning("工程已解析，但仍有缺失或无法确认的依赖。请下载记录查看具体位置；尚未执行融合或原生模型。")
+                    label = "下载工程解析与缺项记录"
+                elif manifest["status"] == "TASK_PROCESSED":
+                    st.success("已按数据问题完成处理。下载为恢复结果及评价记录；原观测质量标记保留，尚未更新模型原生状态。")
+                    label = "下载任务处理结果"
+                elif manifest["status"] == "ENGINEERING_BOUND":
                     st.info("已自动解析上传工程并绑定其输入文件，未使用其他工程配置。融合及模型原生格式验收尚未完成。")
                     st.caption("下载包含工程参数、文件绑定及校验记录；不含原始大文件，不是可运行模型包。")
                     label = "下载工程绑定记录"
@@ -137,5 +155,8 @@ def render_workbench(root, version):
                                    mime="application/zip", use_container_width=True)
             elif not start:
                 body.markdown('''<div class="empty-output"><svg width="112" height="88" viewBox="0 0 112 88" aria-hidden="true"><path d="M10 42L56 18l46 24-46 24zM10 54l46 24 46-24M10 30L56 6l46 24" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M56 18v48" stroke="currentColor" stroke-dasharray="3 4"/></svg><strong>从一份数据开始</strong><p>处理状态与输出结果将在这里呈现。</p></div>''', unsafe_allow_html=True)
-            st.markdown('<div class="handoff-note"><strong>格式转化接入口已预留</strong><span>融合后的数据将直接交给模型转化模块。</span></div>', unsafe_allow_html=True)
+            if result and result['data']['manifest'].get('preparation',{}).get('route')=='unified_engineering_input_ports_v1':
+                st.markdown('<div class="handoff-note"><strong>公共工程输入端口已处理</strong><span>本次原生写回及质量记录已打包；未运行模型，不代表精度提高。</span></div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="handoff-note"><strong>格式转化接入口已预留</strong><span>融合后的数据将直接交给模型转化模块。</span></div>', unsafe_allow_html=True)
     st.markdown(f'<footer>EcoData Engine <span>自动识别 → 自动融合 → 自动转化</span><small>{html.escape(str(version))}</small></footer>', unsafe_allow_html=True)
