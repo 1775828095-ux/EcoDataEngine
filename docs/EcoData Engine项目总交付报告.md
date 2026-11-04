@@ -1,7 +1,9 @@
 # EcoData Engine 项目总交付报告
 
-更新时间：2026-10-20  
+更新时间：2026-11-04
 本报告是后续开发的唯一总交付文档。代码、官方模型权重、测试数据和机器可读质量报告仍保留在各自目录。
+
+最新工程集成与稳定性诊断记录见文末的2026-11-04各节；本次GitHub同步及本机复验见末节。下文第35章等内容保留为历史实验，不代表当前全部能力的完成状态。
 
 最新交付见第35章：已取得LGHAP 2019年6个官方日文件，完成1.5/2/3倍人工退化重构。现有Registry/Pipeline实际执行4种估计器×2种约束方案，验证集穷举后自动选择“双三次＋回聚合一致性”，在冻结测试产品上优于固定双线性及最佳单算法；未证明优于人工固定同一最优流程。数据为融合产品参考，不是独立实测真值。第34章五站PM2.5诊断及所有历史结果保留。
 
@@ -7949,3 +7951,37 @@ CMAQ：76个原上传资源中，校验匹配的18,837,775字节源码快照独�
 本机协作checkout仅同步本轮文件并前版本核对，未推远程。实际桌面8502按原启动器重启，健康200，runtime记录保留。本轮没有新增浏览器交互验收，界面布局及控件未变。此版本支持数值源偏移诊断，不是任意模型/所有误差形式的自动科学认证。
 
 方法来源：[SALib源码及方法](https://github.com/SALib/SALib)、[官方使用说明](https://salib.readthedocs.io/en/main/)。复用库函数，没有复制其敏感性算法。
+
+
+## 2026-11-04 同仓库最新版同步与定向复验
+
+本次仅同步和必要验证，没有新增算法、修改融合/选型逻辑，也没有重新运行大型实验。用户已确认来源和共同仓库均为 https://github.com/1775828095-ux/EcoDataEngine ，使用独立同步分支和PR，不新建仓库、不覆盖主分支。
+
+- 远程main实查为 `e28070d23919702afc5759052216f7a5006eb962`（Integrate shared engineering binding, native writeback and stability diagnostics）。原本地分支为 `codex/latest-platform-20261103`，提交 `ea2b0f51ecd38ded4c29c94fc6b8c959c7ed35f8`。祖先检查通过，main已直接包含本地全部提交，新增一个上游提交，无分叉、无实质合并冲突。
+- 同步分支为 `codex/sync-main-20261104`，保留origin原地址和原分支。开始时无已跟踪文件的未提交修改；已有未跟踪测试目录原样保留并补充忽略规则，未纳入提交。
+- 源码、配置、依赖、测试、启动脚本与本唯一总报告均随完整Git历史取得。此次额外改动只涉及测试临时目录忽略、协作目录说明、总报告索引和本节记录，不修改业务模块。
+
+### 功能核对及支持边界
+
+|核对项|实际代码依据|本轮验证及边界|
+|---|---|---|
+|公共工程解析、引用绑定|`src/ecodata/models/project_inventory.py`、`project_binding.py`、`control_flow.py`、`cmaq_binding.py`|依赖解析、动态C-shell绑定及异常拒绝定向测试；不是任意控制脚本执行器|
+|五模型输入准备及原生写回|`src/ecodata/models/component_service.py`、`engineering/ports.py`、`engineering/preparation.py`、`engineering/native.py`及`integrations/`|覆盖WRF、CALPUFF、SWAT+、CAMx、CMAQ已支持格式、科学端口与写回契约；未知格式、缺变量或不匹配工程仍可拒绝|
+|公共多源处理、质量与评价记录|`src/ecodata/algorithms/automatic_preparation.py`、`platform_search.py`、`src/ecodata/models/fusion_assessment.py`、`task_dispatch.py`|同一公共服务的测试包含实际数值消费、身份隔离、元数据拒绝及下载记录；不等于新增真实精度实验|
+|SALib有界输入扰动|`src/ecodata/algorithms/stability.py`；`pyproject.toml`的verification extra、`requirements-verification.txt`|7项诊断测试通过；仅固定工程压力方向的响应检查，不证明融合精度提高或任意误差下稳定|
+
+### 本机依赖与定向检查
+
+读取适用AGENTS及接入说明后，使用已有Python 3.12验证环境，显式将本同步副本的src和两转换包放在PYTHONPATH最前，防止误测D盘旧源码。本机该环境缺SALib及f90nml；只在本项目被忽略的 `outputs/sync-verification-deps/` 安装SALib 1.5.2、multiprocess 0.70.19、dill 0.4.1、f90nml 1.5.0，未升级已有科学依赖，未改动D盘环境。实际版本：pytest 9.1.1、NumPy 2.5.3、SciPy 1.18.1、xarray 2026.7.0、netCDF4 1.7.4、Streamlit 1.64.0。该环境的pip check返回No broken requirements found；这不代表可选能力全部安装。
+
+12份受影响测试共171项：在英文临时目录完成的组合运行164通过、7个页面测试失败；失败日志指向中文工程路径下NetCDF/HDF5创建输出失败。随后以 `git archive HEAD` 将同一e28070d源码原样导出到独立英文临时目录，仅重测这7个页面用例，全部通过。因此171个不同用例均取得通过记录，但**中文项目目录下7项页面路径兼容问题仍未修复**，不能称当前中文路径部署已完全验收。未为此修改NetCDF写入逻辑或测试断言。第一轮沙盒/中文路径受阻和缺f90nml失败均保留，不计为通过。发现缺依赖后复验，未运行全量回归。
+
+定向测试文件：`test_project_inventory.py`、`test_public_model_components.py`、`test_engineering_writeback.py`、`test_unified_engineering_ports.py`、`test_three_engineering_fixes.py`、`test_cmaq_dynamic_binding.py`、`test_data_task_dispatch.py`、`test_input_roles_observation_identity.py`、`test_workbench_local_path.py`、`test_workbench_folder_input.py`、`test_minimal_workbench.py`、`test_stability_diagnostic.py`（均位于tests）。本机日志在被忽略的 `outputs/sync-engineering-final.txt`、`outputs/sync-targeted-verified.txt`、`outputs/sync-stability-tests.txt`、`outputs/sync-stability-final.txt`、`outputs/sync-pages-ascii.txt`。原样英文源码副本为本机临时核验资源，不作为额外平台交付或替代Git源码。
+
+### 启动、资源及未验收事项
+
+`启动平台.bat` / `start_handoff.bat` 调用同目录 `launch_platform.ps1`；该脚本以PSScriptRoot定位本项目的 `.venv/Scripts/python.exe` 和 `src/ecodata/interface/app.py`，不照搬D盘部署目录。本同步副本未创建正式.venv、未重启现有网站；若部署请在英文项目路径按setup脚本安装，并核对转换包安装及依赖，再使用该项目自己的启动器。测试时复用旧环境不等于完成本副本环境安装。
+
+旧案例转换绑定 `integrations/existing_air/existing_air_converters/bindings.json` 和 `integrations/local_swat/local_swat_converter/binding.json` 仍含原开发机路径及指纹，属于有界旧案例配置，不能冒充另一台机器可用的通用资源。此次未擅自替换这些科学资源或捏造新路径。公共上传工程路线与这些旧固定案例配置的限制应分别核查。
+
+仓库保留原有SWAT二进制及其运行库，不新增上传本机环境、密钥、原始大数据、输出或缓存；GitHub源码并不包含所有历史原始工程、观测、实验结果及WRF/CMAQ/CAMx/CALPUFF原生程序。此次没有启动上述原生模型做新积分，没有重新核验历史真实案例的全部物理结果，也未做融合精度验收。历史报告中的本机output路径不意味着对应文件已经随Git传给队友。
