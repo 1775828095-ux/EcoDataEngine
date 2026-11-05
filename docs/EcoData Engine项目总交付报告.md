@@ -8268,6 +8268,12 @@ weather_ports新增按真实外部来源物理量判断错误相关性：非本�
 
 仓库保留原有SWAT二进制及其运行库，不新增上传本机环境、密钥、原始大数据、输出或缓存；GitHub源码并不包含所有历史原始工程、观测、实验结果及WRF/CMAQ/CAMx/CALPUFF原生程序。此次没有启动上述原生模型做新积分，没有重新核验历史真实案例的全部物理结果，也未做融合精度验收。历史报告中的本机output路径不意味着对应文件已经随Git传给队友。
 
+## 2026-11-05 CAMx修复分支同步
+
+用户随后明确要求将当前修复同步GitHub，撤销前述“融合后才同步”的等待条件。本轮交付的是已验证的接收/解析修复及真实未完成项，不把融合失败改成成功。目标仓库仍为1775828095-ux/EcoDataEngine，独立分支codex/camx-template-intake-20261105；保留origin、main和已有历史，不强推。修复提交71b87cd，合并远程main fa6b3ba的提交0abe131，双方总报告及依赖均保留，WRFDA功能未被覆盖。
+
+合并后定向回归165项全部通过，40条依赖弃用警告，无新增大型科学积分。包含CAMx模板、嵌套接收、资源预算、Unicode I/O、公共页面、CMAQ绑定和WRFDA后端的小型测试；实际日志outputs/github-camx-merge.log、JUnit outputs/github-camx-merge.xml。`git -c core.whitespace=cr-at-eol diff --check origin/main...HEAD`通过。原始大数据、运行环境、缓存及本机完整结果不随提交上传；这些通过记录不证明任意工程或CAMx实际积分与融合已经通过。
+
 ## 2026-11-05 CAMx脚本静态计划与融合准入补验
 
 后续本轮新增camx_templates.py，复用现有有界C-shell求值与f90nml解析heredoc，支持标量:r/:e、有限foreach与受限echo/awk整数减法，不执行脚本。project_inventory接入生成逐日派生控制、输入指纹和重启依赖说明，仍为ENGINEERING_INSPECTED，不代表多日materialize与原生驱动已接通。使用原字节保留的expanded_inputs.zip经公共入口，MPICH3/noMPI两模板各47条外部输入绑定、0条缺失/未知、2条需前一天实际运行产出的重启依赖，首日冷启动/次日重启正确。原外层ZIP不在原路径，本轮不声称重新验原外层包。
