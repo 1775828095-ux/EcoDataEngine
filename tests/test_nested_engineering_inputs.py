@@ -91,7 +91,8 @@ def test_7z_streaming_is_used_and_preserves_member_bytes(tmp_path):
     with zipfile.ZipFile(result[0].path) as z:assert z.read('project/file.cio')==b'weather'
 
 
-def test_wrfda_recognition_does_not_claim_assimilation(tmp_path):
+def test_wrfda_recognition_does_not_claim_assimilation(tmp_path,monkeypatch):
+    monkeypatch.setenv('ECODATA_WRFDA_CONFIG',str(tmp_path/'uninstalled.json'))
     from ecodata.models.wrfda_inputs import prepare_wrfda_inputs
     u=upload(tmp_path,zipped({'namelist.input.3dvar':b'&wrfvar1 var4d=.false. /\n&wrfvar18 analysis_date="2008-02-05_12:00:00" /',
         'be/be.dat':b'error','rc/wrfinput_d01':b'background','ob/obs_gts':b'obs'}))

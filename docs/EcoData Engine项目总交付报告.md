@@ -8255,3 +8255,45 @@ weather_ports新增按真实外部来源物理量判断错误相关性：非本�
 旧案例转换绑定 `integrations/existing_air/existing_air_converters/bindings.json` 和 `integrations/local_swat/local_swat_converter/binding.json` 仍含原开发机路径及指纹，属于有界旧案例配置，不能冒充另一台机器可用的通用资源。此次未擅自替换这些科学资源或捏造新路径。公共上传工程路线与这些旧固定案例配置的限制应分别核查。
 
 仓库保留原有SWAT二进制及其运行库，不新增上传本机环境、密钥、原始大数据、输出或缓存；GitHub源码并不包含所有历史原始工程、观测、实验结果及WRF/CMAQ/CAMx/CALPUFF原生程序。此次没有启动上述原生模型做新积分，没有重新核验历史真实案例的全部物理结果，也未做融合精度验收。历史报告中的本机output路径不意味着对应文件已经随Git传给队友。
+
+
+## 2026-11-05 WRFDA常规3DVAR真实后端接入与两套原始资料验收
+
+先将此前全部平台更新同步GitHub：main和codex/latest-platform-20261103均确认a4cd41f4b839946bdd31c40e6f34e55596cd18d6，保留远端056a795说明更新与本地实现记录；未发布原数据、环境或密钥。随后按用户确认路线接入官方WRFDA实际求解。本节取代上一节“WRFDA仅能识别、后端未接入”的现状描述；旧失败证据保留。
+
+### 后端与平台公共入口
+
+复用官方WRF v4.7.1，commit f52c197ed39d12e087d02c50f412d90d418f6186，GNU Fortran13.3 serial编译实际da_wrfvar.exe。程序SHA256为1d06f56f3e52adc2a31f119f52df155f9a7879559103e64f5acaa810eb39a67b。源码checkout的已跟踪科学文件未手工修改，官方构建生成的Registry/Fortran/头文件另存source_build_status.txt，不把生成文件误称科学补丁。
+
+本机Windows不能直接运行官方Linux WRFDA，采用独立本地QEMU11.1/WHPX＋Ubuntu24.04最小镜像。未启用Windows可选功能、安装系统服务、申请管理员权限或重启宿主机。QEMU发布SHA512与Ubuntu发布SHA256实际验证；镜像、独立可写overlay、密钥、启动介质保存在源码仓库外D:\codex\.ecodata-wrfda。SSH仅loopback并固定主机密钥；数据不上传外部计算服务器。安装记录、依赖、源码版本、编译日志与连接配置均保留；不把VM与原始大数据提交Git。配置位于当前用户LOCALAPPDATA/EcoDataEngine/wrfda_backend.json。
+
+调用链为prepare_uploads → 受限嵌套接收 → 实际WRFDA配置识别 → 依据分析时刻、背景原生网格、OBSPROC窗口与be.dat唯一绑定 → 官方原生3DVAR → 原生完成/代价与数组检查 → 原生分析场及诊断打包。普通融合、随机变异、验证、评分、模型列表、页面布局与控件不变；只修正已有组件结果的一句状态说明，避免已执行同化仍显示“原生运行未执行”。
+
+原始LITTLE_R不能冒充已处理OBSPROC，4DVAR配置不自动改为3DVAR，未确认的辐射配置不擅自关掉。原背景、观测、误差字节不变。工作配置仅记录必要的原生I/O适配：核实旧背景TITLE后使用官方force_use_old_data开关；num_land_cat未声明时从背景NUM_LAND_CAT读取，已有显式声明冲突则拒绝，不重标土地类别。所有修改及依据进入bindings.json，不是调整同化误差权重、CV选择或迭代参数追求效果。
+
+### 两套实际数据结果
+
+|案例|实际原输入与范围|真实结果|
+|---|---|---|
+|原美国CONUS60|用户原01_WRFDA_真实多源同化资料.zip；2008-02-05 12UTC；89×59×40背景；9061个原OBSPROC报告|实际生成wrfvar_output，状态COMPONENT_EXPORTED；原生完成标记、时刻网格、有限值/正压力/位温及水汽检查通过；29次内迭代，J从29710.458降到21663.249，Jo从29710.458降到18973.580|
+|官方北极案例|官方2015教程原包，2013-12-23 00UTC，180×180×40背景，46454个原OBSPROC报告；原包209546803字节，SHA256 3d44c4b33105c2756595e3af2da1c46665b30c1a167be24292664e4a4516782f|常规3DVAR实际生成分析场并同样通过验收；29次内迭代，J从65977.132降到51177.266，Jo从65977.132降到46339.705|
+
+北极作者原配置为辐射教程配置。本次用户已明确允许仅复验常规3DVAR：原TAR及其原配置保持不变，在platform_inputs附单独的已确认任务范围声明，工作副本明确关闭amsua/amsub辐射开关、传感器初始化与VarBC，原非辐射观测完整送入官方程序；保留配置差异。不能把这次称为原辐射方案通过。报告数也不是质控后实际接纳数，原生QC和O-B/O-A明细随包提供。
+
+两例实际app.py页面经Streamlit AppTest完整处理（没有处理函数模拟）均无异常并生成可下载真结果；不是仅调用识别函数，也不冒充浏览器视觉验收。另用SciPy netcdf_file独立回读两份原生分析场，温度/风场维度及有限值通过；所有下载ZIP CRC通过。原美国ZIP SHA与前次审计一致，北极原TAR SHA与下载收据一致。温度、风、水汽及压力等存在实际分析增量；J/Jo是参与同化资料上的原生目标，不是独立测试RMSE，accuracy_improvement仍为NOT_ESTABLISHED。
+
+### 失败保留与运维验收
+
+保留了原生程序退出码0却因旧数据版本、缺LANDUSE.TBL、类别默认值不符而失败的日志，验收不能只看退出码或文件存在。修复采用官方旧数据兼容开关、官方运行表及背景声明，不伪造数据。第二例还揭示OBSPROC平台字段包含FM-36 TEMP S多词类型；按原INFO_FMT固定宽度读取，未丢掉四条报告。TAR中的作者旧机器绝对链接复用现有>=2路径段唯一后缀绑定，仅在包内重定位，不访问宿主机绝对路径；相同规则适用于同类包。
+
+另做后台完全停止后的冷启动公共入口验收：首次发现cloud-init重复初始化导致SSH身份变化，安全校验拒绝连接，未放宽或自动接受未知主机密钥。固定本机受控VM的既定主机身份，仅对一次性隔离appliance在构建完成后停止cloud-init重复配置；再次关机后，平台自动隐藏启动后端并生成通过检查的真实同化结果。cold_start_signedoff.json明确记录initially_stopped和automatically_started。该修复限于新建隔离后端，不更改宿主机系统服务。
+
+相关回归覆盖已安装/未安装后端、辐射范围确认、原字节保护、I/O兼容、退出码0无输出拒绝、固定宽度多词类型、包内绝对链接重定位，以及既有随机变异/工程端口/界面路径；测试签收见pytest_signedoff.log。pip check无冲突。后端安装工具为tools/bootstrap_wrfda_linux.sh、setup_wrfda_vm.py、register_wrfda_backend.py及run_wrfda_job.py，运维步骤已追加现有docs/格式转化模块接入接口.md。
+
+### 边界与证据
+
+本轮完成的是已确认范围的常规观测3DVAR及两套真实输入自动处理，不能推广成任意模型/任意观测同化均支持。未验收4DVAR、卫星辐射同化、侧边界更新和后续WRF预报；没有独立观测验证精度提高。两套官方教程资料按其训练/测试用途使用。
+
+证据集中D:\codex\EcoDataEngine\output\wrfda_3dvar_integration_20261105：initial_github_sync.json、官方tag/commit、运行下载校验、编译与失败日志、page_acceptance.json、independent_readback.json、cold_start_signedoff.json、原生QC/代价/分析场及回归日志。两套可交接结果放D:\codex\交付\WRFDA_3DVAR_真实验收_20261105，包含两份分析结果ZIP、验收摘要与运行说明。模型程序真实运行、分析场有效、后续预报与独立精度是不同验收项。
+
+官方代码：https://github.com/wrf-model/WRF/tree/v4.7.1/var ；官方数据：https://www2.mmm.ucar.edu/wrf/users/wrfda/download/testdata.html ；北极资料：https://www2.mmm.ucar.edu/wrf/users/wrfda/Tutorials/2015_Aug/class/wrfda_testdata.html 。

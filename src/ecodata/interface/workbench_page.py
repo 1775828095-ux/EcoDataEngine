@@ -122,7 +122,7 @@ def render_workbench(root, version):
                     label = "下载更新工程与核验记录"
                 elif manifest["status"] == "COMPONENT_EXPORTED":
                     st.success("已生成本次任务的模型组件文件，未套用固定案例。")
-                    st.caption("组件文件不等于完整工程；模型原生运行未执行。")
+                    st.caption("已执行官方同化并生成原生分析场；尚未运行后续预报。" if manifest.get('assimilation_executed') else "组件文件不等于完整工程；模型原生运行未执行。")
                     label = "下载模型组件与质量记录"
                 elif manifest["status"] == "ENGINEERING_INSPECTED":
                     st.warning("工程已解析，但尚未生成完整融合交付，未写回或运行模型。缺项及已执行的候选记录见下载包。")

@@ -11,7 +11,7 @@ import f90nml
 from .project_binding import ProjectFiles
 
 
-def prepare_wrfda_inputs(uploads,folder):
+def prepare_wrfda_inputs(uploads,folder,progress=None):
     with ExitStack() as stack:
         files=ProjectFiles(uploads,stack,posix_members=True);controls=[]
         for name in files.files:
@@ -23,6 +23,30 @@ def prepare_wrfda_inputs(uploads,folder):
                 controls.append(dict(resource=name,analysis_date=nml['wrfvar18'].get('analysis_date'),
                     var4d=nml['wrfvar1'].get('var4d',False),sha256=files.identity(name)['sha256']))
         if not controls:return None
+        from .wrfda_backend import configuration,execute
+        cfg=configuration()
+        if cfg:
+            from .wrfda_3dvar import plan,validate
+            folder=Path(folder)
+            request,binding=plan(files,controls,folder/'wrfda_request')
+            native=folder/'wrfda_analysis'
+            execution=execute(request,native,cfg,progress=progress)
+            validation=validate(request,native,execution)
+            manifest=dict(protocol='ecodata.converter.v1',model_id='wrf',status='COMPONENT_EXPORTED',native_ready=False,
+                native_writeback_verified=True,native_model_executed=False,assimilation_executed=True,
+                wrf_forecast_executed=False,products=[dict(path='wrfda_analysis/wrfvar_output',
+                    sha256=__import__('hashlib').sha256((native/'wrfvar_output').read_bytes()).hexdigest(),
+                    kind='official WRFDA native analysis')],
+                preparation=dict(route='wrfda_3dvar_v1',bindings=binding,execution=execution,validation=validation),
+                note='已执行官方WRFDA 3DVAR并核验真实分析场；没有更新侧边界或运行后续WRF预报，未证明独立精度提高')
+            (folder/'handoff.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf8')
+            archive=folder/'EcoData-WRFDA-analysis.zip'
+            with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
+                z.write(folder/'handoff.json','handoff.json')
+                for directory in [native,folder/'wrfda_request']:
+                    for p in directory.iterdir():
+                        if p.is_file() and p.name not in {'fg','be.dat','ob.ascii'}:z.write(p,p.relative_to(folder).as_posix())
+            return dict(manifest=manifest,archive=str(archive))
         resources=[]
         for name in sorted(files.files):
             base=PurePosixPath(name).name
