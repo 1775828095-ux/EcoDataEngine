@@ -45,7 +45,7 @@ def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
     archive_probe = inspect_upload_archives(uploads,converter,folder,native_required=False)
     if model_id=='wrf':
         from ecodata.models.wrfda_inputs import prepare_wrfda_inputs
-        wrfda=prepare_wrfda_inputs(uploads,folder)
+        wrfda=prepare_wrfda_inputs(uploads,folder,progress=progress)
         if wrfda is not None:return wrfda
     if task is None:
         from ecodata.models.engineering.preparation import prepare_engineering_inputs

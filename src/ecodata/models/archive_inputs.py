@@ -175,8 +175,13 @@ class _Reader:
                     if key not in members:raise ValueError('TAR内部链接目标不存在：'+key)
                     item=members[key]
                     if item.issym() or item.islnk():
-                        if item.linkname.startswith(('/','\\')):raise ValueError('TAR链接目标越界')
-                        ref=posixpath.normpath(posixpath.join(posixpath.dirname(key),item.linkname) if item.issym() else item.linkname)
+                        if item.linkname.startswith(('/','\\')):
+                            from types import SimpleNamespace
+                            from ecodata.models.project_binding import ProjectFiles
+                            # Reuse the existing >=2-component unique suffix relocation.
+                            # No archived absolute path is ever opened on the host.
+                            ref,_=ProjectFiles.resolve(SimpleNamespace(files=members),key,item.linkname)
+                        else:ref=posixpath.normpath(posixpath.join(posixpath.dirname(key),item.linkname) if item.issym() else item.linkname)
                         safe_name(ref)
                         return read_member(ref,chain|{key})
                     if not item.isfile():raise ValueError('TAR含不支持的特殊成员：'+key)
