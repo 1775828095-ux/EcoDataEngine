@@ -10,6 +10,7 @@ import hashlib,io
 import numpy as np
 import xarray as xr
 from .numerical_search import save
+from ecodata.io.netcdf import load_dataset
 
 
 def assess(inputs,request,result,folder,*,execute):
@@ -67,7 +68,7 @@ def assess(inputs,request,result,folder,*,execute):
             report['reason']='Requires 1-3 varying, unit-labelled target-variable sources; none silently truncated';return report
         problem=dict(num_vars=d,names=[str(s['index']) for s in factors],bounds=[s['factor_bounds'] for s in factors])
         X=sample(problem,N=2,num_levels=4,seed=11)
-        with xr.open_dataset(result['product']) as ds:base=ds[variable].load()
+        base=load_dataset(result['product'])[variable]
         report['response_unit']=base.attrs.get('units','UNKNOWN')
         mask=np.isfinite(base.values)
         if not mask.any():raise ValueError('No finite baseline output')
@@ -86,7 +87,7 @@ def assess(inputs,request,result,folder,*,execute):
                     changed[i]=SearchInput('source.nc',inputs[i].role,buffer.getvalue(),inputs[i].metadata)
                 report['new_executions']+=1
                 deployed=execute(changed,request,graph,folder/str(j))
-                with xr.open_dataset(deployed['product']) as ds:out=ds[variable].load()
+                out=load_dataset(deployed['product'])[variable]
                 xr.testing.assert_equal(base.coords,out.coords)
                 if out.dims!=base.dims or out.shape!=base.shape or out.attrs.get('units')!=base.attrs.get('units'):
                     raise ValueError('Perturbed output support/unit changed')

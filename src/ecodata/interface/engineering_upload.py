@@ -8,6 +8,9 @@ import zipfile
 # Shared with native bundle converters; retain the deployed 10 GiB policy.
 MAX_FILE_BYTES = 10 * 1024 * 1024 * 1024
 MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024
+# Generic tabular inference retains byte payloads. Large native engineering
+# routes use streaming ProjectFiles before reaching this bounded fallback.
+MAX_EAGER_SCAN_BYTES = 256 * 1024 * 1024
 
 
 SUPPORTED_SUFFIXES = {".csv", ".tsv", ".txt", ".rdb", ".gz", ".isd", ".xlsx",
@@ -97,11 +100,22 @@ def _group(name):
 
 
 def _members(upload, *, expand_archives=True):
-    name, content = _normalise(upload.name), upload.getvalue()
+    name = _normalise(upload.name)
+    local=getattr(upload,'path',None)
+    if PurePosixPath(name).suffix.casefold()=='.zip' and expand_archives:
+        source=Path(local) if local is not None else io.BytesIO(upload.getvalue())
+        with zipfile.ZipFile(source) as archive:
+            declared=sum(i.file_size for i in archive.infolist() if not i.is_dir())
+            if declared>MAX_EAGER_SCAN_BYTES:
+                raise ValueError('当前资料未匹配可用的流式工程适配器，不能回退整包内存扫描：'
+                    f'声明展开{declared}字节，通用扫描上限{MAX_EAGER_SCAN_BYTES}字节；请核对工程控制格式与依赖')
+    elif local is not None and Path(local).stat().st_size>MAX_EAGER_SCAN_BYTES:
+        raise ValueError('该大文件未匹配流式读取器；未整文件加载内存')
     if PurePosixPath(name).suffix.casefold() != ".zip" or not expand_archives:
+        content=upload.getvalue()
         return [(name, content, None)]
     members = []
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+    with zipfile.ZipFile(source) as archive:
         for info in archive.infolist():
             if info.is_dir():
                 continue
@@ -115,7 +129,7 @@ def _members(upload, *, expand_archives=True):
 
 def scan_model_uploads(uploads, *, classify_wasp=False, expand_archives=True, include_all=False):
     """Expand model folders/ZIPs, filter unsafe files and deduplicate content."""
-    result, seen = UploadScan(), {}
+    result, seen = UploadScan(), {};total_bytes=0
     for upload in uploads or []:
         try:
             members = _members(upload, expand_archives=expand_archives)
@@ -129,6 +143,9 @@ def scan_model_uploads(uploads, *, classify_wasp=False, expand_archives=True, in
             if not _safe_name(name):
                 result.ignored.append({"file": name, "reason": "不安全路径"})
                 continue
+            total_bytes+=len(content)
+            if total_bytes>MAX_EAGER_SCAN_BYTES:
+                raise ValueError('通用内存扫描累计超过256MiB；需匹配流式数据/工程适配器，未继续加载')
             group, reason = _group(name)
             if include_all:
                 reason=None  # Native content/reference checks decide its role.

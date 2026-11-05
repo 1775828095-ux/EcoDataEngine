@@ -10,6 +10,8 @@ import json
 import posixpath
 import tarfile
 import zipfile
+import os
+import psutil
 
 from ecodata.interface.engineering_upload import LocalUpload, MAX_TOTAL_BYTES
 from ecodata.models.project_binding import safe_name as _safe_name
@@ -27,6 +29,24 @@ def _kind(name):
     if name.endswith('.7z'):return '7z'
 
 
+def deployment_limit():
+    """Server policy only; uploads cannot raise their own extraction budget."""
+    value=os.environ.get('ECODATA_ARCHIVE_LIMIT_GIB')
+    if value is None:return MAX_TOTAL_BYTES
+    try:amount=int(value)
+    except ValueError:raise ValueError('ECODATA_ARCHIVE_LIMIT_GIB必须是1至64的整数') from None
+    if not 1<=amount<=64:raise ValueError('ECODATA_ARCHIVE_LIMIT_GIB必须是1至64的整数')
+    return amount*1024**3
+
+
+def ensure_disk_space(path, required):
+    # fsspec indexes compressed members; psutil checks the actual destination
+    # volume, not the source drive. Keep 1 GiB available to other processes.
+    free=psutil.disk_usage(str(path)).free
+    if required+1024**3>free:
+        raise ValueError(f'工程接收目标磁盘空间不足：本步至少需{required}字节，剩余{free}字节，另保留1GiB')
+
+
 def normalize_archives(uploads, folder):
     """Retain existing flat ZIP contracts; expand only nested/mixed containers."""
     with ExitStack() as stack:
@@ -41,16 +61,25 @@ def normalize_archives(uploads, folder):
         if not nested:return uploads,None
     folder=Path(folder);stage=folder/'archive_intake';stage.mkdir()
     reader=_Reader(stage)
-    for upload in uploads:
-        if getattr(upload,'path',None):path=Path(upload.path)
-        else:
-            path=stage/f'upload-{len(reader.origins)}';path.write_bytes(upload.getvalue())
-        reader.visit(path,upload.name,'',0)
+    try:
+        for upload in uploads:
+            if getattr(upload,'path',None):path=Path(upload.path)
+            else:
+                path=stage/f'upload-{len(reader.origins)}';path.write_bytes(upload.getvalue())
+            reader.visit(path,upload.name,'',0)
+        ensure_disk_space(stage,int(sum(p.stat().st_size for p,_ in reader.files.values())*1.01)+1024*1024)
+    except (ValueError,OSError) as exc:
+        (folder/'archive_intake_failure.json').write_text(json.dumps(dict(
+            schema='ecodata.archive-intake-failure.v1',error=str(exc),
+            decoded_bytes=reader.total,limit_bytes=reader.limit,source_modified=False,
+            archive_indexes=reader.indexes,model_executed=False),ensure_ascii=False,indent=2),encoding='utf8')
+        raise
     bundle=folder/'expanded_inputs.zip'
     with zipfile.ZipFile(bundle,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
         for name,(path,_) in sorted(reader.files.items()):z.write(path,name)
     audit=dict(schema='ecodata.nested-inputs.v1',source_modified=False,
-               decoded_bytes=reader.total,resources=reader.origins,
+               decoded_bytes=reader.total,limit_bytes=reader.limit,resources=reader.origins,
+               archive_indexes=reader.indexes,
                bundle_sha256=hashlib.file_digest(bundle.open('rb'),'sha256').hexdigest(),
                policy='preserve raw bytes; identical same-path resources collapse; conflicting resources fail; no uploaded code executed')
     (folder/'archive_intake.json').write_text(json.dumps(audit,ensure_ascii=False,indent=2),encoding='utf8')
@@ -60,6 +89,13 @@ def normalize_archives(uploads, folder):
 class _Reader:
     def __init__(self,stage):
         self.stage=stage;self.files={};self.origins=[];self.total=0;self.count=0
+        self.limit=deployment_limit();self.indexes=[]
+
+    def check_size(self,expected):
+        if expected<0 or self.total+expected>self.limit:
+            raise ValueError(f'压缩资料累计展开超过{self.limit/1024**3:g} GiB接收上限：'
+                             f'已展开{self.total}字节，本步声明{expected}字节；嵌套容器与内容均计入；未运行模型')
+        ensure_disk_space(self.stage,expected)
 
     def path(self):
         self.count+=1
@@ -67,12 +103,12 @@ class _Reader:
         return self.stage/str(self.count)
 
     def copy(self,stream,path,expected):
-        if expected<0 or self.total+expected>MAX_TOTAL_BYTES:raise ValueError('压缩资料展开超过10 GiB接收上限')
+        self.check_size(expected)
         size=0
         with path.open('wb') as out:
             while block:=stream.read(1024*1024):
                 size+=len(block);self.total+=len(block)
-                if size>expected or self.total>MAX_TOTAL_BYTES:raise ValueError('压缩资料实际展开大小超过声明或接收上限')
+                if size>expected or self.total>self.limit:raise ValueError('压缩资料实际展开大小超过声明或接收上限')
                 out.write(block)
         if size!=expected:raise ValueError('压缩成员长度与声明不符')
 
@@ -102,6 +138,19 @@ class _Reader:
                     with archive.open(item) as stream:self.copy(stream,dest,item.file_size)
                     self.visit(dest,item.filename,base,depth+1,origin+'!/'+item.filename,project=project)
         elif kind=='tar':
+            # Reuse fsspec's compressed TAR index before writing numerical
+            # payloads. This is a size estimate, not path/link/CRC validation;
+            # the stricter checks below still own those decisions.
+            from fsspec.implementations.tar import TarFileSystem
+            filesystem=TarFileSystem(fo=str(path),compression={'gz':'gzip','tgz':'gzip','bz2':'bz2','xz':'xz'}.get(name.rsplit('.',1)[-1]))
+            try:
+                regular=[v for v in filesystem.find('',detail=True).values() if v.get('type')=='file']
+                estimate=sum(v.get('size',0) for v in regular)
+                self.indexes.append(dict(origin=origin,reader='fsspec.TarFileSystem',
+                    declared_regular_bytes=estimate,files=len(regular),is_estimate=True))
+            finally:
+                filesystem.tar.close()
+                filesystem.fo.close()
             with tarfile.open(path,'r:*') as archive:
                 entries=archive.getmembers()
                 # The existing WRF converter owns opaque GRIB forcing bundles.
@@ -115,6 +164,7 @@ class _Reader:
                 if grib and regular:
                     for item in entries:safe_name(item.name)
                     self.add(path,target,origin);return
+                self.check_size(estimate)
                 members={}
                 for item in entries:
                     key=safe_name(item.name)
@@ -144,7 +194,7 @@ class _Reader:
                 def __init__(self,path,expected):self.stream=path.open('w+b');self.expected=expected;self.written=0
                 def write(self,data):
                     self.written+=len(data);owner.total+=len(data)
-                    if self.written>self.expected or owner.total>MAX_TOTAL_BYTES:raise ValueError('7z实际展开大小超过声明或接收上限')
+                    if self.written>self.expected or owner.total>owner.limit:raise ValueError('7z实际展开大小超过声明或接收上限')
                     return self.stream.write(data)
                 def read(self,size=None):return self.stream.read(size)
                 def seek(self,offset,whence=0):return self.stream.seek(offset,whence)
@@ -165,7 +215,7 @@ class _Reader:
                     if item.is_symlink or not item.is_file:raise ValueError('7z含链接或特殊成员')
                     if key in sizes:raise ValueError('7z成员重名')
                     sizes[key]=item.uncompressed
-                if self.total+sum(sizes.values())>MAX_TOTAL_BYTES:raise ValueError('7z展开超过10 GiB接收上限')
+                self.check_size(sum(sizes.values()))
                 try:archive.extractall(factory=Factory())
                 finally:
                     for writer in writers:writer.close()

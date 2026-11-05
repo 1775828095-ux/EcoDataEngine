@@ -14,6 +14,7 @@ import pandas as pd
 import xarray as xr
 
 from ecodata.models.project_binding import ProjectFiles, safe_name
+from ecodata.io.netcdf import load_dataset
 
 
 # (model, task) -> existing implementation and its documented data interface.
@@ -131,6 +132,16 @@ execute scripts or access a host pathname. Algorithms stay in the public service
             if model_id in {'wrf','camx','cmaq'}:
                 for name in sorted(files.files):
                     if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
+                    prefix=files.prefix(name,1024*1024)
+                    if prefix.startswith(b'CDF'):
+                        from ecodata.models.source_catalog import header
+                        try:facts=header(prefix)
+                        except (OSError,RuntimeError,ValueError):facts=None
+                        if facts is not None:
+                            attrs=facts['attributes']
+                            if attrs.get('engineering_role')=='processed_product' and attrs.get('native_reference_sha256'):
+                                products.append(name)
+                            continue
                     with files.files[name][0]() as stream, xr.open_dataset(stream,decode_times=False) as ds:
                         if ds.attrs.get('engineering_role')=='processed_product' and ds.attrs.get('native_reference_sha256'):
                             products.append(name)
@@ -230,7 +241,7 @@ def _update_field(files, declaration_name, raw, configuration, destination):
     with files.files[target_name][0]() as stream,template.open('wb') as dest:
         import shutil
         shutil.copyfileobj(stream,dest,8*1024**2)
-    with Dataset(template) as native:
+    with Dataset('native-template', memory=template.read_bytes()) as native:
         if variable not in native.variables or source_variable not in source:raise ValueError('指定目标字段不存在')
         v=native[variable]
         if source[source_variable].dims!=v.dimensions or source[source_variable].shape!=v.shape:
@@ -255,7 +266,7 @@ def _update_field(files, declaration_name, raw, configuration, destination):
     output=destination/'native_updated.nc'
     report=update_variable(template,output,variable,converted,allowed_mask=mask)
     if report['template_sha256']!=target['sha256']:raise ValueError('读取过程中原生目标已变化，拒绝交付')
-    with xr.open_dataset(output,decode_times=False,mask_and_scale=False) as actual:
+    with load_dataset(output,decode_times=False,mask_and_scale=False) as actual:
         expected=np.where(mask,converted,original) if mask is not None else converted
         # Patcher independently verifies all non-target fields and unchanged mask.
         np.testing.assert_allclose(actual[variable].values,expected,rtol=1e-6,atol=1e-6,equal_nan=True)

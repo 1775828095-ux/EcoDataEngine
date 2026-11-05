@@ -19,6 +19,7 @@ from netCDF4 import Dataset
 from scipy.spatial import Delaunay
 
 from ecodata.models.project_binding import ProjectFiles, bound_resource
+from ecodata.io.netcdf import load_dataset
 
 
 def save(path, value):
@@ -312,6 +313,5 @@ def fuse_temperature(obs, report, background, times, lon, lat, source_id, stage,
     if progress:progress('调用平台已有站点/背景比较、真实留站评价与随机变异')
     result=process_current_input(inputs,request,stage/'search',budget=budget,seed=11,progress=progress)
     if result.get('status')!='PASS' or not result.get('product'):raise ValueError('平台气象处理未产生合格产品')
-    with xr.open_dataset(result['product']) as ds:
-        updated=ds.air_temperature.values.copy()
+    updated=load_dataset(result['product']).air_temperature.values.copy()
     return updated, times.get_indexer(selected_times), cells, result

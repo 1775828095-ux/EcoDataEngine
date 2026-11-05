@@ -13,6 +13,8 @@ import zipfile
 
 def inspect_upload_archives(uploads, converter, folder, *, native_required=True):
     reports=[];issues=[];native_issues=[];total=0;scientific=[];unread=[]
+    from ecodata.models.archive_inputs import deployment_limit
+    limit=deployment_limit()
     probe=getattr(converter,'probe_sources',None)
     for upload in uploads:
         if not str(upload.name).lower().endswith('.zip'):continue
@@ -32,6 +34,9 @@ def inspect_upload_archives(uploads, converter, folder, *, native_required=True)
                     issues.append(dict(file=name,message='压缩包路径重复'));continue
                 seen.add(name.casefold());total+=item.file_size
                 members.append(dict(file=name,bytes=item.file_size))
+                if total>limit:
+                    issues.append(dict(file=upload.name,message=f'ZIP声明展开总量{total}字节超过部署接收配额{limit}字节'))
+                    break
                 with archive.open(item) as stream:
                     prefix=stream.read(65536)
                     if probe:prefixes.append((name,prefix))
@@ -44,7 +49,11 @@ def inspect_upload_archives(uploads, converter, folder, *, native_required=True)
                         if prefix.startswith(b'\x89HDF') and item.file_size<=8*1024*1024:
                             raw+=stream.read()
                         try:
-                            facts=header(raw)
+                            try:facts=header(raw)
+                            except (ValueError,OSError,RuntimeError):
+                                if not raw.startswith(b'CDF'):raise
+                                raw+=stream.read(max(0,1024*1024-len(raw)))
+                                facts=header(raw)
                         except (ValueError,OSError,RuntimeError) as exc:
                             unread.append(dict(file=name,archive=upload.name,
                                 reason='有限内存检查未取得完整头；不认定资料无效：'+str(exc)))
@@ -60,7 +69,7 @@ def inspect_upload_archives(uploads, converter, folder, *, native_required=True)
     if native_required:issues.extend(native_issues)
     record=dict(schema='ecodata.archive-preflight.v1',status='BLOCK' if issues else 'CONTINUE',
         native_contract_issues=native_issues,native_contract_required=native_required,
-        archives=reports,unpacked_bytes=total,issues=issues,full_CRC_verified=False,
+        archives=reports,unpacked_bytes=total,limit_bytes=limit,issues=issues,full_CRC_verified=False,
         scope='目录/控制前缀与有限科学头检查；不代替完整读取、科学检查或模型运行')
     if reports:
         from ecodata.models.scientific_schema import relationships
@@ -68,7 +77,7 @@ def inspect_upload_archives(uploads, converter, folder, *, native_required=True)
             relationships=relationships(scientific),deferred_header_reads=unread,
             source_modified=False,model_executed=False,fusion_executed=False,
             full_payloads_verified=False,
-            scope='通用变量/单位/辅助字段/时间支持盘点；64KiB经典NetCDF头或最多8MiB小型HDF；不是完整工程验收')
+            scope='通用变量/单位/辅助字段/时间支持盘点；至多1MiB经典NetCDF头或最多8MiB小型HDF；不是完整工程验收')
         (folder/'scientific_inventory.json').write_text(json.dumps(audit,ensure_ascii=False,indent=2,default=str),encoding='utf8')
     if reports:
         (folder/'archive_preflight.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf8')

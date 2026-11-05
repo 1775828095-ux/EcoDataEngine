@@ -15,7 +15,13 @@ def input_identity(uploads, model):
     digest = hashlib.sha256(model.encode())
     for upload in uploads or []:
         digest.update(upload.name.encode())
-        digest.update(hashlib.sha256(upload.getvalue()).digest())
+        local = getattr(upload, 'path', None)
+        if local is not None:
+            with Path(local).open('rb') as stream:
+                content_digest = hashlib.file_digest(stream, 'sha256').digest()
+        else:
+            content_digest = hashlib.sha256(upload.getvalue()).digest()
+        digest.update(content_digest)
     return digest.hexdigest()
 
 

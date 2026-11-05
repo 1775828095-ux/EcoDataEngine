@@ -57,6 +57,19 @@ def source_fields(files,metadata,audit=None):
     for name in sorted(files.files):
         if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
         entry=metadata.get(name,{})
+        # scipy's file-like NetCDF3 reader can materialize every array on open.
+        # Native model inputs are not independent sources; inspect their header
+        # first, without reading gigabytes merely to establish that role.
+        prefix=files.prefix(name,1024*1024)
+        if prefix.startswith(b'CDF'):
+            from ecodata.models.source_catalog import header
+            try:facts=header(prefix)
+            except (OSError,RuntimeError,ValueError):facts=None
+            attrs=facts['attributes'] if facts else {}
+            if any(k in attrs for k in ('IOAPI_VERSION','CAMx_NAME','WEST-EAST_GRID_DIMENSION')):
+                if entry.get('role',attrs.get('engineering_role'))=='source':
+                    raise ValueError('原生工程文件不能同时声明为独立新来源')
+                continue
         with files.files[name][0]() as s,xr.open_dataset(s) as opened:
             native=any(k in opened.attrs for k in ('IOAPI_VERSION','CAMx_NAME','WEST-EAST_GRID_DIMENSION'))
             role=entry.get('role',opened.attrs.get('engineering_role'))
@@ -65,6 +78,14 @@ def source_fields(files,metadata,audit=None):
                 interpreted=_apply_semantics(opened,entry.get('variables',{}))
                 product=inspect_product(interpreted)
                 if product is not None:
+                    if product['product']=='MODIS_MCD15A3H':
+                        # The existing bound-reference route owns LAI processing.
+                        # Record why this is not a generic hourly source, without
+                        # preempting that reviewed reference route or precipitation.
+                        if audit is not None:audit.append(dict(resource=name,sha256=files.identity(name)['sha256'],
+                            status='IDENTIFIED_PRODUCT',used=False,
+                            blockers=[b for f in product['fields'] for b in f['blockers']],**product))
+                        continue
                     ds=interpreted.load();digest=files.identity(name)['sha256']
                     for field in product['fields']:
                         sources.append(dict(resource=name,field=field['field'],quantity=field['quantity'],
@@ -234,6 +255,14 @@ def prepare_engineering_inputs(uploads,model,folder,progress=None):
             if isinstance(decl,dict) and decl.get('schema')=='ecodata.model-task.v1':return None
         metadata=metadata_for(files,model);source_audit=[]
         sources=source_fields(files,metadata,source_audit)
+        if not sources and any(row.get('product')=='MODIS_MCD15A3H' for row in source_audit):
+            from ecodata.models.project_inventory import prepare_project_inventory
+            try:reference_binding=bind_project(uploads,model) if model=='cmaq' else None
+            except ValueError as exc:
+                return prepare_project_inventory(uploads,model,folder,source_audit=source_audit,
+                    weather_audit=dict(issues=[dict(code='REFERENCE_ENGINEERING_BINDING_UNRESOLVED',reason=str(exc))]))
+            if reference_binding is None:return prepare_project_inventory(uploads,model,folder,source_audit=source_audit)
+            return None
         has_swat_project=model=='swat_plus' and any(PurePosixPath(n).name=='file.cio' for n in files.files)
         if not sources and not has_swat_project:return None
         if progress:progress('按实际工程输入端口匹配变量、单位、时间与空间；调用公共处理机制')
@@ -359,7 +388,7 @@ def write_ports(files,model,products,reports,stage,*,adaptation=None,source_audi
         if items[0][0].kind=='netcdf':
             current=stage/f'template_{i}.nc';current.write_bytes(raw)
             for j,(port,values) in enumerate(items):
-                with xr.open_dataset(current,decode_times=False) as d:
+                with current.open('rb') as stream,xr.open_dataset(stream,decode_times=False) as d:
                     old=d[port.variable].values;attrs=dict(d[port.variable].attrs)
                 mask=np.isfinite(values.reshape(old.shape))
                 values=np.where(mask,values.reshape(old.shape),old)

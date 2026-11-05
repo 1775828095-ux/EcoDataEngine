@@ -814,7 +814,8 @@ def execute_graph(parsed,request,audit,graph,folder):
         if node.operation in {'spatial.affine','spatial.ratio','spatial.aux_affine'} and not request.get('allow_training'):
             raise ValueError('Fixed fitting requires authorized training')
     out,trace=engine.product(key);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
-    with xr.open_dataset(path) as saved:xr.testing.assert_equal(out,saved.load())
+    from ecodata.io.netcdf import load_dataset
+    xr.testing.assert_equal(out,load_dataset(path))
     receipt=dict(status='PASS',product=str(path),graph=graph,trace=trace,cost=engine.account.receipt(),
         selection_performed=False,reference_used=False,inputs=audit)
     save(folder/'deployment.json',receipt)

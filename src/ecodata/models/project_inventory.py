@@ -138,8 +138,42 @@ def _calpuff(files):
     return projects
 
 
+def _camx(files):
+    """Read official shell-generated namelist templates, never run the shell."""
+    from .project_binding import CAMX_INPUTS
+    projects=[]
+    for control in sorted(files.files):
+        if not control.lower().endswith(('.job','.csh','.sh')):continue
+        text=files.prefix(control,1024*1024).decode('utf-8-sig',errors='replace')
+        if not re.search(r'(?im)^\s*&CAMx_Control\b',text):continue
+        if not re.search(r'(?im)^\s*cat\s+.*<<\s*\w+.*>\s*CAMx\.in\s*$',text):continue
+        from .camx_templates import inspect_template
+        try:
+            resolved=inspect_template(files,control,text)
+            if resolved is not None:
+                projects.append(resolved);continue
+        except (ValueError,KeyError,IndexError) as exc:
+            template_error=str(exc)
+        else:template_error='不支持的控制模板写法'
+        row=dict(control=files.identity(control),bindings=[],unknown=[template_error,
+            '输入是生成CAMx.in的作业模板；变量、日期循环及重启分支尚未完成受支持的模板绑定，未执行上传脚本'],
+            parser='CAMx declared input references in shell heredoc (read-only)',
+            native_control_generated=False,commands_executed=False)
+        for number,line in enumerate(text.splitlines(),1):
+            match=re.match(r"\s*(\w+)(\([^)]*\))?\s*=\s*(['\"])(.*?)\3",line)
+            if not match or match[1].lower() not in CAMX_INPUTS:continue
+            key=match[1]+(match[2] or '');reference=match[4]
+            if not reference.strip():continue
+            item=(_bind(files,control,key,reference) if not re.search(r'[$`*?]',reference) else
+                dict(control=control,parameter=key,original=reference,status='UNKNOWN',
+                    reason='作业模板引用含变量；没有按文件名猜选或调用系统shell'))
+            item.update(line=number,activation='UNKNOWN');row['bindings'].append(item)
+        projects.append(row)
+    return projects
+
+
 def inspect_projects(uploads,model_id):
-    reader={'swat_plus':_swat,'cmaq':_cmaq,'calpuff':_calpuff}.get(model_id)
+    reader={'swat_plus':_swat,'cmaq':_cmaq,'calpuff':_calpuff,'camx':_camx}.get(model_id)
     if reader is None:return None
     with ExitStack() as stack:
         files=ProjectFiles(uploads,stack);projects=reader(files)
@@ -151,8 +185,21 @@ def inspect_projects(uploads,model_id):
 
 def prepare_project_inventory(uploads,model_id,folder,*,source_audit=None,weather_audit=None,adaptation=None,attachments=None):
     inventory=inspect_projects(uploads,model_id)
+    if model_id=='camx' and inventory and source_audit is None:
+        from .native_meteorology import read_observations
+        decoded=read_observations(uploads)
+        if decoded is not None:
+            obs,qa=decoded
+            blockers=[]
+            if obs.station.nunique()<3:
+                blockers.append(dict(code='INSUFFICIENT_STATION_SUPPORT',message='现有气温融合要求至少三站且非共线；本包合法气温站数为'+str(obs.station.nunique())))
+            if any(p.get('runs') and any(r['parameters'].get('number_of_grids',1)>1 for r in p['runs']) for p in inventory['projects']):
+                blockers.append(dict(code='NESTED_METEOROLOGY_FUSION_UNSUPPORTED',message='现有气温原生写回仅支持唯一二维气象网格，尚未完成嵌套双网格融合'))
+            source_audit=[dict(status='DECLARED_SOURCE',source_id='NOAA_GLOBAL_HOURLY:TMP',used=False,
+                resource='; '.join(sorted(obs.source_member.unique())),
+                stations=int(obs.station.nunique()),quality=qa,blockers=blockers)]
     if inventory is None:
-        if not weather_audit or not weather_audit.get('ports'):return None
+        if not source_audit and (not weather_audit or not weather_audit.get('ports')):return None
         inventory=dict(schema='ecodata.engineering-inventory.v1',model_id=model_id,status='PARTIAL',projects=[],
             source_modified=False,native_schema_verified=False,native_model_executed=False,
             scope='已识别声明的资源端口，但未识别完整原生工程控制；仅返回搜索缺项，不回退到其他处理分支')
@@ -199,6 +246,9 @@ def prepare_project_inventory(uploads,model_id,folder,*,source_audit=None,weathe
     archive=folder/'EcoData-project-inventory.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
         for item in (path,handoff,admission,readme,missing):z.write(item,item.name)
+        for pi,project in enumerate(inventory['projects']):
+            for ri,run in enumerate(project.get('runs',[])):
+                z.writestr(f'derived_controls/project_{pi}/run_{ri}/CAMx.in',run['rendered_control'])
         if attachments:
             base=Path(attachments).resolve()
             if not base.is_relative_to(folder.resolve()):raise ValueError('适配证据目录越界')

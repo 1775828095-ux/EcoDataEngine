@@ -11,6 +11,9 @@ CMORPH_DOC='https://www.ncei.noaa.gov/products/climate-data-records/precipitatio
 
 
 def inspect_product(ds):
+    from .vegetation_products import inspect_vegetation
+    vegetation=inspect_vegetation(ds)
+    if vegetation is not None:return vegetation
     attrs=ds.attrs
     power=(attrs.get('source')=='Prediction Of Worldwide Energy Resource (POWER)'
            and 'NASA Langley' in str(attrs.get('institution','')))

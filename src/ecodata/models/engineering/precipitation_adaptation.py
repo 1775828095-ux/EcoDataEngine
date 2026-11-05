@@ -62,7 +62,7 @@ def adapt_products(sources,audit,folder,receipts):
     folder=Path(folder);folder.mkdir()
     groups={};ordinary=[];reports=[]
     for s in sources:
-        if s.get('product'):groups.setdefault((s['source_id'],s['quantity']),[]).append(s)
+        if s.get('product') in {'NASA_POWER','NOAA_CMORPH'}:groups.setdefault((s['source_id'],s['quantity']),[]).append(s)
         else:ordinary.append(s)
     for index,((source_id,quantity),members) in enumerate(sorted(groups.items())):
         pieces=[];issues=[];operations=[]

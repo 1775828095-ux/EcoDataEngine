@@ -23,6 +23,7 @@ from ecodata.algorithms.golem_generation import TypedGolemFactory
 from ecodata.core.schemas import EcoDataBundle
 from ecodata.recognition import recognise_file,inspect_dataset
 from ecodata.evaluation.quality_gates import RawInputQualityGate
+from ecodata.io.netcdf import load_dataset
 
 VERSION="platform_search_v15_measured_validation_random"
 DEFAULT_BUDGET=dict(objective_limit=5,proposal_limit=50,callback_limit=100,wall_seconds=30)
@@ -635,7 +636,7 @@ def execute_frozen_graph(inputs,request,graph,folder):
         from ecodata.algorithms.current_input import validate_output
         output,checks=validate_output(output,context,request)
         path=folder/'product.nc';clean(output).to_netcdf(path,engine='h5netcdf')
-        with xr.open_dataset(path) as f:xr.testing.assert_allclose(clean(output),f.load())
+        xr.testing.assert_allclose(clean(output),load_dataset(path))
     except Exception as exc:
         save(folder/'deployment.json',dict(status='FAILED',product=None,error=str(exc),graph=graph,
             inputs=audit,input_quality=quality,trace=getattr(exc,'trace',trace),cost=account.receipt(),
