@@ -52,7 +52,7 @@ def _apply_semantics(ds,variables):
     return ds
 
 
-def source_fields(files,metadata):
+def source_fields(files,metadata,audit=None):
     sources=[]
     for name in sorted(files.files):
         if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
@@ -60,10 +60,27 @@ def source_fields(files,metadata):
         with files.files[name][0]() as s,xr.open_dataset(s) as opened:
             native=any(k in opened.attrs for k in ('IOAPI_VERSION','CAMx_NAME','WEST-EAST_GRID_DIMENSION'))
             role=entry.get('role',opened.attrs.get('engineering_role'))
+            if role in (None,'source') and not native:
+                from .precipitation_products import inspect_product
+                interpreted=_apply_semantics(opened,entry.get('variables',{}))
+                product=inspect_product(interpreted)
+                if product is not None:
+                    ds=interpreted.load();digest=files.identity(name)['sha256']
+                    for field in product['fields']:
+                        sources.append(dict(resource=name,field=field['field'],quantity=field['quantity'],
+                            dataset=ds,source_id=product['source_id'],sha256=digest,
+                            product=product['product'],blockers=field['blockers']))
+                    if audit is not None:audit.append(dict(resource=name,sha256=digest,
+                        status='IDENTIFIED_PRODUCT',used=False,**product))
+                    continue
             if role is None and not native and opened.attrs.get('source_id') and any(
                     v.attrs.get('standard_name') or v.attrs.get('physical_variable') for v in opened.data_vars.values()):
                 role='source'
-            if role!='source':continue
+            if role!='source':
+                if audit is not None and role is None and not native:audit.append(dict(resource=name,sha256=files.identity(name)['sha256'],
+                    status='UNRECOGNIZED_SOURCE',used=False,blockers=[dict(code='SOURCE_ROLE_UNCONFIRMED',
+                    message='未声明来源角色，也未匹配已核查的产品元数据；未根据文件名制造来源身份')]))
+                continue
             if native:raise ValueError('原生工程文件不能同时声明为独立新来源')
             ds=_apply_semantics(opened.load(),entry.get('variables',{}))
         source_id=ds.attrs.get('source_id')
@@ -78,6 +95,8 @@ def source_fields(files,metadata):
             if not ds[var].attrs.get('units') or not ds[var].attrs.get('temporal_semantics'):
                 raise ValueError('来源变量缺少单位或时间语义：'+name+':'+var)
             sources.append(dict(resource=name,field=var,quantity=quantity,dataset=ds,source_id=source_id,sha256=files.identity(name)['sha256']))
+        if audit is not None:audit.append(dict(resource=name,source_id=source_id,sha256=files.identity(name)['sha256'],
+            status='DECLARED_SOURCE',used=False,fields=[dict(field=s['field'],quantity=s['quantity']) for s in sources if s['resource']==name]))
     return sources
 
 
@@ -101,6 +120,20 @@ def _source_on_port(source,port):
         raise ValueError('源/端口数据类型不一致')
     converted=UnitEngine().convert(a,port.unit)
     output=port.data.copy(deep=True);output[port.quantity].values[:]=np.nan
+    if source.get('product') and port.kind=='swat_weather' and a.attrs.get('spatial_semantics')=='cell_mean':
+        from .precipitation_adaptation import native_cell_values
+        grid=ds.copy(deep=False);grid[field]=converted
+        values,evidence=native_cell_values(grid,field,port)
+        output[port.quantity].values[:]=values
+        sigma=[n for n in str(a.attrs.get('ancillary_variables','')).split() if n in ds and ds[n].attrs.get('uncertainty_type')=='standard_deviation']
+        if len(sigma)>1:raise ValueError('同来源标准差字段不唯一')
+        if sigma:
+            uncertainty=UnitEngine().convert(ds[sigma[0]],port.unit)
+            grid=ds.copy(deep=False);grid[sigma[0]]=uncertainty
+            sampled,_=native_cell_values(grid,sigma[0],port)
+            output['uncertainty']=(output[port.quantity].dims,sampled,dict(units=port.unit,uncertainty_type='standard_deviation'))
+        output.attrs.update(source_id=source['source_id'],native_cell_extraction=json.dumps(evidence,ensure_ascii=False))
+        return output
     if 'station_id' in output.coords:
         if not {'time','station_id'}<=set(ds.coords):raise ValueError('无地理坐标的原生站点端口需要明确station_id/time')
         if list(map(str,ds.station_id.values))!=list(map(str,output.station_id.values)):
@@ -140,20 +173,22 @@ def _source_on_port(source,port):
     return output
 
 
-def process_port(port,sources,folder):
-    from ecodata.core.schemas import EcoDataBundle
-    from ecodata.algorithms.contracts import AlgorithmContext
-    from ecodata.algorithms.registry import create_default_registry
-    from ecodata.algorithms.router import AlgorithmSelector
+def process_port(port,sources,folder,progress=None):
     from ecodata.evaluation.quality_gates import RawInputQualityGate,ResultQualityGate
     folder.mkdir()
+    original_port=port
+    if any(s.get('product') for s in sources):
+        from dataclasses import replace
+        common=pd.DatetimeIndex(port.data.time.values)
+        for source in sources:common=common.intersection(pd.DatetimeIndex(source['dataset'].time.values))
+        if common.empty:raise ValueError('新来源与工程没有共同日期，不能写回空更新')
+        port=replace(port,data=port.data.sel(time=common))
     arrays=[_source_on_port(s,port) for s in sources]
     ids=[s['source_id'] for s in sources]
     if len(ids)!=len(set(ids)) or len({s['sha256'] for s in sources})!=len(sources):
         raise ValueError('同来源/同文件别名不能作为独立多源重复加权')
     kind=port.data[port.quantity].attrs.get('data_kind','continuous')
     if kind!='continuous' and len(arrays)>1:raise ValueError('分类/方向数据不能当连续标量直接融合')
-    registry=create_default_registry();selector=AlgorithmSelector(registry)
     source_quality=[RawInputQualityGate().validate(d,variable=port.quantity,
         requires_spatial='lat' in d.coords,expected_unit=port.unit) for d in arrays]
     (folder/'source_quality.json').write_text(json.dumps(source_quality,ensure_ascii=False,indent=2,default=str),encoding='utf8')
@@ -161,19 +196,8 @@ def process_port(port,sources,folder):
     input_quality=dict(source_quality[0],per_source=source_quality,
         support_binding='native_station_identifiers' if 'station_id' in port.data.coords else 'explicit_geographic_coordinates')
     semantic_type='categorical' if kind=='categorical' else 'continuous'
-    context=AlgorithmContext(tuple(EcoDataBundle(d) for d in arrays),port.quantity,semantic_type,
-        model_constraints=dict(unit=port.unit,output_unit=port.unit),input_quality=input_quality)
-    decision=selector.decide(context,dict(task='fusion' if len(arrays)>1 else 'conversion',required_capabilities=['multi_source_fusion'] if len(arrays)>1 else []))
-    if len(arrays)==1:
-        output=arrays[0];execution=dict(status='SINGLE_SOURCE_ALIGNED',accuracy_assessed=False)
-    else:
-        plans=tuple(p for p in selector.recommend(context) if all(
-            registry.get(step).spec.category=='multi_source_fusion' and decision.matches[step]['eligible']
-            for step in p.steps) and 'multi_source_fusion' in decision.matches[p.steps[-1]]['capabilities'])
-        if not plans:raise ValueError('无合法融合候选：需要真实不确定性或独立观测/训练资源，不能默认等权')
-        result=selector.execute_with_fallback(context,plans)
-        output=result.data.dataset;execution=dict(result.report,eligibility_consumer='AlgorithmSelector.decide.matches',
-            precision_optimization=False,selection_basis='compatible existing plans; true uncertainty inputs; result quality gate')
+    from .search_bridge import search_port
+    output,execution=search_port(port,arrays,sources,folder/'decision',progress=progress)
     raw=RawInputQualityGate().validate(output,variable=port.quantity,requires_spatial=False,expected_unit=port.unit)
     quality=ResultQualityGate().validate(port.data,output,variable=port.quantity,semantic_type=semantic_type,expected_output_unit=port.unit)
     if raw['status']=='BLOCK' or quality['status']=='BLOCK':raise ValueError('公共双层质量门拒绝端口产品')
@@ -181,10 +205,19 @@ def process_port(port,sources,folder):
     if not np.isfinite(field).any():raise ValueError('来源在目标端口没有有效覆盖，不能交付空更新')
     report=dict(port=dict(resource=port.resource,variable=port.variable,quantity=port.quantity,unit=port.unit,
         temporal=port.temporal,kind=port.kind,binding=port.binding),sources=[{k:v for k,v in s.items() if k!='dataset'} for s in sources],
-        semantic_decision=decision.as_dict(),execution=execution,input_quality=input_quality,final_raw_quality=raw,output_quality=quality,
+        execution=execution,input_quality=input_quality,final_raw_quality=raw,output_quality=quality,
         updated_cells=int(np.isfinite(field).sum()),total_cells=int(field.size),accuracy_assessed=False)
-    output.to_netcdf(folder/'product.nc')
+    report['source_alignment']=[json.loads(d.attrs['native_cell_extraction']) for d in arrays if d.attrs.get('native_cell_extraction')]
+    output.to_netcdf(folder/'product.nc',engine='h5netcdf')
     (folder/'decision.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf8')
+    if original_port is not port:
+        complete=np.full(original_port.data[port.quantity].shape,np.nan)
+        positions=pd.DatetimeIndex(original_port.data.time.values).get_indexer(port.data.time.values)
+        complete[positions]=field
+        report['native_update_scope']=dict(common_dates=len(positions),original_dates=original_port.data.sizes['time'],
+            outside_common_dates='unchanged original records, including native missing markers')
+        (folder/'decision.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf8')
+        return complete,report
     return field,report
 
 
@@ -199,8 +232,10 @@ def prepare_engineering_inputs(uploads,model,folder,progress=None):
                 try:decl=json.load(s)
                 except (ValueError,UnicodeError):continue
             if isinstance(decl,dict) and decl.get('schema')=='ecodata.model-task.v1':return None
-        metadata=metadata_for(files,model);sources=source_fields(files,metadata)
-        if not sources:return None
+        metadata=metadata_for(files,model);source_audit=[]
+        sources=source_fields(files,metadata,source_audit)
+        has_swat_project=model=='swat_plus' and any(PurePosixPath(n).name=='file.cio' for n in files.files)
+        if not sources and not has_swat_project:return None
         if progress:progress('按实际工程输入端口匹配变量、单位、时间与空间；调用公共处理机制')
         if model in {'wrf','camx','cmaq'}:
             binding=bind_project(uploads,model)
@@ -219,11 +254,46 @@ def prepare_engineering_inputs(uploads,model,folder,progress=None):
                 if exported['manifest']['status']=='CONVERSION_FAILED':return exported
                 post=folder/'engineering_post_export';post.mkdir()
                 return prepare_engineering_inputs([LocalUpload('exported_project.zip',Path(exported['archive']))],model,post,progress)
-            ports,unknown=weather_ports(files)
+            try:ports,unknown=weather_ports(files,metadata,requested_quantities={s['quantity'] for s in sources} if sources else None)
+            except ValueError as exc:
+                if sources:raise
+                from ecodata.models.project_inventory import prepare_project_inventory
+                return prepare_project_inventory(uploads,model,folder,source_audit=source_audit,
+                    weather_audit=dict(ports=0,issues=[dict(code='WEATHER_PORT_UNREADABLE',reason=str(exc))]))
         elif model=='calpuff':
             if not any(n.lower().endswith('.inp') for n in files.files) and not any(m.get('role')=='model_input' for m in metadata.values()):return None
             ports,unknown=surface_ports(files,metadata)
         else:return None
+        # Product recognition is distinct from scientific admission. Return a
+        # downloadable audit instead of silently dropping unadmitted resources.
+        adaptation=[]
+        if any(s.get('product') for s in sources):
+            from .precipitation_adaptation import adapt_products,acquisition_receipts
+            sources,adaptation=adapt_products(sources,source_audit,folder/'engineering_adaptation',acquisition_receipts(files))
+        blocked=[]
+        for item in source_audit:
+            reasons=list(item.get('blockers',[]))
+            if not item.get('adaptation'):
+                for field in item.get('fields',[]):reasons.extend(field.get('blockers',[]))
+            relevant=[p for p in ports if any((s['resource']==item['resource'] or any(m['resource']==item['resource'] for m in s.get('members',[]))) and s['quantity']==p.quantity for s in sources)]
+            if item['status']=='IDENTIFIED_PRODUCT' and relevant and any(p.data.attrs.get('time_basis')=='model_calendar_day' for p in relevant):
+                reasons.append(dict(code='MODEL_DAY_UNCONFIRMED',message='工程日记录未声明与来源UTC/LST日的对应关系；需核实模型日边界，不能按相同日期标签直接融合'))
+            source_basis=item.get('adaptation',{}).get('time_basis')
+            if source_basis in {'UTC','LST'} and any(p.data.attrs.get('time_basis') in {'UTC','LST'} and p.data.attrs['time_basis']!=source_basis for p in relevant):
+                reasons.append(dict(code='DAY_BOUNDARIES_INCOMPATIBLE',message='来源与工程的统计日界不同；需要更高时间频率资料重划区间，不能把日累计量平移标签或按比例拆分'))
+            if source_basis=='LST' and any(p.data.attrs.get('time_basis')=='LST' for p in relevant):
+                reasons.append(dict(code='LOCAL_DAY_SUPPORT_UNCONFIRMED',message='LST缩写不足以确认同一日界：POWER采用随经度变化的地方太阳时，需双方明确的UTC区间边界，不能猜成当地标准时'))
+            if not item.get('adaptation') and item['status']=='IDENTIFIED_PRODUCT' and relevant and any('lon' in p.data.coords and p.data.lon.min()<0 for p in relevant) and any(
+                    f.get('coordinates',{}).get('lon',{}).get('min',-180)>=0 and
+                    f.get('coordinates',{}).get('lon',{}).get('max',0)>180 for f in item.get('fields',[])):
+                item['longitude_binding_required']='原始0–360经度与目标负经度需在保持原网格支持下对应；尚未执行重采样'
+            item['blockers']=list({r['code']:r for r in reasons}.values())
+            if reasons:blocked.append(item['resource'])
+        if blocked or not sources:
+            from ecodata.models.project_inventory import prepare_project_inventory
+            return prepare_project_inventory(uploads,model,folder,source_audit=source_audit,
+                weather_audit=dict(ports=len(ports),issues=unknown,missing_policy='preserve native missing markers; no imputation; no WGN execution'),
+                adaptation=adaptation,attachments=folder/'engineering_adaptation' if adaptation else None)
         stage=folder/'engineering_inputs';stage.mkdir()
         work=[];unmatched=[]
         for source in sources:
@@ -233,7 +303,7 @@ def prepare_engineering_inputs(uploads,model,folder,progress=None):
             matches=[s for s in sources if s['quantity']==port.quantity]
             if matches:work.append((port,matches))
         plan=dict(schema='ecodata.engineering-input-plan.v1',model_id=model,matched_ports=len(work),
-            unknown=unknown,unmatched_sources=unmatched,source_modified=False,algorithm_policy='existing common selector; no model-specific preference')
+            unknown=unknown,unmatched_sources=unmatched,source_modified=False,algorithm_policy='public task validation and random mutation; no local fusion shortlist')
         from .general import EngineeringProject
         context=EngineeringProject(model_name=model,state_variables=[dict(resource=p.resource,name=p.variable,
             quantity=p.quantity,unit=p.unit,temporal=p.temporal,kind=p.kind,binding=p.binding) for p,_ in work],
@@ -243,13 +313,42 @@ def prepare_engineering_inputs(uploads,model,folder,progress=None):
         plan['engineering_context']=asdict(context)
         (stage/'plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2,default=str),encoding='utf8')
         if unmatched or not work:raise ValueError('来源没有可验收的工程端口，缺字段语义/工程角色或所需支持；见engineering_inputs/plan.json')
+        from .search_bridge import SearchNotReady,port_groups,combine_ports
         products=[];reports=[]
-        for i,(port,matches) in enumerate(work):
-            values,report=process_port(port,matches,stage/str(i));products.append((port,values));reports.append(report)
-        return write_ports(files,model,products,reports,stage)
+        for i,members in enumerate(port_groups(work)):
+            port=members[0][0]
+            try:
+                port,mapping=combine_ports(members)
+                values,report=process_port(port,members[0][1],stage/str(i),progress=progress)
+            except SearchNotReady as exc:
+                failure=dict(port=port.resource,variable=port.quantity,**exc.report)
+                (stage/'search_blocked.json').write_text(json.dumps(failure,ensure_ascii=True,indent=2),encoding='utf8')
+                for item in source_audit:item['blockers']=[dict(code=exc.report['status'],message=str(exc))]
+                from ecodata.models.project_inventory import prepare_project_inventory
+                diagnostic=folder/'engineering_adaptation'/'search_diagnostics'
+                diagnostic.mkdir(parents=True,exist_ok=True)
+                for evidence in stage.rglob('*'):
+                    if evidence.is_file() and evidence.suffix in {'.json','.jsonl'}:
+                        target=diagnostic/evidence.relative_to(stage);target.parent.mkdir(parents=True,exist_ok=True)
+                        shutil.copy2(evidence,target)
+                return prepare_project_inventory(uploads,model,folder,source_audit=source_audit,
+                    weather_audit=dict(ports=len(ports),issues=unknown,
+                        completed_search_groups=len(reports),blocked_search=failure,
+                        candidate_evidence='engineering_adaptation/search_diagnostics; no native writeback performed'),adaptation=adaptation,
+                    attachments=folder/'engineering_adaptation')
+            report['shared_search_id']=str(stage/str(i))
+            for index,(native,_) in enumerate(members):
+                if mapping is None:local=values
+                else:
+                    local=np.full(native.data[native.quantity].shape,np.nan)
+                    rows=pd.DatetimeIndex(native.data.time.values).get_indexer(port.data.time.values)
+                    local[rows]=values[:,mapping[index]].reshape(len(rows),-1)
+                products.append((native,local));reports.append(dict(report,native_resource=native.resource))
+        return write_ports(files,model,products,reports,stage,adaptation=adaptation,source_audit=source_audit,
+            adaptation_folder=folder/'engineering_adaptation' if adaptation else None)
 
 
-def write_ports(files,model,products,reports,stage):
+def write_ports(files,model,products,reports,stage,*,adaptation=None,source_audit=None,adaptation_folder=None):
     from existing_air_converters.native_netcdf_update import update_variable
     from ecodata.models.adapters.calmet_surface import export_surface
     from existing_air_converters.calpuff_native_bundle import read_surface,FIELDS,UNITS
@@ -269,13 +368,23 @@ def write_ports(files,model,products,reports,stage):
                 dest=stage/f'native_{i}_{j}.nc';update_variable(current,dest,port.variable,values,allowed_mask=mask);current=dest
             replacements[name]=current.read_bytes()
         elif items[0][0].kind=='swat_weather':
-            lines=raw.decode('utf-8-sig').splitlines();rows=[r.split() for r in lines[3:] if r.strip()]
+            lines=raw.decode('utf-8-sig').splitlines(keepends=True)
+            positions=[i for i in range(3,len(lines)) if lines[i].strip()]
+            rows=[lines[i].split() for i in positions];changed=set()
             for port,values in items:
                 for n,value in enumerate(values[:,0]):
-                    if np.isfinite(value):rows[n][port.binding['column']]=format(float(value),'.10g')
-            payload=('\n'.join([*lines[:3],*[' '.join(r) for r in rows]])+'\n').encode()
+                    if not np.isfinite(value):continue
+                    if value<=-97 or (port.binding['kind']!='tmp' and value<0):
+                        raise ValueError('处理产品不能引入负天气值或新的原生缺测标记')
+                    column=port.binding['column']
+                    if float(rows[n][column])!=value:
+                        rows[n][column]=format(float(value),'.10g');changed.add(n)
+            for n in changed:
+                index=positions[n];ending='\r\n' if lines[index].endswith('\r\n') else '\n' if lines[index].endswith('\n') else ''
+                lines[index]=' '.join(rows[n])+ending
+            payload=(''.join(lines)).encode('utf-8-sig' if raw.startswith(b'\xef\xbb\xbf') else 'utf8')
             from ecodata.models.swat_weather_project import _records
-            _records(payload,items[0][0].binding['kind']);replacements[name]=payload
+            _records(payload,items[0][0].binding['kind'],allow_native_missing=True);replacements[name]=payload
         else:
             values,times,stations,zone=read_surface(raw)
             for port,field in items:
@@ -290,6 +399,12 @@ def write_ports(files,model,products,reports,stage):
         complete_model_input=False,native_writeback_verified=True,native_model_executed=False,
         preparation=dict(route='unified_engineering_input_ports_v1',tasks=reports),changes=changes,
         note='公共端口驱动处理及原生更新；没有独立真值时不宣称精度最优，不等于全部模型求解通过')
+    if adaptation:manifest['preparation']['adaptation']=adaptation
+    runs={r['shared_search_id']:r['execution'] for r in reports if r.get('shared_search_id')}
+    if runs:manifest['preparation'].update(search_runs=runs,cost_accounting='Each shared_search_id is one actual search; do not sum repeated per-port receipts')
+    if source_audit:
+        usage=[dict(s,used=True) for s in source_audit]
+        (stage/'source_usage.json').write_text(json.dumps(usage,ensure_ascii=True,indent=2,default=str),encoding='utf8')
     handoff=stage/'handoff.json';handoff.write_text(json.dumps(manifest,ensure_ascii=False,indent=2,default=str),encoding='utf8')
     archive=stage/'EcoData-processed-project.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
@@ -299,6 +414,11 @@ def write_ports(files,model,products,reports,stage):
                 with files.files[name][0]() as src,z.open(name,'w',force_zip64=True) as dest:shutil.copyfileobj(src,dest,8*1024**2)
         z.write(handoff,'_ecodata/'+uuid4().hex+'/handoff.json')
         for p in stage.rglob('*.json'):z.write(p,'_ecodata/decision/'+p.relative_to(stage).as_posix())
+        if adaptation_folder:
+            base=Path(adaptation_folder).resolve()
+            if not base.is_relative_to(stage.parent.resolve()):raise ValueError('适配证据目录越界')
+            for p in sorted(base.rglob('*')):
+                if p.is_file():z.write(p,'_ecodata/adaptation/'+p.relative_to(base).as_posix())
     with zipfile.ZipFile(archive) as z:
         if z.testzip():raise ValueError('最终工程包CRC失败')
         for name,raw in replacements.items():

@@ -20,19 +20,21 @@ CAMX_INPUTS = {
 }
 
 
-def safe_name(name):
+def safe_name(name, *, posix=False):
     name = str(name).replace('\\', '/')
     p = PurePosixPath(name)
-    if not name or p.is_absolute() or '..' in p.parts or ':' in name or '\x00' in name:
+    bad_colon=any(re.match(r'^[A-Za-z]:',part) for part in p.parts) if posix else ':' in name
+    if not name or p.is_absolute() or '..' in p.parts or bad_colon or '\x00' in name:
         raise ValueError('工程成员路径不安全：' + name)
     return p.as_posix()
 
 
 class ProjectFiles:
     """Lazy archive/directory resources. No extraction or uploaded code execution."""
-    def __init__(self, uploads, stack):
+    def __init__(self, uploads, stack, *, posix_members=False):
         self.files = {}
         self._folded = set()
+        self._posix_members=posix_members
         for upload in uploads:
             local = getattr(upload, 'path', None)
             if str(upload.name).lower().endswith('.zip'):
@@ -56,7 +58,7 @@ class ProjectFiles:
                              dict(upload=upload.name, bytes=len(raw)))
 
     def add(self, name, opener, locator):
-        name = safe_name(name)
+        name = safe_name(name,posix=self._posix_members)
         if name.casefold() in self._folded:
             raise ValueError('工程成员名称重复或大小写冲突：' + name)
         self._folded.add(name.casefold())

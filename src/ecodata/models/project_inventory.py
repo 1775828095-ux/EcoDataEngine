@@ -149,16 +149,59 @@ def inspect_projects(uploads,model_id):
                 scope='可追溯的工程引用盘点；缺失/未知显式保留，不声称任意完整工程已理解')
 
 
-def prepare_project_inventory(uploads,model_id,folder):
+def prepare_project_inventory(uploads,model_id,folder,*,source_audit=None,weather_audit=None,adaptation=None,attachments=None):
     inventory=inspect_projects(uploads,model_id)
-    if inventory is None:return None
+    if inventory is None:
+        if not weather_audit or not weather_audit.get('ports'):return None
+        inventory=dict(schema='ecodata.engineering-inventory.v1',model_id=model_id,status='PARTIAL',projects=[],
+            source_modified=False,native_schema_verified=False,native_model_executed=False,
+            scope='已识别声明的资源端口，但未识别完整原生工程控制；仅返回搜索缺项，不回退到其他处理分支')
     folder=Path(folder);path=folder/'project_inventory.json'
     path.write_text(json.dumps(inventory,ensure_ascii=False,indent=2),encoding='utf8')
+    assessment=dict(schema='ecodata.engineering-admission.v1',sources=source_audit or [],weather=weather_audit or {},
+        stages=dict(engineering_inspected=True,fusion_executed=False,native_writeback=False,native_model_executed=False),
+        external_resources_identified=sum(s['status'] in {'IDENTIFIED_PRODUCT','DECLARED_SOURCE'} for s in source_audit or []),
+        source_families=sorted({s['source_id'] for s in source_audit or [] if s.get('source_id')}),
+        adaptation=adaptation or [],accuracy_assessed=False,
+        note='来源身份不等于误差独立性。适配产物不等于融合；未更新工程、未运行模型；不能据此判断融合精度。')
+    required={}
+    for source in assessment['sources']:
+        for reason in source.get('blockers',[]):
+            row=required.setdefault(reason['code'],dict(code=reason['code'],message=reason['message'],resources=[]))
+            row['resources'].append(source['resource'])
+    assessment['required_information']=list(required.values())
+    admission=folder/'source_admission.json'
+    admission.write_text(json.dumps(assessment,ensure_ascii=True,indent=2,default=str),encoding='utf8')
     manifest=dict(protocol='ecodata.converter.v1',model_id=model_id,status='ENGINEERING_INSPECTED',native_ready=False,
-                  products=[],preparation=dict(route='shared_project_inventory_v1',tasks=[],inventory=path.name),
+                  products=[],preparation=dict(route='shared_project_inventory_v1',tasks=[],inventory=path.name,
+                    source_admission=assessment),
                   note='工程已解析盘点，仍有未验收依赖；未执行融合或原生模型')
-    handoff=folder/'handoff.json';handoff.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf8')
+    manifest.update(native_writeback_verified=False,native_model_executed=False)
+    handoff=folder/'handoff.json';handoff.write_text(json.dumps(manifest,ensure_ascii=True,indent=2,default=str),encoding='utf8')
+    summary=['工程已盘点；未执行融合、工程写回或原生模型。',
+        '外部资源识别数量：'+str(assessment['external_resources_identified']),
+        '同产品不同日期是时段分片，不代表独立来源；原始文件未改写。']
+    if assessment['weather'].get('blocked_search'):
+        summary[0]='工程核验完成；尚未生成完整融合交付、未写回或运行原生模型。候选执行证据见search_diagnostics。'
+    if not assessment['sources']:summary.append('本次未提交可识别的外部数值来源，仅盘点原工程。')
+    for item in assessment['sources']:
+        summary.append('\n'+item['resource']+'：'+item['status']+'；未使用')
+        summary.extend('- '+r['message'] for r in item.get('blockers',[]))
+        if item.get('longitude_binding_required'):summary.append('- '+item['longitude_binding_required'])
+    for item in assessment['weather'].get('issues',[]):summary.append('\n天气端口：'+item.get('reason',''))
+    for item in assessment['adaptation']:
+        summary.append('\n自动适配：'+item['source_id']+'：'+item['status']+'；不是融合结果')
+    summary.append('\n待补信息（集中汇总）：')
+    summary.extend('- '+r['code']+'：'+r['message'] for r in assessment['required_information'])
+    readme=folder/'processing_status.txt';readme.write_text('\n'.join(summary),encoding='utf8')
+    missing=folder/'required_information.json'
+    missing.write_text(json.dumps(assessment['required_information'],ensure_ascii=False,indent=2),encoding='utf8')
     archive=folder/'EcoData-project-inventory.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
-        z.write(path,path.name);z.write(handoff,handoff.name)
+        for item in (path,handoff,admission,readme,missing):z.write(item,item.name)
+        if attachments:
+            base=Path(attachments).resolve()
+            if not base.is_relative_to(folder.resolve()):raise ValueError('适配证据目录越界')
+            for item in sorted(base.rglob('*')):
+                if item.is_file():z.write(item,'adaptation/'+item.relative_to(base).as_posix())
     return dict(manifest=manifest,archive=str(archive))

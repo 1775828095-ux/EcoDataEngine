@@ -9,7 +9,13 @@ def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
     import hashlib,zipfile
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
     active,roles=partition_uploads(uploads,folder)
+    from ecodata.models.archive_inputs import normalize_archives
+    active,intake=normalize_archives(active,folder)
     result=_prepare_uploads(active,model_id,folder,progress,task=task)
+    if intake:
+        with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
+            archive.write(folder/'archive_intake.json','_ecodata/archive_intake.json')
+        result['archive_intake']=intake
     if roles['references']:
         raw=json.dumps(roles,ensure_ascii=False,indent=2).encode('utf8')
         name='_ecodata/input_roles_'+hashlib.sha256(raw).hexdigest()[:16]+'.json'
@@ -37,6 +43,10 @@ def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
     converter = load_converter(model_id)
     from ecodata.models.archive_preflight import inspect_upload_archives
     archive_probe = inspect_upload_archives(uploads,converter,folder,native_required=False)
+    if model_id=='wrf':
+        from ecodata.models.wrfda_inputs import prepare_wrfda_inputs
+        wrfda=prepare_wrfda_inputs(uploads,folder)
+        if wrfda is not None:return wrfda
     if task is None:
         from ecodata.models.engineering.preparation import prepare_engineering_inputs
         prepared = prepare_engineering_inputs(uploads, model_id, folder, progress=progress)

@@ -29,7 +29,7 @@ NATIVE_SUPPORT={
  'wrf':{'T2':2,'Q2':2,'U10':10,'V10':10,'PSFC':0,'SST':0},
  'camx':{'t2':2,'u10':10,'v10':10},
  'cmaq':{'TEMP2':2,'PRSFC':0,'WSPD10':10}}
-WEATHER={'pcp': [('precipitation','mm/day','accumulation')],
+WEATHER={'pcp': [('precipitation','mm','accumulation')],
  'tmp':[('air_temperature_max','degC','maximum'),('air_temperature_min','degC','minimum')],
  'slr':[('solar_radiation','MJ/m**2/day','mean')], 'hmd':[('relative_humidity','1','mean')],
  'wnd':[('wind_speed','m/s','mean')]}
@@ -142,7 +142,7 @@ def netcdf_ports(files,model,metadata):
     return ports,unknown
 
 
-def weather_ports(files):
+def weather_ports(files,metadata=None,*,requested_quantities=None):
     from ecodata.models.swat_weather_project import _layout,_table,_weather_metadata,_records
     roots=[PurePosixPath(n).parent for n in files.files if PurePosixPath(n).name=='file.cio']
     if len(roots)!=1:raise ValueError('SWAT+输入端口需要唯一实际file.cio工程')
@@ -156,7 +156,7 @@ def weather_ports(files):
             if path in files.files:
                 with files.files[path][0]() as s:payloads[token]=s.read()
     _,_,climate,_=_layout(payloads);_,header,stations=_table(payloads[climate[1]])
-    ports=[]
+    ports=[];unknown=[];missing_resources=set()
     for station in stations:
         for kind,variables in WEATHER.items():
             if kind not in header:continue
@@ -164,16 +164,36 @@ def weather_ports(files):
             if filename in {'null','sim','0'}:continue
             if name not in files.files:raise ValueError('天气端口缺少实际引用：'+name)
             with files.files[name][0]() as s:raw=s.read()
-            info=_weather_metadata(raw);times=_records(raw,kind)
+            info=_weather_metadata(raw)
+            try:times=_records(raw,kind,allow_native_missing=True)
+            except ValueError as exc:
+                if requested_quantities is None or any(q in requested_quantities for q,_,_ in variables):raise
+                if not any(i.get('resource')==name for i in unknown):
+                    unknown.append(dict(resource=name,code='NON_TARGET_WEATHER_INVALID',
+                        reason=str(exc)+'；非本次来源匹配变量，原文件保留，未修正或认证原生模拟可运行'))
+                continue
             rows=[r.split() for r in raw.decode('utf8').splitlines()[3:] if r.strip()]
             for i,(quantity,unit,temporal) in enumerate(variables):
                 values=np.array([float(r[i+2]) for r in rows])[:,None]
+                missing=values<=-97
+                values=np.where(missing,np.nan,values)
                 ports.append(InputPort(name,quantity,quantity,unit,temporal,'swat_weather',
                     canonical(values,pd.to_datetime(times),[info['longitude']],[info['latitude']],quantity,unit,temporal),
                     dict(column=i+2,kind=kind,station=station[header.index('name')],sha256=files.identity(name)['sha256'])))
                 ports[-1].data[quantity].attrs['interval_seconds']=86400
-                ports[-1].data.attrs['time_basis']='model_calendar_day'
-    return ports,[]
+                declared=(metadata or {}).get(name,{}).get('variables',{}).get(quantity,{})
+                ports[-1].data.attrs['time_basis']=declared.get('time_basis','model_calendar_day')
+                ports[-1].binding['native_missing_cells']=int(missing.sum())
+                if missing.any() and name not in missing_resources:
+                    missing_resources.add(name)
+                    unknown.append(dict(resource=name,code='NATIVE_MISSING_PRESERVED',missing_cells=int(missing.sum()),
+                        reason='原生<=-97缺测保留为掩码，未补零/删日期；是否由WGN生成需原生模型验证'))
+    if missing_resources:
+        from ecodata.models.swat_project_dependencies import weather_dependencies
+        dependencies=weather_dependencies(payloads)
+        unknown.append(dict(code='WGN_DEPENDENCY_CHECK',details=dependencies,native_model_executed=False,
+            reason='仅检查作者WGN引用及月统计结构；不等于发生器已执行或模拟已通过'))
+    return ports,unknown
 
 
 def surface_ports(files,metadata=None):

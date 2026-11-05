@@ -97,7 +97,7 @@ def export_uploaded_weather(content, config):
         ds = read_structure('weather.nc', content)
     except Exception as exc:
         raise SchemaError(f'无法读取天气NetCDF：{exc}') from exc
-    fields = {'precipitation': 'mm/day', 'air_temperature_max': 'degC', 'air_temperature_min': 'degC'}
+    fields = {'precipitation': 'mm', 'air_temperature_max': 'degC', 'air_temperature_min': 'degC'}
     if 'time' not in ds.coords or ds.time.dims != ('time',):
         raise SchemaError('天气NC需一维time日日期')
     values, conversions = {}, {}
@@ -108,7 +108,7 @@ def export_uploaded_weather(content, config):
             raise SchemaError(f'{name}必须为单站一维日数据，不能静默选择网格或层')
         unit = ds[name].attrs.get('units')
         if name in fields:
-            if unit != fields[name]:
+            if unit != fields[name] and not (name=='precipitation' and unit=='mm/day'):
                 raise SchemaError(f'{name}单位需{fields[name]}，不能只改单位标签')
             factor = 1.
         else:
@@ -125,6 +125,13 @@ def export_uploaded_weather(content, config):
             raise SchemaError(f'{name}包含缺失/无效值，本界面不自动填补')
         values[name] = v * factor
         conversions[name] = {'input_unit': unit, 'output_unit': ADDITIONAL_WEATHER[name][1] if name in ADDITIONAL_WEATHER else fields[name], 'multiply_by': factor}
+        if name=='precipitation' and unit=='mm/day':
+            from ecodata.engines.units import UnitEngine
+            # This writer's explicit contract is one complete daily record;
+            # its existing calendar validation still rejects gaps/duplicates.
+            amount=UnitEngine().integrate_rate(ds[name],np.full(len(v),86400.),'mm')
+            values[name]=amount.values
+            conversions[name]['interval_integration']=json.loads(amount.attrs['interval_integration'])
     if (values['precipitation'] < 0).any():
         raise SchemaError('降水不能为负值')
     if (values['air_temperature_max'] < values['air_temperature_min']).any():

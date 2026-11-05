@@ -1,11 +1,9 @@
 from pathlib import Path
 from decimal import Decimal
 from datetime import datetime,timedelta
-from types import SimpleNamespace
 from unittest.mock import patch
 import io,json,zipfile
 import numpy as np,pandas as pd,pytest,xarray as xr
-import streamlit as st
 from streamlit.testing.v1 import AppTest
 from ecodata.round1 import convert
 from ecodata.models.adapters.swat_plus import SWATPlusWriter
@@ -88,28 +86,32 @@ def test_synthetic_unit_conversion_and_leap_day():
         rows=np.loadtxt(io.StringIO(files['station.'+kind].decode()),skiprows=3)
         np.testing.assert_array_equal(rows[:,1],[59,60,61]);np.testing.assert_allclose(rows[:,2],expected,rtol=0,atol=1e-12)
 
-def test_extended_real_ui_calls_writer_and_downloads_cli_bytes():
-    good,cfg=load();cfgbytes=json.dumps(cfg).encode();mutable={'data':good,'config':cfgbytes}
-    def upload(label,**kwargs):
-        b=mutable['data'] if label=='导入源数据' else mutable['config']
-        return SimpleNamespace(name='weather.nc' if label=='导入源数据' else 'config.json',getvalue=lambda:b)
-    expected,_=convert('swat_plus',good,cfg)
+def test_extended_real_ui_calls_writer_and_downloads_cli_bytes(tmp_path):
+    good,cfg=load();expected,_=convert('swat_plus',good,cfg)
+    folder=tmp_path/'inputs';folder.mkdir();bundle=folder/'request.zip'
+    def submit(data,configuration):
+        declaration=dict(schema='ecodata.model-task.v1',model_id='swat_plus',operation='weather',input='weather.nc',configuration=configuration)
+        with zipfile.ZipFile(bundle,'w') as z:
+            z.writestr('weather.nc',data);z.writestr('task.json',json.dumps(declaration))
+    submit(good,cfg)
     original=SWATPlusWriter.write
-    with patch('streamlit.file_uploader',side_effect=upload),patch.object(SWATPlusWriter,'write',autospec=True,side_effect=original) as spy,patch('streamlit.download_button',wraps=st.download_button) as download:
+    with patch.object(SWATPlusWriter,'write',autospec=True,side_effect=original) as spy:
         app=AppTest.from_file(str(ROOT/'src/ecodata/interface/app.py'),default_timeout=30).run()
-        app.sidebar.radio[0].set_value('首轮专项转换').run()
-        next(s for s in app.selectbox if s.label=='专项模型').set_value('swat_plus').run()
-        next(b for b in app.button if b.label=='执行专项转换').click().run()
+        app.text_input[0].set_value(str(folder)).run()
+        app.button[0].click().run()
         assert not app.exception and not app.error and spy.call_count==1
-        files,_=app.session_state['round1_result'];assert files==expected
-        archive=next(c.args[1] for c in download.call_args_list if c.args[0]=='下载全部转换文件')
-        with zipfile.ZipFile(io.BytesIO(archive)) as z:
-            assert set(z.namelist())==set(expected)
-            assert all(z.read(n)==expected[n] for n in expected)
-        ds=read_structure('weather.nc',good).drop_vars('wind_speed');mutable['data']=export_structure(ds,'NetCDF')[0];app.run()
+        result=app.session_state['workbench_result']['data']
+        assert result['manifest']['status']=='COMPONENT_EXPORTED'
+        with zipfile.ZipFile(result['archive']) as z:
+            assert z.testzip() is None
+            for name,payload in expected.items():assert z.read('components/'+name)==payload
+        assert app.get('download_button')
+        ds=read_structure('weather.nc',good).drop_vars('wind_speed')
+        submit(export_structure(ds,'NetCDF')[0],cfg);app.run()
         assert not app.get('download_button')
-        next(b for b in app.button if b.label=='执行专项转换').click().run()
-        assert '缺少字段：wind_speed' in app.error[0].value and spy.call_count==1
-        mutable['data']=good;mutable['config']=json.dumps({**cfg,'target_model_version':'61'}).encode();app.run()
-        next(b for b in app.button if b.label=='执行专项转换').click().run()
-        assert '62.0.0' in app.error[0].value and spy.call_count==1 and not app.get('download_button')
+        app.button[0].click().run()
+        assert any('缺少字段：wind_speed' in x.value for x in app.error) and spy.call_count==1
+        submit(good,{**cfg,'target_model_version':'61'});app.run()
+        app.button[0].click().run()
+        assert any('62.0.0' in x.value for x in app.error) and spy.call_count==1
+        assert not app.get('download_button')

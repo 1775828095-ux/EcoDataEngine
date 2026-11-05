@@ -10,13 +10,15 @@ def prepare(request):
         raise ValueError('Application contract and simulator profile are mutually exclusive')
     declaration=request['application_contract']
     required={'id','version','field','unit','semantic_type','valid_range','evidence','issues'}
-    if set(declaration)!=required or not declaration['evidence'] or not declaration['issues']:
+    hard_only=request.get('soft_guidance') is False
+    if set(declaration)!=required or not declaration['evidence'] or (not declaration['issues'] and not hard_only):
         raise ValueError('Complete evidence-bearing application contract required')
     if (declaration['field']!=request['variable'] or declaration['unit']!=request['unit'] or
             declaration['semantic_type']!=request['semantic_type'] or declaration['unit'] in {'','UNKNOWN'}):
         raise ValueError('Application target identity, unit or semantic type differs')
     bounds=declaration['valid_range']
-    if len(bounds)!=2 or not np.isfinite(bounds).all() or bounds[0]>=bounds[1]:
+    if bounds is None and not hard_only:raise ValueError('Unknown application range requires hard-only processing')
+    if bounds is not None and (len(bounds)!=2 or not np.isfinite(bounds).all() or bounds[0]>=bounds[1]):
         raise ValueError('Finite ordered application range required')
     registry,parameters=configuration(request)
     definitions={a['id']:a for a in registry['attributes']}
@@ -39,5 +41,6 @@ def prepare(request):
         state_policy=dict(policy_version=declaration['version'],policy_sha256=digest(declaration),scenario=scenario),
         application_preferences={},sensitivity=None,sensitivity_status='UNKNOWN',full_model_ready=False,
         native_acceptance='NOT_APPLICABLE_RECONSTRUCTION_TASK',scope='Explicit task contract; not a simulator response model')
-    result=dict(request,parameters=dict(request.get('parameters',{}),target_valid_range=list(bounds)))
+    result=dict(request,parameters=dict(request.get('parameters',{})))
+    if bounds is not None:result['parameters']['target_valid_range']=list(bounds)
     return result,model

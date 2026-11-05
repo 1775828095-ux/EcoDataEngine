@@ -16,6 +16,30 @@ registry.define('tenths = 0.1')
 
 
 class UnitEngine:
+    def integrate_rate(self, field, seconds, target='mm'):
+        """Integrate an evidenced interval mean; never infer duration from a label."""
+        seconds=np.asarray(seconds,dtype=float)
+        if seconds.shape!=(field.sizes.get('time',0),) or not np.isfinite(seconds).all() or np.any(seconds<=0):
+            raise SchemaError('降水率积分必须提供每条记录的有效区间秒数')
+        backend='cf-xarray/Pint explicit interval'
+        output=None
+        times=np.asarray(field.time.values)
+        if len(times)>=3 and np.all(np.diff(times)/np.timedelta64(1,'s')==seconds[:-1]) and np.all(seconds==seconds[0]):
+            try:
+                from xclim.core.units import rate2amount
+            except ImportError:pass
+            else:
+                output=rate2amount(field,out_units=target);backend='xclim.core.units.rate2amount'
+        if output is None:
+            scale=registry.Quantity(1,self.parse(field.attrs.get('units','')))*registry.Quantity(seconds,'s')
+            factors=scale.to(self.parse(target)).magnitude
+            output=field*xr.DataArray(factors,dims='time',coords={'time':field.time})
+        output.attrs=dict(field.attrs,units=target,source_units=field.attrs.get('units',''),
+            interval_integration=json.dumps(dict(backend=backend,seconds=seconds.tolist(),target=target)))
+        bounds={k:output.attrs.pop(k) for k in ('valid_min','valid_max','valid_range') if k in output.attrs}
+        if bounds:output.attrs['source_rate_valid_bounds']=json.dumps(bounds,default=lambda v:np.asarray(v).tolist())
+        return output
+
     @staticmethod
     def parse(unit):
         if not unit or str(unit).casefold() in {"unknown", "未知"}:

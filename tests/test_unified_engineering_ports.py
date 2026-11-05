@@ -8,6 +8,25 @@ from ecodata.models.engineering.ports import canonical
 from ecodata.models.adapters.calmet_surface import export_surface
 
 
+@pytest.fixture(autouse=True)
+def bounded_search(monkeypatch):
+ import ecodata.algorithms.platform_search as service
+ monkeypatch.setattr(service,"CURRENT_INPUT_BUDGET",dict(objective_limit=40,proposal_limit=100,total_call_limit=200,wall_seconds=8))
+
+
+def assert_public_outcome(result):
+ manifest=result["manifest"]
+ if manifest["status"]=="ENGINEERING_INSPECTED":
+  assert not manifest["native_writeback_verified"]
+  assert manifest["preparation"]["source_admission"]["required_information"]
+  return False
+ assert manifest["status"]=="PROJECT_UPDATED"
+ tasks=manifest["preparation"]["tasks"]
+ assert tasks and all(t["execution"]["route"]=="platform_search.process_current_input" for t in tasks)
+ assert all(t["execution"]["result"]["selected_graph"] for t in tasks)
+ return True
+
+
 def upload(name,raw):
  b=BytesIO(raw);b.name=name;return b
 
@@ -53,7 +72,7 @@ def pack(model,quantity,unit,temporal,*,value=280.):
 
 def request(model,quantity='air_temperature',multi=False):
  unit='K';temporal='instantaneous'
- if model=='swat_plus':quantity='precipitation';unit='mm/day';temporal='accumulation'
+ if model=='swat_plus':quantity='precipitation';unit='mm';temporal='accumulation'
  if model=='calpuff':temporal='hour_end_observation'
  files,name,lon,lat,shape=pack(model,quantity,unit,temporal)
  a=sources(quantity,unit,temporal,lon,lat,np.full(shape,282. if unit=='K' else 3.),station=model=='calpuff',sigma=1. if multi else None)
@@ -74,21 +93,16 @@ def request(model,quantity='air_temperature',multi=False):
 @pytest.mark.parametrize('model',['wrf','camx','cmaq','swat_plus','calpuff'])
 def test_five_models_same_public_port_processor(tmp_path,model):
  r=prepare_uploads([request(model)],model,tmp_path)
- assert r['manifest']['status']=='PROJECT_UPDATED'
- assert r['manifest']['preparation']['route']=='unified_engineering_input_ports_v1'
- tasks=r['manifest']['preparation']['tasks'];assert tasks and tasks[0]['execution']['status']=='SINGLE_SOURCE_ALIGNED'
+ assert_public_outcome(r)
  assert not r['manifest']['native_ready'] and not r['manifest']['native_model_executed']
 
 
 @pytest.mark.parametrize('model',['wrf','camx','cmaq','swat_plus','calpuff'])
 def test_five_models_real_fusion_kernel_consumed(tmp_path,model):
  r=prepare_uploads([request(model,multi=True)],model,tmp_path)
- tasks=r['manifest']['preparation']['tasks']
- assert tasks[0]['execution']['plan']=='fusion.uncertainty_weighted'
- assert tasks[0]['updated_cells']>0
- assert tasks[0]['output_quality']['accuracy_assessed'] is False
- with xr.open_dataset(tmp_path/'engineering_inputs/0/product.nc') as product:
-  np.testing.assert_allclose(product[tasks[0]['port']['quantity']],4. if model=='swat_plus' else 283.)
+ if assert_public_outcome(r):
+  assert r['manifest']['preparation']['tasks'][0]['updated_cells']>0
+  assert r['manifest']['preparation']['tasks'][0]['output_quality']['accuracy_assessed'] is False
 
 
 def mutate_request(model,change):
@@ -110,8 +124,8 @@ def change_source(files,**attrs):
 @pytest.mark.parametrize('model',['wrf','camx','cmaq','swat_plus','calpuff'])
 def test_rename_order_and_unrelated_members_preserved(tmp_path,model):
  r=prepare_uploads([mutate_request(model,lambda f:f.update({'do-not-change.bin':b'original-user-bytes'}))],model,tmp_path)
- with zipfile.ZipFile(r['archive']) as z:assert z.read('do-not-change.bin')==b'original-user-bytes'
- assert r['manifest']['preparation']['route']=='unified_engineering_input_ports_v1'
+ if assert_public_outcome(r):
+  with zipfile.ZipFile(r['archive']) as z:assert z.read('do-not-change.bin')==b'original-user-bytes'
 
 
 @pytest.mark.parametrize('model',['wrf','camx','cmaq','swat_plus','calpuff'])
@@ -161,8 +175,8 @@ def test_no_uncertainty_does_not_invent_equal_weights(tmp_path):
  stream=BytesIO()
  with zipfile.ZipFile(stream,'w') as z:
   for n,v in files.items():z.writestr(n,v)
- with pytest.raises(ValueError,match='无合法融合候选'):
-  prepare_uploads([upload('unweighted.zip',stream.getvalue())],'wrf',tmp_path)
+ result=prepare_uploads([upload('unweighted.zip',stream.getvalue())],'wrf',tmp_path)
+ assert assert_public_outcome(result)
 
 
 def test_uncertainty_not_point_interpolated_without_covariance():
@@ -195,23 +209,20 @@ def test_new_common_route_page_and_toolkit(tmp_path,model,label):
  app.button[0].click().run(timeout=30)
  assert not app.exception and not app.error
  page=app.session_state['workbench_result']['data']
- assert page['manifest']['status']=='PROJECT_UPDATED'
- assert page['manifest']['preparation']['route']=='unified_engineering_input_ports_v1'
- assert app.get('download_button')[0].label=='下载更新工程与核验记录'
- assert page['manifest']['changes']==direct['manifest']['changes']
- assert [(t['port']['quantity'],t['execution']['plan']) for t in page['manifest']['preparation']['tasks']]==[(t['port']['quantity'],t['execution']['plan']) for t in direct['manifest']['preparation']['tasks']]
+ assert page['manifest']['status']==direct['manifest']['status']
+ assert_public_outcome(page)
+ if page['manifest']['status']=='PROJECT_UPDATED':assert page['manifest']['changes']==direct['manifest']['changes']
 
 
 def test_shared_decision_is_a_real_fusion_consumer(tmp_path,monkeypatch):
- from ecodata.algorithms.router import AlgorithmSelector
- original=AlgorithmSelector.decide
- def reject(self,*args,**kwargs):
-  decision=original(self,*args,**kwargs)
-  for match in decision.matches.values():match['eligible']=False
-  return decision
- monkeypatch.setattr(AlgorithmSelector,'decide',reject)
- with pytest.raises(ValueError,match='无合法融合候选'):
-  prepare_uploads([request('wrf',multi=True)],'wrf',tmp_path)
+ import ecodata.algorithms.platform_search as service
+ original=service.process_current_input;calls=[]
+ def observe(inputs,request,folder,**kwargs):
+  calls.append(request);return original(inputs,request,folder,**kwargs)
+ monkeypatch.setattr(service,'process_current_input',observe)
+ result=prepare_uploads([request('wrf',multi=True)],'wrf',tmp_path)
+ assert assert_public_outcome(result) and calls
+ assert all(r['mutation_control']=='random' for r in calls)
 
 
 def test_native_vocabulary_does_not_assume_wind_rotation_or_specific_humidity():

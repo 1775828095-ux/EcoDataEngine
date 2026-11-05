@@ -26,7 +26,7 @@ def stage_strip(state="empty", fusion_status=None):
               "CONVERTED": ("已完成", "已完成", "已完成"),
               "CONVERSION_FAILED": ("已完成", "已完成", "转化失败"),
               "ENGINEERING_BOUND": ("工程引用已绑定", "未执行", "待科学契约验证"),
-              "ENGINEERING_INSPECTED": ("工程已盘点", "未执行", "存在待确认依赖"),
+              "ENGINEERING_INSPECTED": ("工程已盘点", "未完成交付", "存在待确认依赖"),
               "PROJECT_UPDATED": ("工程目标已绑定", "产品已核验", "原生副本已更新"),
               "TASK_PROCESSED": ("任务已识别", "数值处理已完成", "非原生模型更新"),
               "COMPONENT_EXPORTED": ("任务已匹配", "按任务契约处理", "原生组件已生成")}
@@ -103,7 +103,9 @@ def render_workbench(root, version):
                     with st.status("正在识别数据并自动处理…", expanded=True) as status:
                         data = prepare_uploads(uploads, MODELS[model], folder,
                             progress=lambda message: status.update(label=message if isinstance(message, str) else "正在真实执行候选组合并检验质量…"))
-                        status.update(label="数据处理完成", state="complete", expanded=False)
+                        inventory_only=data['manifest']['status']=='ENGINEERING_INSPECTED'
+                        status.update(label="工程核验完成；尚未生成融合交付、未写回或运行模型" if inventory_only else "本阶段处理完成，请核对下方执行状态",
+                            state="complete", expanded=False)
                     result = dict(identity=identity, data=data, model=model)
                     st.session_state["workbench_result"] = result
                     stages.markdown(stage_strip(data["manifest"]["status"], data['manifest'].get('preparation',{}).get('fusion_decision',{}).get('status')), unsafe_allow_html=True)
@@ -123,7 +125,18 @@ def render_workbench(root, version):
                     st.caption("组件文件不等于完整工程；模型原生运行未执行。")
                     label = "下载模型组件与质量记录"
                 elif manifest["status"] == "ENGINEERING_INSPECTED":
-                    st.warning("工程已解析，但仍有缺失或无法确认的依赖。请下载记录查看具体位置；尚未执行融合或原生模型。")
+                    st.warning("工程已解析，但尚未生成完整融合交付，未写回或运行模型。缺项及已执行的候选记录见下载包。")
+                    admission=manifest.get('preparation',{}).get('source_admission',{})
+                    st.caption(f"工程盘点完成；识别外部资源 {admission.get('external_resources_identified',0)} 份。尚未完成融合交付、未写回、未运行模型。")
+                    adapted=sum(bool(x.get('product')) for x in admission.get('adaptation',[]))
+                    if adapted:st.caption(f"已自动生成 {adapted} 组单位、区间及坐标适配产物，可随记录下载；这些不是融合结果。")
+                    for missing in admission.get('required_information',[]):
+                        st.write('待补信息：'+missing['message'])
+                    for source in admission.get('sources',[]):
+                        st.write(source['resource']+'：'+('产品已识别，尚未使用' if source['status']=='IDENTIFIED_PRODUCT' else '尚未使用，见核验依据'))
+                        for reason in source.get('blockers',[]):st.caption(reason['message'])
+                        if source.get('longitude_binding_required'):st.caption(source['longitude_binding_required'])
+                    for issue in admission.get('weather',{}).get('issues',[]):st.caption(issue.get('reason',''))
                     label = "下载工程解析与缺项记录"
                 elif manifest["status"] == "TASK_PROCESSED":
                     st.success("已按数据问题完成处理。下载为恢复结果及评价记录；原观测质量标记保留，尚未更新模型原生状态。")
@@ -157,6 +170,6 @@ def render_workbench(root, version):
                 body.markdown('''<div class="empty-output"><svg width="112" height="88" viewBox="0 0 112 88" aria-hidden="true"><path d="M10 42L56 18l46 24-46 24zM10 54l46 24 46-24M10 30L56 6l46 24" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M56 18v48" stroke="currentColor" stroke-dasharray="3 4"/></svg><strong>从一份数据开始</strong><p>处理状态与输出结果将在这里呈现。</p></div>''', unsafe_allow_html=True)
             if result and result['data']['manifest'].get('preparation',{}).get('route')=='unified_engineering_input_ports_v1':
                 st.markdown('<div class="handoff-note"><strong>公共工程输入端口已处理</strong><span>本次原生写回及质量记录已打包；未运行模型，不代表精度提高。</span></div>', unsafe_allow_html=True)
-            else:
+            elif not result or result['data']['manifest']['status']!='ENGINEERING_INSPECTED':
                 st.markdown('<div class="handoff-note"><strong>格式转化接入口已预留</strong><span>融合后的数据将直接交给模型转化模块。</span></div>', unsafe_allow_html=True)
     st.markdown(f'<footer>EcoData Engine <span>自动识别 → 自动融合 → 自动转化</span><small>{html.escape(str(version))}</small></footer>', unsafe_allow_html=True)

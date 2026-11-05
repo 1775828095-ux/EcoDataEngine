@@ -155,7 +155,12 @@ def _weather_metadata(data):
     return dict(years=years, step=step, latitude=lat, longitude=lon, elevation_m=elev)
 
 
-def _records(data, kind):
+def _records(data, kind, *, allow_native_missing=False):
+    """Validate daily records; only native readers may preserve SWAT <= -97 flags.
+
+    Missing flags are never measurements or generated values. The default
+    remains strict for converted weather products.
+    """
     metadata = _weather_metadata(data)
     lines = data.decode('utf-8-sig').splitlines()
     if len(lines) < 4:
@@ -171,9 +176,12 @@ def _records(data, kind):
         values = [float(v) for v in row[2:]]
         if not all(math.isfinite(v) for v in values):
             raise ValueError('天气数值包含非有限值')
-        if kind == 'tmp' and values[0] < values[1]:
+        missing=[v <= -97 for v in values]
+        if any(missing) and not allow_native_missing:
+            raise ValueError('天气数值为负值或缺测标记；不会自动补值')
+        if kind == 'tmp' and not any(missing) and values[0] < values[1]:
             raise ValueError('最高温小于最低温')
-        if kind != 'tmp' and any(v < 0 for v in values):
+        if kind != 'tmp' and any(v < 0 and not absent for v,absent in zip(values,missing)):
             raise ValueError('天气数值为负值或缺测标记；不会自动补值')
         if kind == 'hmd' and values[0] > 1:
             raise ValueError('相对湿度必须使用0至1比例')
@@ -353,7 +361,7 @@ def attach_weather(project_zip, weather_files, station, *, simulation_period=Non
               'weather_dependencies': dependencies,
               'index_repairs': index_repairs,
               'weather_metadata': weather_metadata,
-              'unit_contract': {'pcp': 'mm/day', 'tmp': 'degC (max,min)', 'slr': 'MJ/m2/day', 'hmd': 'fraction 0..1', 'wnd': 'm/s'},
+              'unit_contract': {'pcp': 'mm per daily record', 'tmp': 'degC (max,min)', 'slr': 'MJ/m2/day', 'hmd': 'fraction 0..1', 'wnd': 'm/s'},
               'unit_verification': '按平台日天气writer格式接入；原生文本未逐项声明单位，不能独立认证来源单位或地理代表性',
               'resolved_layout': inspect_weather_project(project_zip),
               'file_manifest': [{'file': name, 'action': 'added' if name not in original else 'modified' if content != original[name] else 'unchanged',

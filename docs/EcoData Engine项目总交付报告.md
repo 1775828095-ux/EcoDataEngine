@@ -7949,3 +7949,275 @@ CMAQ：76个原上传资源中，校验匹配的18,837,775字节源码快照独�
 本机协作checkout仅同步本轮文件并前版本核对，未推远程。实际桌面8502按原启动器重启，健康200，runtime记录保留。本轮没有新增浏览器交互验收，界面布局及控件未变。此版本支持数值源偏移诊断，不是任意模型/所有误差形式的自动科学认证。
 
 方法来源：[SALib源码及方法](https://github.com/SALib/SALib)、[官方使用说明](https://salib.readthedocs.io/en/main/)。复用库函数，没有复制其敏感性算法。
+
+
+## 2026-11-04 真实融合与模型工程轻量案例只读选取及核验：WRF五站气温
+
+本轮仅找数据、下载必要新来源、解压和只读核验；不改平台代码，不新增算法、不调参，不执行融合搜索、原生写回或模型求解器。唯一报告仍为本文件。证据根目录为 `D:/codex/数据/WRF_20230331_多站气温融合轻量核验_20261104`，供页面输入的路径是其 `platform_inputs` 文件夹；使用说明为该目录的TXT，机器清单为evidence中的JSON/CSV，没有另建Markdown研究报告。
+
+### 现状与候选选择
+
+实际通过Git读取当前origin/main：`e28070d23919702afc5759052216f7a5006eb962`。核对automatic_preparation、workbench_page、project_binding、native_meteorology、wrf_meteorology及engineering/preparation六个直接相关生产文件，运行目录字节均与main一致；保留版本和逐文件指纹。当前页面模型是SWAT+、WRF、CMAQ、CAMx、CALPUFF，共用部分工程输入端口，但不能据此宣称任意工程/变量自动适用。已阅读本报告最新公共端口、原件复测、CAMx重复观测/CMAQ软件参考隔离、CMAQ动态绑定和稳定性诊断章节，并回看历史单站WRF不可适用、旧机器固定路径、ubESTARFM原包混有源码/缺TIFF科学元数据等失败边界。不能再用旧GOLEM或旧固定路径概述当前能力。
+
+深入比较不超过三套：①本地已有NCAR 2023-03-31 WRF工程＋新同期NOAA站点（选中）；②Humaya真实SWAT+作者包（已有609,589,832字节模型归档及气候/建模资料，CC-BY-4.0，规模与多年份整理成本更高）；③官方1990-01-09 CALMET/CALPUFF四小时工程（真实气象、假设排放，已有原生运行记录，但新历史站点来源/格式协调不如本轮WRF方便）。候选比较仅保存在candidate_comparison.json；后两者未重复下载，也未以假设排放案例充作独立环境精度证据。
+
+### 最终数据、来源、许可与体积
+
+复用 `WRF_20230331_官方小案例_20261102/severe_outbreak_2023_output.tar.gz`（389,679,208字节，SHA256 04ba6923cae0565e858e1255b99298031d3f590efd0aaefb05a8e6c65bcd0055）。该官方归档确实同时包含namelist.input、wrfinput_d01、wrfinput_d02、wrfbdy_d01及参考wrfout；本轮只解出前四份真实运行输入，不把wrfout当输入或观测真值。它们与先前本地case_native逐字节一致。复用全部81份WRF v4.5运行资源，每份都与既有来源清单SHA256一致；没有重新下载全球地理数据、FNL历史或完整模拟输出。
+
+新的NCEI Global Hourly接口请求只取2023-03-31 00:00至2023-04-01 00:00 UTC的小范围站点资料，两份原始CSV合计122,318字节。请求的Little Rock旧ID无返回，记录为缺站，不伪造第三站；实际新获得Nashville、Atlanta、Knoxville、Louisville四站。第五站Memphis原始65,503字节CSV从已有轻量案例包原样复用，核对原ZIP成员并另向NOAA仅查询本次实际使用的00 UTC瞬时记录，STATION/DATE/TMP/REPORT_TYPE/坐标/高程均一致；2,771字节核验响应不作为第六个来源。没有重下完整已有观测。原始响应保留所有QA、报告类型及额外变量，未预插值或制造缺口。
+
+平台输入文件夹合计126,408,684字节。其中工程ZIP为126,220,863字节，SHA256 8e5815b0689760d6fc6ad5cf529cbbac989469b8f72fb3f1820a539a0c14a8ac；其85个文件展开为219,776,576字节（四份原生输入＋81份运行资源），不需要解压大量历史资料。完整核验目录另保留展开工程、输入ZIP及证据，逻辑占用约349 MB，不能将输入ZIP体积冒充整个核验目录占用。大小计划、原归档目录、请求时间/状态、接收字节数及SHA256均保留；本地SHA256是追溯指纹，不冒称上游签名或官方发布校验值。新下载的原始CSV与本轮解出的原生工程已设只读；复用外部原件运行前后SHA不变。
+
+WRF 4.5自带LICENSE实际为UCAR/NCAR不主张专有权、视为public domain，要求保留声明并免责；没有套用其他版本的MIT等许可。NOAA NODD允许公开使用、请求署名、不暗示背书，不得将修改资料称为未改原件。NCAR教学数据公开可获取，但未找到单独数据CC许可，不把代码许可扩展为所有数据的商业再分发保证。官方许可、教程和格式文档保存在official_documents。ISD文档现行广告URL实际返回HTML S3页面，不能按文件名当PDF；另一地址完整下载与Range方案各出现截断，保留失败并停止重试，最终复用本地已存在的完整1,187,390字节、137页官方格式PDF，重新核对PDF魔数和正文。未接受残件。
+
+### 真实数组与工程完整性
+
+用f90nml读取真实namelist：两域，30 km/10 km，2023-03-31 00 UTC至次日00 UTC、24小时、6小时边界间隔。实际读取两个wrfinput和wrfbdy中的全部数值变量，检查维度、有限值和掩码；T2单位K、原生定义TEMP at 2 M，初始时刻准确。初始场含地形、土地利用和海陆等原生变量。wrfbdy的Times最后是18 UTC，但四个区间结束标签分别为06、12、18、次日00，连续覆盖整段24小时；未误判缺最后六小时。
+
+复用当前公共`bind_project`只读绑定：目录与ZIP均BOUND，同样的两个initial_state和一个boundary_state、资源SHA相同。独立重新打开交付ZIP做CRC与逐成员SHA比对，并实际回读T2数组；98份交付数据/文档清单及85个工程ZIP成员复核通过。没有用目录存在、网页或绑定状态代替数值读取。工程数据层是从已生成初边界运行/写回所需的现成工程；不是从头重做WPS/geogrid的完整工具链。
+
+求解程序另记：交付不含匹配WRF 4.5的wrf.exe；本机wsl --list返回尚未安装WSL，项目external中未找到可确认匹配的WRF程序。本轮未装环境或运行求解器，不能称Windows直接原生模拟已就绪。换到已有WRF 4.5及NetCDF/MPI依赖的Linux环境，可按保存的官方README/说明使用原始工程；完整求解验收仍须SUCCESS COMPLETE WRF和实际结束时刻/两域输出核对。
+
+### 为什么是真融合需求，如何匹配
+
+两类信息是FNL驱动的空间连续WRF初始背景，与同域同刻真实地面气温站点，不是把多个变量或文件数量叫融合。背景提供区域结构，观测提供局地点位约束，可测试气温场的站点—背景修正/补充及其原生输入写回。仅作诊断的最近格点背景与站点温差为约-6.68至-4.69 K；这是信息不一致的信号，含时间/测高/地形/格点代表性影响，不作为融合RMSE或收益结论。
+
+原样保留NOAA不规则点位及小时/次小时/天气报频率，WRF仍为Lambert曲线经纬网格、30 km/10 km，没有提前对齐。需要按官方TMP缩放因子10及摄氏度定义解码，再转K；时间按UTC和瞬时天气报取准确初始化时刻，不按日期平均、不向整点舍入。空间按真实XLAT/XLONG、投影和站点坐标映射。当前公共解码器接受FM-12/FM-15/FM-16及QA 1/5；本包218条原始记录中209条通过该QA，9条未通过；再限定原生时刻后恰有5个合法FM-12站点。五站凸包内有d01的154个、d02的1,365个原生格点中心，其余网格应保持原值。该计数是支持域检查，不是已执行的融合效果。
+
+### 能验证、不能验证和平台具体缺项
+
+本轮确认当前main已有的原始Global Hourly解码、精确时刻匹配、至少三站/空间凸包前置条件以及真实工程只读绑定可接受本案例。现有T2分支可调用公共实际候选评价/随机变异及公共写回机制；本轮故意没有运行这些环节，不能把历史合成测试或别的真实SST成功算成本包融合/写回通过。
+
+五站是待融合输入，不是独立参考；也无法逐站排除已被上游FNL同化。没有独立精度真值，官方wrfout不是观测。因此可用于下一步检验融合数值执行、支持域保护、原生写回、物理范围和稳定性，不能由本轮证明精度提升或预报收益。只有一个初始化时刻、五站，不构成长期泛化实验。源ISD文档说明有符号地理经纬度；精确站点大地基准及仪器测高未逐站认证，平台按EPSG:4326地理坐标运行约定处理，应保留此限制，不能宣称测量级配准已证实。点/网格地形与代表性、T2更新后的三维动力一致性亦未认证；风向旋转、复杂垂直/边界任务、移动网格等不能推为已支持。
+
+代码没有修改；实际生产src/integrations相关类型文件前后全部指纹一致。未执行平台搜索、变异、融合、写回或模拟；没有为该工程写专用补丁。证据包括case_verification.json、platform_version_audit.json、native_array_checks.json、platform_readonly_binding.json、observation_quality_and_support.json、file_manifest.csv、memphis_provenance_recheck.json及independent_reopen.txt。可用现有.venv运行evidence/read_only_check.py复核，首次整理脚本不要覆盖已封存只读资料。
+
+官方来源：[NCAR案例与原生输入说明](https://www2.mmm.ucar.edu/wrf/wrf_tutorial/tutorial_met_data.html)、[WRF v4.5运行资源](https://github.com/wrf-model/WRF/tree/v4.5/run)、[NOAA接口说明](https://www.ncei.noaa.gov/support/access-data-service-api-user-documentation)、[NOAA开放使用说明](https://registry.opendata.aws/noaa-isd/)。具体API查询串、旧资料来源链和下载异常均在机器证据中保留。
+
+
+### 2026-11-04 本案例队友交接整理
+
+原资料133文件完整复制至 `D:\codex\交付\WRF五站融合案例_队友交接_20261104`，保留原始数组、展开工程、平台输入ZIP与CSV、官方说明及全部失败/核验记录；新增队友操作与限制TXT、可搬迁的Python标准库校验脚本和逐文件SHA256清单。说明区分平台自动处理与Linux WRF原生模拟，明确不含平台安装包/求解器、未运行本例融合/模拟、独立性/测高/地形/动力一致性限制，并提示历史证据脚本中的本机绝对路径不能要求队友照搬。
+
+外发ZIP为 `D:\codex\交付\WRF五站融合案例_队友交接_20261104.zip`，253,624,308字节；展开348,600,683字节。SHA256 `ab5e7f448483b8d1d167320f473dbd9c1e3233b7f8cc8b709ebecbdc4124e8ad`，CRC及136项清单成员逐字节校验全部通过，原工程85成员与展开文件一致。已有源码和科学数据未改动，未发送消息或上传外部服务。旁附zip.sha256及打包核验JSON，未新建Markdown报告。
+
+
+## 2026-11-04 多案例轻量资料扩充与只读验收（两套新流域＋Humaya扩展）
+
+按用户继续扩充案例并集中交给队友的要求，本轮只寻找、取得、读取和核验资料，不改平台代码、不新增算法、不调参、不执行融合搜索/变异或模型求解器。Git获取当前main仍为e28070d23919702afc5759052216f7a5006eb962。最终交付文件夹 `D:\codex\交付\EcoData_多案例工程与融合数据_20261104`，ZIP `D:\codex\交付\EcoData_多案例工程与融合数据_20261104.zip`，32,460,714字节，展开96,610,778字节。SHA256 `b51e67199aaebce27e6301d1ad747b58844880090e2f45edb46467d18af368b2`。压缩包CRC、1,087项文件清单SHA256、三个工程ZIP与展开成员一致性及新来源真实数组回读通过。362个实际平台src/integrations文件指纹检查未变化。
+
+### 资料范围，不虚增案例数量
+
+|资料|原生工程/来源|实际核验|当前平台边界|
+|---|---|---|---|
+|Mandena，马达加斯加|新作者工程，Zenodo21633869，CC BY4.0；rev61.0.1格式、1987—2022年，82份活动平铺输入；另保留备用SWIFT资料|file.cio直接引用/天气站/WGN基础检查无错误，天气语法及日期序列可读；原PCP确有2,191个-99|当前weather_ports拒绝缺测标记，BLOCKED；原SWAT基线有WGN机制，不能把-99填0后称成功|
+|Cangandala，安哥拉|新作者工程，Zenodo17736146，CC BY4.0；rev61.0.1格式、2011—2022年，119份平铺输入|基础工程引用/完整天气数值语法与日期序列检查通过；公共端口实际读出48个|未执行融合；原包名ERA5L与PCP标题MSWEP有来源标签冲突，未认证原强迫来源，不当独立实测真值|
+|Humaya，墨西哥|复用已有Zenodo18820320的Gauge基线，CC BY4.0；rev60.5.7格式、1980—2001年，91份平铺输入|基础引用/完整天气数值语法与日期序列通过；实际读出18个端口|是已有工程的新来源/新测试扩展，不能称第三个新下载流域；未执行融合或模拟|
+
+以上是三套真实资料/工程测试任务，其中两个是本轮新取得的地理区域，一个为复用扩展，全部属于SWAT+。不声称这轮新增三个独立新流域、覆盖五模型，或三套已全部无条件一键融合。基础输入引用检查仍不认证所有深层数据库引用、物理参数及原生求解可行性。
+
+### 新数据和真实融合需求
+
+每例实际下载并保留NASA POWER/MERRA-2偏差订正日降水原网格（约0.5°纬度×0.625°经度、连续7日）及NOAA CMORPH v1.0偏差订正卫星日降水原文件（0.25°×0.25°、共同3日）。共同期分别为Mandena 2021-02-07—09、Cangandala 2015-01-03—05、Humaya 2001-07-03—05，均处于各实际工程时段。新来源和对应区域实际数组均非空、原降水有限值非负，空间/时间/单位从NetCDF与官方接口确认，不靠文件名。CMORPH只取必要日，每日全球原文件约0.4MB；POWER仅取小区域，没有下载大段全球历史。没有提前对齐网格、拼成伪高分辨率数据或指定算法赢家。
+
+需求是检验不同机制分析资料之间的降水互补，形成指定区域/时段的新驱动；Mandena有作者明确讨论的原强迫缺测/天气发生器问题，Humaya有实际站点/山区空间代表性问题，Cangandala可比较完整原强迫与两种新分析来源。只是可检验的融合需求，不预设多源一定比单源好。必要转换包括真实坐标映射、CMORPH 0—360与POWER正负经度等价整理，以及日降水率/日累计量和目标模型日支持的明确约定。
+
+两个新产品均声明UTC日。POWER请求显式指定time-standard=UTC。CMORPH原文件标P1D，但time_bounds实际写当日00:00:00—23:59:59，端点差86399秒；初次审计按半开86400秒假设中止，最终保留原始边界、实际差值和P1D声明，明确要求包含终点的发布时间约定需被显式规范，未修改原数据或放宽平台验收。原模型天气端口按model_calendar_day组织；原站点观测日基准未逐站确认，不将新产品UTC定义倒填给原观测。新UTC驱动的目标日约定和原站点比较必须分别处理。
+
+没有提供有依据的误差标准差阵列，不能编造sigma或默认逆方差/等权。POWER和CMORPH均可能共享部分订正雨量信息，作者旧强迫亦可能共享来源，独立参考尚未确立。不能把输入、模拟输出或自留出代理误差当作独立精度证据；本轮不证明融合精度提升、变异优势或模型预报收益。
+
+### 取得方式、失败与限制
+
+原作者ZIP体积较大：MarMenor260MB、Mandena源包336MB、Cangandala ERA5L包492MB、Ngango ERA5L包545MB。先读官方记录大小/许可，再读取HTTP Range原目录，选择必要原生输入，仅下载对应压缩字节块，逐成员检查原CRC、解压字节数和SHA256，避免下载GIS与大量旧结果。最终选用的Mandena数据下载约0.67MB、Cangandala约1.96MB；Humaya原600MB归档完全复用，未重复下载。未完整下载的大作者ZIP不宣称通过其官方整包MD5。原始压缩块、目录、选取计划和下载时间/状态保留。
+
+以下未通过候选不计入三套正式资料，原件/证据集中放在90_未通过候选：官方Ames参考工程有缺失/空文件和站点/WGN关联问题；Osu有版本/覆盖问题；MarMenor基础引用虽通过，逐行天气读取发现CA21_PCP.pcp中如1.158.200.891的异常数值；Ngango原包两个工程表示分别触发严格字段或日期序列问题。没有替作者补文件、猜小数点或改日期来凑通过。这些负例可用于质量守卫测试，不用于宣称真实融合收益。
+
+CHIRPS服务请求曾返回与请求期不符的实际日期（已保存的诊断响应为2020-01-01，而请求为2019-09-10至2019-09-16），被拒绝，未重命名伪装目标时段；其他日期请求和替代服务失败也保留。Daymet主服务401，镜像格式请求400，格式校正后请求超时，停止继续获取，没有虚构Daymet网格。POWER一度框422按官方最小二度框规则修正，只扩大请求范围、不改变原分辨率或日期。候选/服务失败与限定状态统一存JSON，不新建分散Markdown报告。
+
+### 平台接入、运行说明与交付
+
+已读取当前main公共端口实际实现：原始外部产品的source_id/角色、物理字段、时间语义、空间支持并非均能由这些原文件自动组织；UTC日与model_calendar_day也不能无声明匹配。当前三套只能认证上述真实资料、基础引用及有限只读端口状态，不能说这些原始产品均已在页面完成自动融合。Mandena另有-99/WGN的明确读取阻塞。本轮没有创建假不确定性、硬编码规则、专用补丁或用旧固定流程冒充接通，新增源码仅为数据目录内的取得/核验脚本。
+
+根目录TXT说明逐例来源、用途、输入方法、原始分辨率、日界/源身份/独立性限制、SWAT版本和多年运行成本；一次只提交某个案例的platform_inputs，不提交整个混合包。程序环境不在数据包中；使用队友已有平台和匹配SWAT求解器，不默认不同大版本完全兼容，不在原件目录启动多年大量输出。核验脚本“01_校验交接包.py”可换盘运行；--arrays会用既有xarray/numpy重新读真实NetCDF，默认只需Python3.11标准库。它明确显示Mandena端口BLOCKED，不将完整性PASS升级为平台融合PASS。没有启动任何原生模型。
+
+本交付保存三个正式任务、五份不计数的候选表示、官方来源/许可、原始压缩块、下载与全部核验记录。外发ZIP旁有SHA256及交付核验JSON。最终压缩包重新打开核对全量成员后才交付，没有执行外部发送消息或上传。后续应该用这些真实案例检查并修复公共机制，不以这次仅取得数据宣称平台效果已经验证。
+
+来源：[Mandena作者记录](https://zenodo.org/records/21633869)、[Cangandala/Ngango作者记录](https://zenodo.org/records/17736146)、[Humaya作者记录](https://zenodo.org/records/18820320)、[NASA POWER接口与时间定义](https://power.larc.nasa.gov/docs/services/api/temporal/daily/)、[NOAA CMORPH产品](https://www.ncei.noaa.gov/products/climate-data-records/precipitation-cmorph)。实际下载URL及许可均在包内机器清单中，不以网页说明替代真实数组核验。
+
+
+## 2026-11-04 三套SWAT+原资料输入缺陷复现、公共入口修复及保留性复验
+
+本轮按用户明确范围，先复现再修改，只处理外部降水产品识别、原生缺测/WGN兼容读取、阶段状态与逐来源报告。运行目录D:\codex\EcoDataEngine，源码目录D:\codex\EcoDataEngine-GitHub，修复前本地和远端main均为e28070d23919702afc5759052216f7a5006eb962。修复未提交或推送。原交接ZIP SHA256仍为b51e67199aaebce27e6301d1ad747b58844880090e2f45edb46467d18af368b2。
+
+### 复现与分类
+
+原包全新解压至output/swat_source_repair_20261104/original_inputs。逐套只提交platform_inputs的原工程ZIP与4份NetCDF，再用同一原工程ZIP单独对照。六次均执行实际app.py的Streamlit AppTest页面处理事件，无处理器模拟；保留页面元素/状态、日志、实际output/workbench任务目录和下载原包。这是实际页面公共处理函数与真实文件的运行记录，不是浏览器视觉截图，也不是模型求解运行。
+
+三项均复现：完整输入source_fields返回0，三套全部ENGINEERING_INSPECTED；12个原始NetCDF数组可完整读取。Mandena独立weather_ports报负值或缺测标记，另两例48/18端口成功。六次页面status均显示“数据处理完成”，下载仅project_inventory.json及handoff.json。这三项分别属于产品接入缺陷、原生缺测契约兼容缺陷、状态及可追溯报告缺陷，不能归咎于资料损坏或证明作者模型无效。
+
+### 修改范围及科学边界
+
+新增engineering/precipitation_products.py只依据文件内提供方、产品标识和变量语义识别POWER/CMORPH，记录实际坐标、时间边界、单位、缺测、原始元数据与哈希；不依赖文件名制造身份，不修改原始数组/属性。CMORPH多日期分片共享产品source_id，来源身份不代表误差独立性。识别产品仍需通过科学准入：没有确认的日基准、率/累计契约、QA规则等显式列为blocker，不能只添字段就当完成转换。preparation.source_fields及prepare_engineering_inputs使用此识别和准入记录，不再因无自定义source_id而默默忽略原产品。
+
+swat_weather_project._records增加仅供原生读取的allow_native_missing选项；默认转换产品校验仍严格拒绝缺测标记。原生<=-97按SWAT缺测标记保留，weather_ports中仅以NaN掩码表示，保留日期、站点引用、原始记录与作者WGN，不补零、不删日期、不执行发生器。部分天气写回只改实际提供有限新值的记录，未处理缺测保持原标记；拒绝处理结果引入新的缺测哨兵或负降水。原生WGN仅复用既有weather_dependencies检查具名引用和12月统计结构，不等于作者原生运行有效性已证实。
+
+project_inventory与workbench_page使用明确的盘点状态，新增source_admission.json和processing_status.txt，页面/下载逐来源解释识别结果、未使用原因和需确认条件，分别记录工程盘点、融合执行、原生写回、模型运行四个事实。没有新增配置选项、改界面风格、改融合内核、评分、搜索、算法选型或科学参数。
+
+### 同一批未修改原资料的复验结果
+
+|案例|完整输入修复前/后|原天气读取修复后|最终真实阶段|
+|---|---|---|---|
+|Mandena|0→4份外部资源，2产品家族|48端口；pcp_local.pcp原2,191处缺测保留，WGN结构检查无错误|ENGINEERING_INSPECTED；待科学信息确认，未融合/写回/模拟|
+|Cangandala|0→4份外部资源，2产品家族|48端口|ENGINEERING_INSPECTED；待科学信息确认，未融合/写回/模拟|
+|Humaya|0→4份外部资源，2产品家族|18端口|ENGINEERING_INSPECTED；待科学信息确认，未融合/写回/模拟|
+
+另三次仅工程ZIP对照均为0外部来源、ENGINEERING_INSPECTED，页面明确只有盘点。Mandena不同站点引用同一原PCP文件，不能把48端口中的重复缺测掩码合计当作物理文件缺测数。所有六次最终页面无异常、有可读下载；最终下载四项为project_inventory.json、handoff.json、source_admission.json、processing_status.txt。旧下载与中间调试失败保留，不隐去负记录；after_verified与pytest_final_3.log为最终验收证据。
+
+仍阻塞的科学条件：POWER文件本身没有UTC/LST声明，虽然包中其他下载凭据记有UTC，但本轮实际提交的platform_inputs不含该凭据，平台不能越界读取再倒填声明。工程model_calendar_day与新来源UTC日对应未知；CMORPH原mm/day为率、时间边界包含23:59:59，未擅自延长边界或把单位改名当积分。Humaya原0–360经度与负经度工程站点仍需保持网格支持建立对应，未执行无契约重采样。没有真实误差标准差/独立参考资料，不能编造权重或宣称精度提高。资料识别已修复不等于科学契约全部齐全；本轮没有强行融合。
+
+额外问题只记录未扩修：Cangandala原包ERA5L与PCP标题MSWEP的来源标注冲突；同产品日期分片不具误差独立性；工程全部深层依赖、版本兼容和原生运行仍未验收。用户排除的文件头探测“截断”日志原样保留。核验脚本曾需使用文件流避开本机netCDF4直接打开中文路径限制，此为独立读取方法选择，未修改平台文件路径处理。
+
+### 验证与原件保护
+
+158项定向/回归测试通过，覆盖产品改名不影响身份、文件名不能伪造身份、单位/时间边界/QA冲突、缺测读取与温度逻辑、部分天气写回、未处理日期保留、五模型公共端口、工程盘点与页面流程。三个真实工程另用实际write_ports做无数值更新的保留性检查，82/119/91个原成员全部逐字节不变，ZIP CRC回读通过；这三个native_preservation包只证明写回器保留性，不是融合结果，不能将其中writer阶段标签当作真实融合证据。实际六次用户流程没有工程写回。
+
+原交接ZIP及解压出的1,088个文件前后SHA256均一致；与main对比，非目标src/integrations受跟踪文件无差异。7个目标源码/测试文件同步至源码目录和当前运行目录；没有另写实验局部规则。完整证据位于D:\codex\EcoDataEngine\output\swat_source_repair_20261104：before、after_verified、verification_summary.json、integrity_verified.json、code_sync.json、原下载ZIP、页面状态、错误日志及复验说明.txt。唯一总报告仅追加本节，未创建新Markdown报告。
+
+依据：[SWAT+官方天气缺测说明](https://swat-model.github.io/swatplus-editor-documentation/edit-inputs/weather/)、[SWAT+天气发生器说明](https://swatplus.gitbook.io/io-docs/introduction-1/climate)、[NASA POWER时间定义](https://power.larc.nasa.gov/docs/services/api/temporal/daily/)、[NOAA CMORPH产品](https://www.ncei.noaa.gov/products/climate-data-records/precipitation-cmorph)。同时读取既存官方SWAT源码快照commit6f515368525e7d84089ae0f9d33f4c9115de5679中cli_precip_control.f90，确认缺测分支；没有运行上传脚本或模型求解器。
+
+部署复核：已重启本机正式8502平台，当前PID16408，健康检查HTTP200；7个目标文件两目录哈希一致。重启后又用同批原资料完成六次真实页面处理流程，after_deployed/summary.json记录均无异常、均明确ENGINEERING_INSPECTED；此阶段仍未融合、写回或运行求解器。
+
+
+## 2026-11-04 通用降水适配、缺项反馈与多模型真实资料验收
+
+按用户继续补齐通用适配并扩大真实资料验收的要求，本轮修改平台公共入口，复用已安装且有来源依据的xclim 0.59.1、xarray、cf-xarray/Pint与h5netcdf，不写死Mandena/Cangandala/Humaya、日期、路径或算法赢家。GitHub main基线为e28070d23919702afc5759052216f7a5006eb962；本轮14个目标源码/配置/测试文件已同步运行目录和GitHub工作副本，未提交或推送。页面仍只有数据输入、模型选择、自动处理和下载，没有添加科学参数配置面板。
+
+### 本轮真正完成的适配
+
+- 依据官方日产品定义和实际边界自动做降水率×有效区间积分，派生降水量单位为mm；修正SWAT原生逐日降水端口和写出报告的mm/day误标。常规连续序列实际调用xclim.rate2amount，单记录或显式区间用现有Pint量纲计算，不依靠文件名或只改单位标签。旧单站日天气接口仍接受其既有mm/day日平均率输入，经实际24h积分写出mm；真实NASA POWER全年资料已逐值与原JSON对照。
+- CMORPH的原始P1D和00:00:00—23:59:59边界作为原证据保留，派生半开区间明确为24h，未重写原数据。POWER已核查的日产品时间步长可以确定积分长度，不能因此推断UTC/LST日界。
+- 用xarray对经度做等价重标记/排序，同时携带数组和单元边界；同产品分片通过join=exact拼接日期，不默认扩网格、不平均重复日期、不把不同日期视作独立来源。不确定性辅助字段不再被误当成第二降水字段，也不制造sigma。
+- 对原生虚拟天气站可提取原网格单元驱动估计，保留原单元支持；这是坐标对应，不是新点观测、降尺度或精细化。真正执行时仅在各来源与工程共同日期上运行内核，再按原时间索引散回；共同期外的原记录和-99保持，非目标变量/文件保留。
+- 原下载凭据必须匹配文件SHA256、官方接口、参数和日期，才用于核实POWER的UTC/LST选项。仅消费本次上传的凭据，不越界读取原包其他目录；原凭据不是新造科学声明。来源日与模型日不一致时拒绝平移日累计标签，两个LST缩写也不足以证明同一日界，避免把地方太阳时误当当地标准时。
+- 准入继续调用现有AlgorithmSelector及真实融合内核，未修改评分、随机变异、候选赢家或融合权重。缺项集中进入required_information.json、页面及下载包；已完成的适配产物也可下载，不能把适配记成融合/写回完成。
+
+### 三套未修改原资料复验
+
+各自原platform_inputs（一个工程ZIP和四个原始NetCDF）及同一工程ZIP单独对照共六次实际app.py页面处理流程，全部无异常并保留状态、任务目录和原下载包。此处使用无处理函数模拟的Streamlit AppTest，不冒充浏览器视觉验收。12个原始数组实际生成6组适配产物；独立逐数组核对数值、缺测掩码、日期和原网格保留通过。原交接包解压的1,088文件哈希未变。
+
+Mandena、Cangandala、Humaya均仍为ENGINEERING_INSPECTED，三套融合次数和工程写回次数均为0。已完成的是产品适配与准确缺项反馈，不能写成三套融合通过。Mandena原2,191处PCP缺测照常保留，WGN没有运行。
+
+再分别附上原包sources_original中既有POWER_receipt.json做三次公共入口复验，平台自动核实UTC，三个案例的剩余问题均收敛为：
+
+1. MODEL_DAY_UNCONFIRMED：原工程日降水统计的日界未知。用户已表示不清楚；原始天气记录和已交付作者文本没有找到可靠日界依据，不能按经度、文件日期或新产品UTC定义倒填原工程。
+2. FUSION_INPUTS_INCOMPLETE：现有融合候选需要的同支持真实标准差或已绑定的独立训练/观测资源不齐。三份原资料没有这类误差资源；没有从两个来源的差值编造误差或默认等权。不同日期/版本产品的身份本身不证明误差独立性。
+
+只提交原五文件时，POWER凭据不在输入中，会另外提示SOURCE_DAY_UNCONFIRMED；这是上传范围内缺凭据，不能要求平台从未上传的旁边目录读取。原包已有凭据可随工作副本一并提交，原NetCDF不需更改。当前三套暂不能真实融合并写回，科学信息缺失不被伪装成软件已完成。
+
+### 扩展真实资料：五种模型路径均实际处理并独立回读
+
+环境修复后，重新用既有原资料通过相同公共入口运行，未重复下载数据或人为指定算法赢家。全部原输入前后哈希一致，最终下载ZIP CRC通过。独立检查实际原生数组与文件，不能只凭成功提示验收：
+
+|路径|实际结果|独立核验边界|
+|---|---|---|
+|WRF官方轻量案例|SST写回1,640个值|原NetCDF变量/属性保留，非SST变量、陆地与海冰约束读回；不是站点气温融合通过|
+|CALPUFF官方案例|168小时×5站×8字段原生SURF输出|原生SURF解析数值与实际处理产物一致；未运行CALMET/CALPUFF|
+|Robit SWAT+|69个原生工程文件、68项引用绑定|原WGN月统计与导出文件在预设舍入范围内一致；这是工程导出，不能证明额外POWER CSV已融合|
+|CAMx EPA案例|t2写回1,755个值|原生格式、时间、其他变量及属性保留；没有把输出变化当精度提升|
+|CMAQ官方案例|LAI写回4,600个值|与实际处理产物一致，其他变量/属性保留，另用SciPy NetCDF3读取TFLAG/LAI验证|
+
+五套通过的是上述已有工程处理/原生格式路径，不等于五套均完成独立精度验证、所有工程深层依赖齐全或原生求解器运行。没有启动WRF/CCTM/CAMx/SWAT+/CALMET/CALPUFF模拟，没有宣称融合精度提高、全局最优或三画像/变异新优势。
+
+### 测试、环境和正式实例
+
+188项定向与回归测试全部通过，包括已齐全契约下两个来源真实执行融合内核并部分写回、中文输出路径、日界与LST冲突、未知凭据/误差、辅助标准差、单位/区间、经度/边界、缺测保护、五模型公共端口和页面下载。一个旧UI测试依赖已删除的“首轮专项转换”侧栏，已迁移到当前极简页面，保留真实writer执行、下载字节与错误清除验证，没有恢复旧选项或跳过测试。
+
+发现平台虚拟环境继承的python-dateutil 3.0与botocore/aiobotocore要求冲突，Pillow13与Streamlit要求冲突；只在D:\codex\EcoDataEngine\.venv中安装兼容python-dateutil2.9.0.post0、Pillow12.3.0，并在pyproject.toml写明兼容范围。系统包没有卸载或修改，pip check最终无冲突。正式8502实例已重启并HTTP200，运行源码与工作副本目标文件一致。依赖修复后再次完成五套真实处理、独立回读及页面复验。
+
+完整证据集中于D:\codex\EcoDataEngine\output\generic_precip_adaptation_20261104：delivery.json、验收与运行说明.txt、source_sync.json、pytest_signedoff.log、pip_check_final.log、deployment_health.json、raw_signedoff、raw_adaptation_signedoff_verified.json、original_receipt_release.json、extra_cases_release和independent_native_release_verified.json。中间失败及旧日志保留；原先排除的文件头“截断”日志未修。独立PseudoNetCDF检查曾在清理阶段发出非致命警告，最终改用现有SciPy作独立NC3读取，没有修改第三方源码。
+
+复用依据：[xclim GitHub](https://github.com/Ouranosinc/xclim)、[xarray GitHub](https://github.com/pydata/xarray)、[NASA POWER时间定义](https://power.larc.nasa.gov/docs/services/api/temporal/daily/)、[NOAA CMORPH定义](https://www.ncei.noaa.gov/products/climate-data-records/precipitation-cmorph)、[SWAT+逐日降水格式](https://docs.swat.tamu.edu/62.0.1/input-reference/pcp/)。xclim固定版本源文件和许可已取得；xarray指定标签两次获取失败已保存，实际复用已有安装与核查的官方API，不伪称下载到该标签源码。唯一总报告仅追加本节，并同步同名工作副本。
+
+
+## 2026-11-05 工程端口接回公共随机变异并清理固定插件绕行
+
+本节修正上一轮的范围判断：此前新增工程端口虽然完成了产品适配，却走AlgorithmSelector固定适用性筛选和直接执行，没有接入公共process_current_input。因此把当前融合失败笼统归为缺误差/校准资料是不准确的；该结论不能继续作为平台完整选优链路已接通的证据。旧记录保留，本节给出实际修复及验证范围。
+
+### 通用调用链与清理范围
+
+现在为：prepare_uploads → 工程/产品语义与支持核验 → search_bridge → platform_search.process_current_input → 已有任务匹配验证/随机变异/真实候选执行/选图 → 端口质量门 → 原生写回。移除工程入口fusion_prerequisites前置固定插件门槛、FUSION_INPUTS_INCOMPLETE笼统提示，以及process_port中的直接recommend/execute_with_fallback路径。库内AlgorithmSelector、融合内核、评分、变异、验证策略和其他已经正常的入口保留，不是全局删除这些公共模块，也没有给三个流域写专用分支。
+
+新增工程搜索桥接只转换端口形状/单位/真实坐标/逐日区间，不设置候选组合或赢家。实际输入来源按稳定身份排序形成公共接口所需的primary；验证对象是该声明来源的可见值代理，不宣称独立真值。三个及以上实际地理位置进入已有空间留出路径；单位置序列进入已有时间验证路径，样本不足返回VALIDATION_EVIDENCE_INSUFFICIENT。站点ID不能代替经纬度，两处不规则位置也不伪装成规则栅格。无模型软偏好/物理上界时，扩展现有application_contract使hard-only模式可明确保留未知，不编注册属性、评分权重或范围。
+
+同物理量、单位、时间定义、支持类型、来源集合的工程端口按真实坐标联合搜索，防止把多站任务拆成缺乏空间验证样本的单点。相同位置别名不制造额外站点，搜索后映射回各原生资源和时间索引。各端口复用一个shared_search_id及独立成本记录，不能按重复端口报告重计搜索次数。共同期外记录及原生缺测标记保留。只有全部所需组成功后才交付工程更新；搜索证据不足会带诊断下载，不回退到不相关解析分支。页面对未完成任务改为“尚未生成融合交付”，避免将有候选尝试的任务误说成完全未执行。
+
+### 真实来源与工程复验
+
+使用原三套资料和原包POWER凭据，在原文件哈希不变的前提下，原工程均明确仅剩MODEL_DAY_UNCONFIRMED，不再要求先提供误差表或校准资料才能启动通用搜索。原工程日界仍未确认，因此原工程写回次数为0；没有倒填UTC、补零、删日期或冒充完成。
+
+为独立核验公共数值搜索，对三个地区已有UTC来源在原POWER网格中心做源数据级预览，复用实际派生降水量及原单元提取，没有伪造原工程日界、指定算法或构造独立真值：Mandena执行12个候选/36次提议，Cangandala执行12个候选/29次提议，Humaya执行12个候选/36次提议。三者evolution_used均为true，均保存选中图及最终数值执行轨迹（分别2/3/2个部署节点）。这是三个真实来源任务的变异/验证/数值执行证据，不是原SWAT工程写回，不证明融合精度更高或全局最优。原始1,088个文件哈希核对未变。
+
+另以明确标注的合成完整契约工程，真实通过公共API与当前极简页面执行联合搜索、候选数值管线和9份天气文件写回，验证原生文件绑定、非目标内容保护及共享搜索成本。它是端到端机制证据，不作为真实降水精度证据。单位置100日时间序列也实际进入公共时间验证与随机变异并交付产物；两日样本则明确反馈验证证据不足，没有用静态加权绕行。
+
+### 回归与部署
+
+138项相关回归全部通过，覆盖工程桥接、多端口分组、无sigma真实搜索、验证不足、公共页面/工具入口一致、原生写回保护、单位/日期/坐标冲突、五种模型端口、原降水适配和原应用契约。原固定加权路径的测试断言已改为公共搜索契约或真实证据不足预期；九文件页面测试保留了实际writer执行和下载回读。未改库内加权算法实现，没有删除质量守卫来使测试通过。文件头“截断”日志仍不在本轮修复范围。
+
+运行目录与GitHub工作副本的9个目标源码/测试文件已同步，其他src/integrations文件无变动；正式8502实例重启后HTTP200。没有Git提交或推送，没有模型求解器运行。证据集中在D:\codex\EcoDataEngine\output\engineering_search_reconnect_20261105：修复验收说明.txt、delivery.json、pytest_signedoff.log、real_checks.json、real各案例的公共search请求/验证协议/候选结果/变异轨迹/最终执行、code_sync.json和deployment.json。唯一总报告只追加并同步同名工作副本。
+
+
+## 2026-11-05 三套新增资料只读审计与真实公共入口复现
+
+本轮按用户要求先检查，不修改平台源码、原始文件、科学声明、算法、评分或参数，不执行上传脚本或原生模型。核实运行目录D:\codex\EcoDataEngine、8502现有实例及工作副本HEAD e28070d23919702afc5759052216f7a5006eb962；HEAD不代表当前无未提交改动。复现调用实际prepare_uploads，并用无处理函数模拟的Streamlit AppTest运行实际app.py页面。没有把AppTest称为浏览器视觉检查。
+
+三份原ZIP逐一完整CRC通过；外包SHA256及解出的45个文件在检查前后相同。两份SWAT作者包MD5与随包保存的发布者校验记录一致，WRFDA完整gzip流CRC通过。实际读入8份新增NetCDF全部数组、4份WRFDA背景/边界NetCDF全部数值数组，检查13个内部符号链接目标均存在。SWAT两份内层ZIP另做完整CRC与file.cio直接引用检查；并未执行求解器，也没有因此认证全部数据库深层引用或作者模拟结果。
+
+|资料|原包直接提交实际结果|另用原字节内层工程和原来源复验|结论|
+|---|---|---|---|
+|01_WRFDA_真实多源同化资料.zip|页面与API均报“嵌套资料不是可识别的GRIB气象场：be/be.dat”|读到WRFDA的be、ob、rc及3DVAR/4DVAR配置，四份背景/边界数据正常|当前WRF转换器把tar.gz走成仅GRIB强迫分支；WRFDA同化任务尚不在当前已实现流程内，不能将合法be.dat称为损坏|
+|02_Tordera_既有工程与多源降水.zip|内层TxtInOut.zip、空间图层ZIP及说明/审计/凭据JSON被列为用途不明，未找到内层工程|SWAT+ rev61.0.2.61工程被识别后，因“相对湿度必须使用0至1比例”异常终止；仅工程提交则返回带同一错误的工程盘点|既有通用接收缺口，也有作者原湿度数据与标准格式冲突；两者不能混为同一个原因|
+|03_Saguling_完整工程与多源降水.zip|内层轻量工程ZIP、完整7z与说明/审计/凭据被列为用途不明|使用随包原字节轻量工程ZIP、4原始NetCDF及原凭据，识别SWAT+ rev60.5.7、产品及168个天气变量端口，返回ENGINEERING_INSPECTED，唯一必需确认项为MODEL_DAY_UNCONFIRMED|接收问题确实存在；解开后新增产品适配已有作用，但原降水日界缺信息仍不能安全跨源写回；168是变量端口含重复引用，不是168站|
+
+Tordera实际有86个天气文件、291576个<=-97缺测值；保留掩码，未补零、删日或运行WGN。15个湿度文件累计84656条值超过1，最大100，示例84.66667、99。官方*.hmd规范要求fraction而非百分数（https://swatplus.gitbook.io/io-docs/introduction-1/climate/hmd.cli-and-humidity-data-files）；本轮不能按数值范围擅自除100。现有weather_ports先验证所有气象文件，因此不相关湿度也会中断降水任务；带来源时直接抛异常、仅工程时返回诊断，反馈不一致。这是可复用改进点，但没有本轮修改。Tordera的工程日界也未从现有说明得到确认，公共流程尚被更早的湿度错误挡住。
+
+Saguling实际31个天气文件无<=-97缺测，主索引直接引用齐全。两案例的站点范围与新增格点存在空间覆盖和日期交集：Tordera CMORPH2020-01-20至22/POWER01-18至24，Saguling CMORPH2018-02-03至05/POWER02-01至07；实际区域数组有有限非负值。原始不同网格没有改动。新增来源UTC日定义不等于原SWAT工程统计日已知，不能凭同名日期代替区间确认。WRFDA官方教程明确be.dat为背景误差、ob为观测、rc为背景/边界，另需WRFDA程序及表文件（https://www2.mmm.ucar.edu/wrf/users/wrfda/OnlineTutorial/3dvar/testcase.html）。本轮未接入或运行WRFDA。
+
+三套原包均未进入本次随机变异选图、融合交付或原生写回；没有新的算法精度结论。先前“已验收范围内可运行”不能扩展为任意工程ZIP全自动可处理。后续建议只补通用受限嵌套工程识别、工程根/重复版本消歧、凭据与说明分流、任务类型识别及逐资源质量反馈；保留未知日界和单位质量门，不硬改数据或另写案例专用算法。
+
+证据集中于D:\codex\EcoDataEngine\output\new_three_data_audit_20261105：findings.json、raw_integrity.json、inner_archive_checks.json、netcdf_arrays.json、wrfda_arrays.json、inner_integrity_weather.json、02_humidity_audit.json、geotemporal_overlap.json、outer_results.json、page_results.json、inner_results.json，以及每次真实任务目录、原下载包和日志。检查脚本reproduce.py仅位于output审计目录。本节是检查结论，未作修复完成承诺。
+
+
+## 2026-11-05 GitHub复用与三套新增原包接收修复（尚未达到全部融合验收）
+
+用户要求寻找GitHub可复用成果并让三个数据全部测试成功。此处必须区分“原包可识别、正确报告阻塞”与“真实融合写回成功”：本轮完成通用接收修复与真实复验，三套仍未完成融合写回，因此不能标作用户要求已全部完成。原始输入、日界、湿度值、模型参数、随机变异、验证、评分与算法赢家均未人工改动。
+
+### 实际复用与修改
+
+核查并保存py7zr（https://github.com/miurahr/py7zr，LGPL-2.1）、WRF/WRFDA官方源码（https://github.com/wrf-model/WRF）和SWAT+官方源码（https://github.com/swat-model/swatplus）。实际安装py7zr1.1.4，在公共入口直接调用其SevenZipFile/WriterFactory流式读取原7z；ZIP/TAR复用Python标准库。上游仓库commit、许可文件、查阅代码及SHA256记录于upstream_reuse.json与upstream目录。WRF/SWAT+官方代码本轮只用于核验格式与依赖，不能说已接入并运行其求解器。
+
+新增archive_inputs.py，由prepare_uploads统一调用：受限展开嵌套ZIP/TAR/7z；保留虚拟相对目录、原字节和全部来源路径；同路径同SHA资源合并，冲突不选版本。TAR内部链接仅在包内核实目标后变成字节副本，不创建文件系统链接；WRFDA时间戳的冒号只允许在只读虚拟POSIX成员名中，默认工程路径限制保留。保留既有纯GRIB依赖包；发现真正工程控制文件后，工程内部引用的附件ZIP保持原样，不作为包装层拆掉。限定5层、10GiB展开字节与成员数量，所有读取及下载均不执行上传脚本。没有给三个地区写专用分支。
+
+新增wrfda_inputs.py识别实际wrfvar1/wrfvar18配置及背景/观测/误差资源，返回明确的WRFDA_BACKEND_NOT_CONNECTED及诊断下载，不再把be.dat误当损坏GRIB。这是任务识别修复，不是WRFDA同化实现。当前PATH没有da_wrfvar.exe，WSL --status返回50，没有配置可调用的同化后端。官方后端需要观测算子及运行依赖（https://github.com/wrf-model/WRF/blob/master/doc/README.DA），不能用原普通WRF/SST转换替代。
+
+weather_ports新增按真实外部来源物理量判断错误相关性：非本次匹配变量的原天气错误单独报告并保留原文件；若错误涉及目标变量仍拒绝。Tordera原湿度84、99、100没有自动除100或被认证合法。降水端口不再因无关湿度先抛异常，因而能够实际识别和适配新增降水；仅提交原工程时仍如实保留天气质量错误。未修改科学取值或削弱目标变量质量门。
+
+### 三套原资料与当前状态
+
+|原包|修复前|修复后实际范围|剩余阻塞|
+|---|---|---|---|
+|WRFDA|报be/be.dat不是GRIB|展开原TAR、读取配置并追溯背景/观测/误差资源，返回ENGINEERING_INSPECTED及下载|WRFDA_BACKEND_NOT_CONNECTED；没有同化或原生写回|
+|Tordera|内层工程/凭据被判用途不明；拆开后因湿度抛异常|原外包自动找到实际SWAT+工程，识别4份原降水产品并真实适配；湿度及原缺测另列|MODEL_DAY_UNCONFIRMED；原工程降水统计日界仍无可靠依据，不能写回|
+|Saguling|内层ZIP、7z及凭据被判用途不明|原外包自动识别工程、4份原降水产品并真实适配；作者完整7z与轻量副本的同路径同字节资料归并，工程附件保留|MODEL_DAY_UNCONFIRMED；不能写回|
+
+两套作者发布元数据、Tordera所关联的软件/工作流均实际获取并保存，仍未找到可确认原逐日降水统计日界的依据。UTC新产品不能倒推作者原观测/订正序列的日界。Tordera存在多个观测提供者，不能统一猜为UTC。没有让用户重复确认其已表示不知道的信息，也没有制造科学声明绕过质量门。WRFDA官方代码存在不等于当前机器已有可运行后端。以上是剩余客观条件，不能靠GitHub通用解压工具补成真实融合成功。
+
+### 验证及部署
+
+168项相关测试通过，覆盖嵌套包、7z真实解码、重复/冲突、路径穿越、TAR内部链接、POSIX时间戳、工程附件保留、纯GRIB依赖保留、非目标湿度隔离/目标湿度拒绝，以及既有天气、公共搜索桥接、页面和工程写回回归。pip check无冲突。实际app.py无处理函数模拟的AppTest对三份未修改原包执行页面流程；页面无读取异常、可下载诊断，但状态均为ENGINEERING_INSPECTED，不算融合验收通过。页面不是浏览器视觉验收。
+
+另外用旧WRF/SST真实案例经同一公共入口复验，实际PROJECT_UPDATED、输出ZIP CRC通过、原输入哈希不变，耗时约167秒；它是既有路径回归，不能替代新WRFDA成功。原三份外包SHA256保持不变；Tordera原内层361个文件与Saguling轻量副本307个文件，包括GIS与工程附件，在规范接收副本中逐文件哈希相同。中间附件核验失败与旧日志保留，修正后重新复验，没有删除失败证据。
+
+8个本轮目标源码/依赖/测试文件同步到GitHub工作副本并核对SHA，覆盖前的工作副本目标文件另行备份。没有提交或推送。运行平台8502已重启，健康检查HTTP200；界面、选项及算法/评分/变异机制未改。唯一总报告只追加本节并同步同名副本。
+
+证据：D:\codex\EcoDataEngine\output\three_case_integration_20261105中的upstream_reuse.json、upstream、pytest_release.log、pip_check.log、page_signedoff.json及页面真实任务目录、saguling_signedoff、raw_and_project_integrity.json、wrfda_backend_environment.json、regression_real/wrf/receipt.json、code_sync.json和deployment.json。当前不生成“全部通过”交付包，保留未达成的验收项。
