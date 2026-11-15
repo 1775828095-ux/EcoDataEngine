@@ -46,6 +46,9 @@ def scoped(summary, item_key, items):
 
 
 def prepare(summary):
+    if summary.get("catalog_first") and summary["stage"]=="decision":
+        from .catalog_decision import prepare
+        return prepare(summary)
     item_key = {"decision": "candidates", "recommendation": "tasks"}[summary["stage"]]
     items = summary[item_key]
     if any(not isinstance(item, dict) or not isinstance(item.get("id"), str) for item in items):
@@ -69,6 +72,15 @@ def prepare(summary):
         if reason:
             docs = [doc for doc in payload.get("engineering_documents", []) if doc.get("text")]
             docs.sort(key=lambda doc: len(doc["text"]), reverse=True)
+            if summary["stage"]=="recommendation" and len(group)==1 and docs:
+                # This documentation was already presented during catalogue review.
+                # Preserve references, field details and findings within model limits.
+                payload=dict(payload,engineering_documents=[
+                    {k:v for k,v in doc.items() if k!="text"} for doc in payload["engineering_documents"]],
+                    engineering_text_delivery="工程全文已在第一步分批发送，本轮附引用及本地核验结果")
+                fallback=service.preview(payload)
+                if not service.request_capacity_error(fallback):
+                    return Batch(fallback,tuple(item["id"] for item in group))
             if docs:
                 sizes = "、".join(f"{doc['id']} ({len(doc['text'].encode('utf8')) / 1024:.0f} KiB)"
                                  for doc in docs[:5])
@@ -116,7 +128,6 @@ def decision_dialogue(draft, reply, checker, mock, key, progress, check_current,
         questions=list(dict.fromkeys((q["candidate"],q["check"] if q["check"] in CHECKS else "unsupported_check")
                                       for q in reply.get("questions",[]) if q["candidate"] in candidates))
         for cid,_ in questions:
-            decisions.pop(cid,None)
             unresolved[cid]="自动核验后仍缺少完整的判断依据。"
         pending=[q for q in questions if q not in seen][:MAX_QUESTIONS-len(seen)]
         if not pending or turn==MAX_ROUNDS:
@@ -129,7 +140,7 @@ def decision_dialogue(draft, reply, checker, mock, key, progress, check_current,
             evidence.append(dict(candidate=cid,check=check,**result))
         continuation=service.preview(approved,local_evidence=dict(
             rounds_completed=turn+1, final_round=turn+1==MAX_ROUNDS or len(seen)>=MAX_QUESTIONS,
-            results=evidence,
+            results=evidence, previous_decisions=[row for values in decisions.values() for row in values],
             awaiting_decision=[cid for cid in candidates if cid not in decisions]))
         check_current()
         if service.request_capacity_error(continuation):

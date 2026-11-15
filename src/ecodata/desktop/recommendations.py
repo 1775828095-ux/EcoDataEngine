@@ -149,6 +149,8 @@ def make_request(scan, approved, checked, gated, *, local_checks=()):
                           advisory_only=advisory))
     if not tasks:
         raise ValueError("没有通过首页核验的任务")
+    # Samples are added only to the candidate-specific recommendation request.
+    attach_samples(scan,[task["context"] for task in tasks])
     request=dict(stage="recommendation",target_model=approved["target_model"],tasks=tasks,
                  engineering_documents=documents,
                  project_context_document_ids=approved.get("project_context_document_ids",[]),

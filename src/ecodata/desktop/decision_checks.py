@@ -101,8 +101,23 @@ class LocalChecks:
         grids=[resolution(row)[1] for row in rows]
         if check=="metadata":
             safe=public_unit_report(units)
-            # Conversion constants describe units, not values, but only the relation is needed here.
-            return dict(status="checked", unit_status=safe["status"],
+            metadata=[]
+            for row,field in zip(rows,fields):
+                keys=("standard_name","physical_variable","long_name","var_desc","temporal_semantics","dimensions","shape")
+                detail={k:field[k] for k in keys if field.get(k)}
+                detail["variable_name"]=field["name"]
+                detail["unit"]=field["unit"]
+                if row.get("header_only") and row["format"]=="NetCDF":
+                    try:
+                        with self.dataset(row) as dataset:
+                            variable=dataset.variables[field["name"]]
+                            detail.update((k,getattr(variable,k)) for k in keys if isinstance(getattr(variable,k,None),str))
+                            detail["unit"]=str(getattr(variable,"units",detail["unit"]))
+                            detail["dimensions"]=list(variable.dimensions)
+                    except (OSError,ValueError,RuntimeError,ImportError,KeyError):
+                        pass
+                metadata.append(detail)
+            return dict(status="checked", unit_status=safe["status"], metadata=metadata,
                         field_identity_basis=[field_identity(row,field)[1] for row,field in zip(rows,fields)],
                         grid_spacing=spacing_comparison(*grids),
                         grid_roles=[row.get("ioapi_grid_role") for row in rows])

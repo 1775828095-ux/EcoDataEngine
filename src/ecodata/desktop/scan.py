@@ -12,7 +12,6 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 PREFIX = 16384
-ENGINEERING_TEXT_BUDGET = 4 * 1024**2
 MAX_ENTRIES = 20000
 SEQUENTIAL = 64 * 1024**2
 SCIENCE_MEMBER = 8 * 1024**2
@@ -107,20 +106,58 @@ def spacing(values, temporal=False):
     d = np.diff(a)
     return float(d[0]) if len(d) and np.allclose(d, d[0],rtol=1e-5,atol=1e-9) else None
 
+def table_reader(stream, fmt):
+    return csv.reader(stream, delimiter="\t" if fmt=="TSV" else ",", strict=True)
+
+
+def table_prefix(stream, size, fmt):
+    blob=bytearray()
+    while len(blob)<size:
+        chunk=stream.read(min(PREFIX,size-len(blob)))
+        if not chunk:
+            break
+        blob.extend(chunk)
+        text=decode(blob)
+        source=io.StringIO(text,newline="")
+        parser=table_reader(source,fmt)
+        try:
+            header=next(parser,None)
+        except csv.Error:
+            if len(blob)==size:
+                raise
+            continue
+        if header is not None and (source.tell()<len(text) or text.endswith(("\n","\r")) or len(blob)==size):
+            # A wide table may leave no complete sample row in the same prefix.
+            # Read one more bounded window for coordinate and type inference.
+            if source.tell()>len(text)//2:
+                blob.extend(stream.read(min(len(blob),size-len(blob))))
+            break
+    return bytes(blob)
+
+
 def tabular(row, blob, complete):
-    decoded = decode(blob)
-    lines = decoded.splitlines()
-    if not complete and not decoded.endswith(("\n","\r")):
-        lines = lines[:-1]
-        if not lines:
-            row["pending"].append("CSV / TSV 表头超出前缀读取预算")
-            return
-    if not lines: return
-    reader = csv.reader(lines, delimiter="\t" if row["format"]=="TSV" else ",", strict=True)
-    header = next(reader)
-    import itertools
-    samples = [r for r in itertools.islice(reader, 16) if len(r)==len(header)]
-    for i, title in enumerate(header[:512]):
+    decoded=decode(blob)
+    reader=table_reader(io.StringIO(decoded,newline=""),row["format"])
+    header=next(reader,None)
+    if header is None:
+        return
+    samples=[]
+    line_count=len(decoded.splitlines())
+    ends_at_line=decoded.endswith(("\n","\r"))
+    for _ in range(16):
+        try:
+            values=next(reader,None)
+        except csv.Error:
+            if complete:
+                raise
+            break
+        if values is None:
+            break
+        if not complete and not ends_at_line and reader.line_num>=line_count:
+            break
+        if len(values)==len(header):
+            samples.append(values)
+    for i,title in enumerate(header):
         values = [r[i] for r in samples if r[i].strip()]
         m = re.fullmatch(r"(.+?)\s*[\[(]([^\])]+)[\])]", title)
         name, unit = (m[1].strip(),m[2]) if m else (title,"")
@@ -137,14 +174,12 @@ def tabular(row, blob, complete):
             parsed=pd.to_datetime(values,errors="coerce",format="mixed",utc=True).dropna()
             if len(parsed):
                 row["time_coverage"]=(parsed.min().timestamp(),parsed.max().timestamp(),
-                    "all_table_records" if complete and len(lines)<=17 and len(parsed)==len(samples) else "sampled_table_records")
+                    "all_table_records" if complete and line_count<=17 and len(parsed)==len(samples) else "sampled_table_records")
             step = spacing(values, True)
             if step is not None:
                 typ = "time"
                 row["resolution"]["time_seconds"] = step
-        row["fields"].append(dict(name=name, type=typ, unit=unit, axis=base in AXES))
-    if len(header)>512:
-        row["pending"].append(f"表头共 {len(header)} 列，本次读取前 512 列")
+        row["fields"].append(dict(name=name, original_header=title, type=typ, unit=unit, axis=base in AXES))
     if row["format"]=="CSV" and {"station_id","time_utc","latitude","longitude","levels"} <= set(header):
         from ecodata.models.task_dispatch import OBSERVATION_COLUMNS
         for field in row["fields"]:
@@ -302,9 +337,7 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
                 row["declared_time_resolution"]=ds.time_coverage_resolution
             bounds={str(getattr(v,"bounds","")) for v in ds.variables.values()}
             coords={}
-            if len(ds.variables)>512:
-                row["pending"].append(f"NetCDF 共 {len(ds.variables)} 个变量，本次读取前 512 个")
-            for k,v in list(ds.variables.items())[:512]:
+            for k,v in ds.variables.items():
                 coordinate=coordinate_kind(k,{name:getattr(v,name,"") for name in ("axis","standard_name","units")})
                 if coordinate and v.ndim in (1,2,3):
                     coords.setdefault(coordinate,v)
@@ -313,7 +346,7 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
                     getattr(companion,"source_scale_factor",None) is not None or
                     getattr(v,"source_fill_value",None) is not None)
                 row["fields"].append(dict(name=k,type=str(v.dtype),unit=str(getattr(v,"units","")).strip(),
-                    standard_name=str(getattr(v,"standard_name","")), physical_variable=str(getattr(v,"physical_variable","")), long_name=str(getattr(v,"long_name","")).strip(), var_desc=str(getattr(v,"var_desc","")).strip()[:240], raw_companion=raw_companion, temporal_semantics=str(getattr(v,"temporal_semantics","")), dimensions=list(v.dimensions), axis=bool(coordinate) or k.casefold() in AXES or (k.casefold()=="tflag" and tuple(d.casefold() for d in v.dimensions)==("tstep","var","date-time")) or k in bounds or k.casefold().endswith(("_bounds","_bnds")) or v.dimensions==(k,)))
+                    standard_name=str(getattr(v,"standard_name","")), physical_variable=str(getattr(v,"physical_variable","")), long_name=str(getattr(v,"long_name","")).strip(), var_desc=str(getattr(v,"var_desc","")).strip(), raw_companion=raw_companion, temporal_semantics=str(getattr(v,"temporal_semantics","")), dimensions=list(v.dimensions), axis=bool(coordinate) or k.casefold() in AXES or (k.casefold()=="tflag" and tuple(d.casefold() for d in v.dimensions)==("tstep","var","date-time")) or k in bounds or k.casefold().endswith(("_bounds","_bnds")) or v.dimensions==(k,)))
                 if header_only:
                     continue
                 if v.ndim==1 and coordinate=="time" and len(v):
@@ -368,7 +401,7 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
             row["dimensions"]=dict(width=ds.width,height=ds.height)
             import json
             saved=json.loads(ds.tags().get("ecodata_metadata","{}"))
-            for i in range(min(ds.count,512)):
+            for i in range(ds.count):
                 name=saved.get("export_variable","value") if ds.count==1 else (ds.descriptions[i] or f"band_{i+1}")
                 attrs=saved.get("variables",{}).get(name,{})
                 row["fields"].append(dict(name=name,type=ds.dtypes[i],unit=attrs.get("units") or ds.units[i] or "",
@@ -383,14 +416,16 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
             workbook=load_workbook(stream,read_only=True,data_only=True)
             try:
                 visible=[sheet for sheet in workbook if sheet.sheet_state=="visible" and sheet.title!="_ecodata_metadata"]
-                if len(visible)!=1:
-                    row["pending"].append("多工作表需要通过原版规则确认数据区")
-                    return
-                sheet=visible[0]
-                buffer=io.StringIO()
-                writer=csv.writer(buffer)
-                writer.writerows(sheet.iter_rows(max_row=17,max_col=min(sheet.max_column or 512,512),values_only=True))
-                tabular(row,buffer.getvalue().encode("utf8"),False)
+                if len(visible)>1:
+                    row["pending"].append("已扫描可见工作表表头；多工作表执行前需通过原版规则确认数据区")
+                for sheet in visible:
+                    buffer=io.StringIO()
+                    writer=csv.writer(buffer)
+                    start=len(row["fields"])
+                    writer.writerows(sheet.iter_rows(max_row=17,values_only=True))
+                    tabular(row,buffer.getvalue().encode("utf8"),False)
+                    for field in row["fields"][start:]:
+                        field["sheet"]=sheet.title
                 if "_ecodata_metadata" in workbook.sheetnames:
                     import json
                     from itertools import islice
@@ -408,7 +443,7 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
     elif fmt=="Parquet":
         import pyarrow.parquet as pq
         row["fields"]=[dict(name=f.name,type=str(f.type),unit="",axis=f.name.casefold() in AXES)
-                       for f in list(pq.read_schema(io.BytesIO(blob) if blob is not None else path))[:512]]
+                       for f in pq.read_schema(io.BytesIO(blob) if blob is not None else path)]
         row["basis"].append("Parquet 页脚 schema；未读数据行")
     elif fmt=="HDF5":
         scan_hdf(row,stream if stream is not None else io.BytesIO(blob) if blob is not None else path)
@@ -420,8 +455,13 @@ def scan_hdf(row,source):
     with h5py.File(source) as ds:
         def visitor(k,v):
             if isinstance(v,h5py.Dataset):
-                row["fields"].append(dict(name=k,type=str(v.dtype),unit=str(v.attrs.get("units","")),axis=False))
-            if len(row["fields"])>=512: return True
+                def attrs(name):
+                    value=v.attrs.get(name,"")
+                    return decode(value) if isinstance(value,bytes) else str(value).strip()
+                row["fields"].append(dict(name=k,type=str(v.dtype),unit=attrs("units"),axis=False,
+                    standard_name=attrs("standard_name"),physical_variable=attrs("physical_variable"),
+                    long_name=attrs("long_name"),var_desc=attrs("var_desc"),
+                    temporal_semantics=attrs("temporal_semantics"),shape=list(v.shape)))
         ds.visititems(visitor)
     row["basis"].append("HDF5 数据集属性；未读数据数组")
 
@@ -439,10 +479,9 @@ class Scanner:
         rows, docs, warnings, sequential = [], [], [], []
         count = 0
         scientific_bytes = 0
-        doc_bytes = 0
 
         def item(name, size, ref, reader=None, local=None, open_member=None):
-            nonlocal count, scientific_bytes, doc_bytes
+            nonlocal count, scientific_bytes
             if not safe(name): return
             if len(rows)>=MAX_ENTRIES: raise ValueError("达到成员上限，清单可能不完整")
             p = PurePosixPath(name)
@@ -453,10 +492,9 @@ class Scanner:
             doc = ext in DOCS or p.name.lower().startswith("readme") or p.name.casefold()=="namelist.input"
             if doc:
                 row["engineering_text_status"]="archive_member_not_read" if not reader else "read_error"
-                if reader and doc_bytes+size<=ENGINEERING_TEXT_BUDGET:
+                if reader:
                     blob=reader(size)
                     count+=len(blob)
-                    doc_bytes+=len(blob)
                     if len(blob)==size:
                         content=decode(blob)
                         if "\x00" in content or "\ufffd" in content:
@@ -479,10 +517,13 @@ class Scanner:
                                 row["original_probe_payload"]=blob
                             row["engineering_text_status"]="complete"
                             row["basis"].append("工程说明全文已读取")
-                elif reader:
-                    row["engineering_text_status"]="text_budget_exceeded"
             elif reader and ext in {".csv",".tsv"}:
-                blob=reader(min(size,PREFIX))
+                if open_member or local:
+                    with (open_member() if open_member else local.open("rb")) as stream:
+                        blob=table_prefix(stream,size,row["format"])
+                else:
+                    # The 7z reader already materialized this bounded member.
+                    blob=reader(size)
                 count+=len(blob)
                 tabular(row,blob,len(blob)==size)
             elif reader and not local and row["format"] in {"NetCDF","Excel","GeoTIFF","Parquet","HDF5"}:
@@ -574,7 +615,8 @@ class Scanner:
                                         if entry.isfile():
                                             def prefix(n):
                                                 with tar.extractfile(entry) as f: return f.read(n)
-                                            attempt(entry.name,entry.size,(path,k,entry.name,entry.offset_data),prefix)
+                                            attempt(entry.name,entry.size,(path,k,entry.name,entry.offset_data),prefix,None,
+                                                    (lambda:tar.extractfile(entry)) if PurePosixPath(entry.name).suffix.lower() in {".csv",".tsv"} else None)
                             finally:
                                 sequential.append(dict(name=name, raw_read_bytes=physical.count, decoded_stream_bytes=decoded.count))
                 elif k=="7z":

@@ -3,8 +3,10 @@ import json
 
 from . import service
 
-HARD_STOPS={"unit_conflict","same_product","scope","disjoint_time"}
+HARD_STOPS={"unit_conflict","quantity_conflict","scope","disjoint_time","coordinate_field"}
 STOP_REASONS={
+    "quantity_conflict":"两份元数据明确声明了不同物理量",
+    "coordinate_field":"至少一个字段是坐标轴而非观测变量",
     "unit_conflict":"已确认的物理量单位不兼容",
     "unit_unknown":"缺少已核实的单位",
     "scope":"候选或字段不在已审核范围",
@@ -19,7 +21,8 @@ STOP_REASONS={
 }
 
 
-def review(scan,batches,checked,reply,mock,key,progress):
+def review(scan,batches,checked,reply,mock,key,progress,*,checker=None):
+    from .decision_checks import CHECKS
     from .scan import assert_current
 
     blocked={row["candidate"]:row for row in checked if row["action"]=="fusion"
@@ -36,7 +39,7 @@ def review(scan,batches,checked,reply,mock,key,progress):
         # Include only previously approved context and controlled, locally generated codes.
         from .request_batches import scoped
         context=scoped(approved,"candidates",[row for row in approved["candidates"] if row["id"] in ids])
-        context.update(stage="fusion_review",local_stops=[
+        context.update(stage="fusion_review",local_check_types=CHECKS,local_stops=[
             dict(candidate=row["candidate"],code=row["block_code"],
                  explanation=STOP_REASONS[row["block_code"]],
                  unit_status=row.get("unit_check",{}).get("status"))
@@ -48,6 +51,25 @@ def review(scan,batches,checked,reply,mock,key,progress):
         try:
             receipts=reply.setdefault("api_receipts",[])
             response=service.send(draft,draft.digest,mock,api_key=key,on_receipt=receipts.append)
+            if checker is not None:
+                pairs={pair["id"]:pair for pair in context["candidates"]}
+                asked=set()
+                questions=response.get("questions",[])
+                if isinstance(questions,list):
+                    for question in questions:
+                        if not isinstance(question,dict):
+                            continue
+                        cid,check=question.get("candidate"),question.get("check")
+                        if not isinstance(cid,str) or not isinstance(check,str) or cid not in pairs or check not in CHECKS or (cid,check) in asked:
+                            continue
+                        asked.add((cid,check))
+                        evidence=dict(candidate=cid,check=check,**checker(cid,check,pairs[cid]))
+                        context["local_check_results"].append(evidence)
+                        reply.setdefault("local_checks",[]).append(evidence)
+                if asked:
+                    context["final_round"]=True
+                    revised=service.preview(context)
+                    response=service.send(revised,revised.digest,mock,api_key=key,on_receipt=receipts.append)
             results={row["candidate"]:row for row in response["reviews"] if isinstance(row,dict)
                      and isinstance(row.get("candidate"),str) and row["candidate"] in ids
                      and row.get("verdict") in ("uphold","retain","uncertain")}
@@ -62,6 +84,6 @@ def review(scan,batches,checked,reply,mock,key,progress):
                         reason=str(verdict.get("reason",""))[:600])
             reply["fusion_reviews"].append(record)
             row["fusion_review"]=record
-            if record["verdict"]=="retain" and row["block_code"] not in HARD_STOPS:
+            if record["verdict"]!="uphold" and row["block_code"] not in HARD_STOPS:
                 row["next_step"]="recommendation_only"
                 row["status"]="保留融合建议，执行待核验"
