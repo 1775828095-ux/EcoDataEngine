@@ -192,3 +192,41 @@ def relationships(records):
             required_checks=['独立来源/工程用途', '空间覆盖、坐标与重网格守恒要求',
                              '时间支持及覆盖相容', '质量标记处理规则', '目标工程写入契约']))
     return result
+
+
+def compare_units(left_quantity, left_unit, right_quantity, right_unit):
+    """Match physical identity before comparing representation or scale."""
+    from math import isfinite, isclose
+    from ecodata.core.exceptions import SchemaError
+    from ecodata.engines.units import UnitEngine
+
+    units = [str(unit or "").strip() for unit in (left_unit, right_unit)]
+    target, source = units
+    report = dict(quantity=left_quantity if left_quantity == right_quantity else None,
+                  source_unit=source, target_unit=target)
+    if not report["quantity"]:
+        return dict(report, status="physical_identity_unconfirmed")
+    if not all(units):
+        return dict(report, status="unit_unknown")
+    try:
+        scale, offset = UnitEngine().affine(source, target)
+        if not isfinite(scale) or not isfinite(offset) or scale == 0:
+            raise ValueError("invalid affine conversion")
+    except (SchemaError, ValueError, TypeError, OverflowError):
+        return dict(report, status="unit_not_convertible")
+    equivalent = isclose(scale, 1., rel_tol=1e-12) and isclose(offset, 0., abs_tol=1e-12)
+    return dict(report, status="equivalent" if equivalent else "convertible",
+                scale=scale, offset=offset)
+
+
+def convert_matched_field(field, quantity, target_unit, *, verified_quantity=None):
+    """Harmonize a verified field prior to passing it to numerical processing."""
+    from ecodata.engines.units import UnitEngine
+
+    actual, _ = identity(field.name, field.attrs)
+    if actual is None:
+        actual = verified_quantity
+    report = compare_units(quantity, target_unit, actual, field.attrs.get("units"))
+    if report["status"] not in {"equivalent", "convertible"}:
+        raise ValueError("物理量或单位未通过核验：" + report["status"])
+    return UnitEngine().convert(field, target_unit)

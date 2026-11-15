@@ -159,34 +159,13 @@ def align_and_fuse(datasets, variable, *, frequency=None, resolution=None, metho
         sources[0] = target
         plan.append({"source": 1, "operation": "目标网格尺度转换", "resolution_km": resolution, "method": method})
     target_crs = CRS.from_user_input(target.attrs["crs"])
-    template = target[[variable]].isel(time=0, drop=True) if all(has_time) else target[[variable]]
-    _, target_transform, _ = raster_plane(template, variable)
-    target_shape = (target.sizes["lat"], target.sizes["lon"])
-    for index, ds in enumerate(sources):
-        crs = CRS.from_user_input(ds.attrs["crs"])
-        same = crs == target_crs and np.array_equal(ds.lat, target.lat) and np.array_equal(ds.lon, target.lon)
-        if same:
-            continue
-        arrays = {}
-        for name in (variable, "uncertainty"):
-            frames = []
-            count = ds.sizes["time"] if all(has_time) else 1
-            for slot in range(count):
-                plane_ds = ds[[name]].isel(time=slot, drop=True) if all(has_time) else ds[[name]]
-                plane, transform, _ = raster_plane(plane_ds, name)
-                output = np.full(target_shape, np.nan)
-                reproject(plane, output, src_transform=transform, src_crs=crs,
-                          dst_transform=target_transform, dst_crs=target_crs,
-                          src_nodata=np.nan, dst_nodata=np.nan, resampling=getattr(Resampling, method))
-                frames.append(output[::-1])
-            arrays[name] = (("time", "lat", "lon") if all(has_time) else ("lat", "lon"), np.stack(frames) if all(has_time) else frames[0])
-        aligned = xr.Dataset(arrays, coords={axis: target[axis] for axis in target[variable].dims}, attrs=dict(target.attrs))
-        for name in arrays:
-            aligned[name].attrs = dict(ds[name].attrs)
-        if not np.isfinite(aligned[variable]).any():
+    for index,ds in enumerate(sources):
+        aligned, step = reproject_fields(ds,target,(variable,"uncertainty"),method)
+        if step and not np.isfinite(aligned[variable]).any():
             raise SchemaError(f"数据 {index+1} 与目标空间范围没有有效重叠")
         sources[index] = aligned
-        plan.append({"source": index+1, "operation": "CRS/网格/范围对齐", "source_crs": crs.to_string(), "target_crs": target_crs.to_string(), "method": method})
+        if step:
+            plan.append(dict(source=index+1, **step))
     bundles = []
     for index, ds in enumerate(sources):
         try:
@@ -206,3 +185,38 @@ def align_and_fuse(datasets, variable, *, frequency=None, resolution=None, metho
     return result, {"steps": plan, "reference": "第一个/主数据网格", "target_unit": unit,
                     "target_CRS": target_crs.to_string(), "time_policy": "共同时间范围内插，不外推",
                     "uncertainty_note": "不确定度同步换算和插值；未估计跨源相关性或重采样协方差", "seconds": time.perf_counter()-started}
+
+
+def reproject_fields(source, target, variables, method):
+    """Original raster alignment, shared with the desktop without requiring uncertainty."""
+    if method not in {"nearest", "bilinear"}:
+        raise SchemaError("投影转换支持最近邻和双线性")
+    crs = CRS.from_user_input(source.attrs["crs"])
+    target_crs = CRS.from_user_input(target.attrs["crs"])
+    if crs == target_crs and np.array_equal(source.lat,target.lat) and np.array_equal(source.lon,target.lon):
+        return source, None
+    variable = variables[0]
+    has_time = "time" in source[variable].dims
+    target_variable = target[variable]
+    template = target[[variable]].isel(time=0,drop=True) if "time" in target_variable.dims else target[[variable]]
+    _, target_transform, _ = raster_plane(template,variable)
+    target_shape = (target.sizes["lat"],target.sizes["lon"])
+    fields = {}
+    for name in variables:
+        frames = []
+        for slot in range(source.sizes["time"] if has_time else 1):
+            frame = source[[name]].isel(time=slot,drop=True) if has_time else source[[name]]
+            plane, transform, _ = raster_plane(frame,name)
+            output = np.full(target_shape,np.nan)
+            reproject(plane,output,src_transform=transform,src_crs=crs,
+                      dst_transform=target_transform,dst_crs=target_crs,src_nodata=np.nan,
+                      dst_nodata=np.nan,resampling=getattr(Resampling,method))
+            frames.append(output[::-1])
+        dims = ("time","lat","lon") if has_time else ("lat","lon")
+        fields[name] = (dims,np.stack(frames) if has_time else frames[0],dict(source[name].attrs))
+    coords = {axis:target[axis] for axis in ("lat","lon")}
+    if has_time:
+        coords["time"] = source.time
+    aligned = xr.Dataset(fields,coords=coords,attrs=dict(source.attrs,crs=target.attrs["crs"],spatial_x="lon",spatial_y="lat"))
+    return aligned,dict(operation="CRS/网格/范围对齐", source_crs=crs.to_string(),
+                         target_crs=target_crs.to_string(),method=method)

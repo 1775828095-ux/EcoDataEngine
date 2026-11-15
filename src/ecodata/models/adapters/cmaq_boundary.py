@@ -11,6 +11,12 @@ from ecodata.models.adaptation import unit_transform
 from ecodata.models.adapters.cmaq_gridded_emissions import _grid,_time,_griddesc,_number,CATALOG
 
 
+def external_perimeter(nx, ny):
+    """I/O API BNDARY3, NTHIK=1, using interior indices 1..nx and 1..ny."""
+    return ([(i,0) for i in range(1,nx+2)] + [(nx+1,j) for j in range(1,ny+2)]
+            + [(i,ny+1) for i in range(nx+1)] + [(0,j) for j in range(ny+1)])
+
+
 def export_boundary(ds,cfg):
     if cfg.get('version')!='CMAQ-5.5' or cfg.get('mechanism')!=CATALOG['mechanism']:raise SchemaError('仅支持CMAQ5.5/cb6r3_ae7_aq边界资料直接编码')
     source=cfg.get('source')
@@ -31,9 +37,7 @@ def export_boundary(ds,cfg):
     if layer not in ds.coords or ds[layer].dims!=(layer,) or not np.array_equal(ds[layer],np.arange(1,nlay+1)):raise SchemaError('layer须按源VGLVLS从地面向上编号1..NLAYS；不推算层')
     if perim not in ds.coords or ds[perim].dims!=(perim,) or len(np.unique(ds[perim]))!=ds.sizes[perim]:raise SchemaError('perimeter需唯一一维标识')
     nx,ny=grid['NCOLS'],grid['NROWS']
-    # CMAS official BDY.jpg: S west->east, E south->north,
-    # N west->east, W south->north, each includes its leading/trailing corner.
-    expected=[(i,0) for i in range(1,nx+2)]+[(nx+1,j) for j in range(1,ny+2)]+[(i,ny+1) for i in range(nx+1)]+[(0,j) for j in range(ny+1)]
+    expected=external_perimeter(nx,ny)
     pm=cfg.get('perimeter_mapping')
     if not isinstance(pm,dict) or set(pm)!={'column','row','x','y'}:raise SchemaError('perimeter_mapping需column/row/x/y四个源变量；含外圈0索引')
     vectors={}

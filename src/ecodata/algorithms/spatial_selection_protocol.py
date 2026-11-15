@@ -61,3 +61,20 @@ def error_metrics(prediction, reference):
     error = prediction[mask] - reference[mask]
     return dict(RMSE=float(np.sqrt(np.mean(error**2))),
                 MAE=float(np.mean(abs(error))), Bias=float(error.mean()), count=int(mask.sum()))
+
+
+def xskillscore_assessment(prediction, reference):
+    """Score frozen predictions on the same finite reference points."""
+    import xarray as xr
+    import xskillscore as xs
+
+    mask = np.isfinite(reference)
+    if prediction.shape != reference.shape or not mask.any():
+        raise ValueError("No matching finite reference on fixed assessment support")
+    if not np.isfinite(prediction[mask]).all():
+        raise ValueError("Incomplete prediction on fixed assessment support")
+    actual = xr.DataArray(reference[mask], dims=["matched_sample"])
+    estimate = xr.DataArray(prediction[mask], dims=["matched_sample"])
+    return dict(RMSE=float(xs.rmse(estimate, actual).item()),
+                MAE=float(xs.mae(estimate, actual).item()),
+                Bias=float(xs.me(estimate, actual).item()), count=int(mask.sum()))

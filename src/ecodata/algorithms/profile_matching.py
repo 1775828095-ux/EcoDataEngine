@@ -73,7 +73,14 @@ def prepare_model_request(request):
     unit = field.get("unit", "")
     if unit.casefold() in GENERIC_UNITS:
         raise ValueError("Model field unit is UNKNOWN; confirm the contract first")
-    if request.get("unit") != unit:
+    daily_amount = (
+        request.get("model_unit_binding") == "verified_utc_daily_precipitation_amount"
+        and request.get("processing_goal") == "spatial_fusion"
+        and request.get("temporal_semantics") == "accumulation"
+        and request.get("physical_variable") == field["name"] == "precipitation"
+        and request.get("unit") == "mm" and unit == "mm/day"
+    )
+    if request.get("unit") != unit and not daily_amount:
         raise ValueError("Model field unit differs; explicit unit conversion is required before this task")
     kind = field.get("data_type", field.get("kind", "continuous"))
     if request.get("semantic_type") != kind:
@@ -113,6 +120,9 @@ def prepare_model_request(request):
                  remaining_roles=[r['role'] for r in table['roles'] if r['required'] and r['role']!=spec['role']],
                  matching_requirements=matching,attribute_registry=registry,scoring_parameters=scoring_parameters,
                  application_preferences=validate_preferences(request.get("preferences", {})))
+    if daily_amount:
+        table["model_unit_binding"] = dict(model_unit=unit, search_unit="mm",
+            basis="Rate integrated over exactly one day; the spatial search checks interval bounds.")
     if state_policy is not None:table["state_policy"]=state_policy
     return result, table
 

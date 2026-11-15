@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 
 
-def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
+def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, request_builder=None):
     """Shared input roles apply to page, toolkit and research callers alike."""
     from ecodata.models.source_catalog import partition_uploads
     import hashlib,zipfile
@@ -11,7 +11,7 @@ def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
     active,roles=partition_uploads(uploads,folder)
     from ecodata.models.archive_inputs import normalize_archives
     active,intake=normalize_archives(active,folder)
-    result=_prepare_uploads(active,model_id,folder,progress,task=task)
+    result=_prepare_uploads(active,model_id,folder,progress,task=task,request_builder=request_builder)
     if intake:
         with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
             archive.write(folder/'archive_intake.json','_ecodata/archive_intake.json')
@@ -26,7 +26,7 @@ def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
     return result
 
 
-def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
+def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, request_builder=None):
     # Lazy scientific imports keep the input screen responsive.
     import numpy as np
     from ecodata.recognition import recognise_file
@@ -49,7 +49,7 @@ def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
         if wrfda is not None:return wrfda
     if task is None:
         from ecodata.models.engineering.preparation import prepare_engineering_inputs
-        prepared = prepare_engineering_inputs(uploads, model_id, folder, progress=progress)
+        prepared = prepare_engineering_inputs(uploads, model_id, folder, progress=progress, request_builder=request_builder)
         if prepared is not None:
             return prepared
     from ecodata.models.component_service import prepare_components
@@ -57,7 +57,7 @@ def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
     if component is not None:
         return component
     from ecodata.models.task_dispatch import dispatch_preparation
-    dispatched = dispatch_preparation(uploads, model_id, folder, progress=progress, task=task)
+    dispatched = dispatch_preparation(uploads, model_id, folder, progress=progress, task=task, request_builder=request_builder)
     if dispatched is not None:
         return dispatched
     from ecodata.models.swat_editor_project import prepare_editor_project
@@ -253,6 +253,8 @@ def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None):
             from ecodata.models.alignment_bridge import align_inputs
             search_inputs, alignment = align_inputs(search_inputs, request, task_folder/'alignment')
             request=dict(request,observation_crs=alignment['observation_crs'])
+            if request_builder is not None:
+                request = request_builder(request)
             result = process_current_input(search_inputs, request, task_folder / "search", progress=progress)
             result['alignment']=alignment
             action['algorithm_search_executed']=bool(result.get('counts',{}).get('evaluated',0))

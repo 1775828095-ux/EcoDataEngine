@@ -20,7 +20,33 @@ def load_converter(model_id, finder=None):
     entries = list((finder or entry_points)(group='ecodata.model_converters', name=model_id))
     if len(entries) > 1:
         raise ValueError('同一模型注册了多个转换器：' + model_id)
-    return entries[0].load() if entries else None
+    if entries:
+        return entries[0].load()
+    # Source-tree desktop launches include the bundled package on sys.path
+    # without its installed entry-point metadata.
+    if finder is None:
+        return bundled_converter(model_id)
+    return None
+
+
+def bundled_converter(model_id):
+    if model_id=="swat_plus":
+        try:
+            from local_swat_converter import convert
+        except ModuleNotFoundError as exc:
+            if exc.name != "local_swat_converter":
+                raise
+        else:
+            return convert
+    if model_id in {"wrf","camx","cmaq","calpuff"}:
+        try:
+            import existing_air_converters
+        except ModuleNotFoundError as exc:
+            if exc.name != "existing_air_converters":
+                raise
+        else:
+            return getattr(existing_air_converters,model_id)
+    return None
 
 
 def converter_requirements(model_id, converter=None):
