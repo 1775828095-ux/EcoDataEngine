@@ -26,7 +26,8 @@ def inspect(scan, model):
         name = row["name"]
         artifact = row.get("original_probe_payload",b"")
         members.append((name,artifact))
-        facts.append(dict(file=name,facts=row.get("original_native_header")))
+        facts.append(dict(file=name,facts=row.get("original_native_header"),
+                          payload_read="original_probe_payload" in row or row["bytes"]==0))
         if not artifact or not name.casefold().endswith(".json"):
             continue
         try:

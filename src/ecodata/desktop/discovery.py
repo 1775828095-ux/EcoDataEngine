@@ -227,6 +227,8 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
                 standard_name=field.get("standard_name") or None, physical_variable=field.get("physical_variable") or None,
                 long_name=field.get("long_name") or None, var_desc=field.get("var_desc") or None,
                 temporal_semantics=field.get("temporal_semantics") or None,
+                **({"time_cell_methods":field["time_cell_methods"],"time_cell_methods_basis":"CF cell_methods"}
+                   if field.get("time_cell_methods") else {}),
                 source_column=field.get("source_column"),
                 dimensions=field.get("dimensions"), shape=field.get("shape"), sheet=field.get("sheet"), axis=field["axis"],
                 raw_companion=field.get("raw_companion",False),
@@ -247,11 +249,13 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
                 candidate_model_input=("；".join(model_matches) if model_matches else
                     MODEL_USES.get(model_id,{}).get(family,"目标模型输入类别待确认")),
                 model_input_match_basis="原版模型画像与字段单位匹配" if model_matches else None,
-                time_resolution_class=time_class(t),
+                time_resolution_class=row.get("declared_output_period") or time_class(t),
+                **({"declared_output_period":row["declared_output_period"]} if row.get("declared_output_period") else {}),
                 sampling_interval_seconds=t, time_cell_duration_seconds=row.get("time_cell_seconds"), declared_time_resolution=row.get("declared_time_resolution"), grid_interval=grid,
                 time_spacing_evidence=(
                     "P1D_declaration_and_single_cell_bounds" if t and not row["resolution"].get("time_seconds")
-                    else row.get("time_spacing_basis", "table_sample" if row["format"] in {"CSV","TSV"} else "coordinate_sample") if t else "unknown"),
+                    else row.get("time_spacing_basis", "table_sample" if row["format"] in {"CSV","TSV"} else "coordinate_sample")
+                    if t or row.get("declared_output_period") else "unknown"),
                 time_coverage_evidence=row.get("time_coverage",(None,None,"unknown"))[2],
                 grid_spacing_evidence=row.get("grid_spacing_basis","coordinate_or_raster_metadata") if g else "unknown",
                 declared_coverage_duration_seconds=(row["time_coverage"][1]-row["time_coverage"][0]
@@ -265,6 +269,10 @@ TASK_GOALS={
 }
 
 def discover(scan, model_id=None, task_goal="auto"):
+    if scan.get("shallow"):
+        return dict(stage="decision",catalog_first=True,
+                    target_model=dict(id=model_id,name=MODELS[model_id]) if model_id in MODELS else None,
+                    sources=[],candidates=[],engineering_documents=[],engineering_inventory=[]), {}
     from .native_dispatch import inspect
     native=inspect(scan,model_id)
     native_roles={claim["file"]:claim["role"] for claim in native.get("claims",[])}
@@ -290,7 +298,12 @@ def discover(scan, model_id=None, task_goal="auto"):
         sources.append(dict(id=source,format=row["format"],fields=fields,
                             dimensions=row.get("dimensions"),roles=row["roles"],
                             engineering_reference=bool(row["evidence"]),
-                            time_coverage=coarse_time_coverage(row)))
+                            **({"coordinate_reference":row["coordinate_reference"]} if row.get("coordinate_reference") else {}),
+                            time_coverage=coarse_time_coverage(row),
+                            **({"declared_output_print_period":row["declared_output_print_period"]}
+                               if row.get("declared_output_print_period") else {})))
+        if row.get("single_average_annual_window"):
+            sources[-1]["single_average_annual_window"]=True
     docs,document_refs=associate_documents(scan,{int(source["id"][1:]):source["id"] for source in sources})
     for source in sources:
         source["engineering_documents"]=document_refs.get(source["id"],[])
@@ -312,11 +325,17 @@ def coarse_time_coverage(row):
     span=row.get("time_coverage")
     if not span:
         return None
+    calendar=span[3] if len(span)>3 else "gregorian"
     try:
-        months=[datetime.fromtimestamp(value,timezone.utc).strftime("%Y-%m") for value in span[:2]]
-    except (ValueError,OverflowError,OSError):
-        return dict(basis=span[2])
-    return dict(start_month=months[0],end_month=months[1],basis=span[2])
+        if calendar in {"gregorian","proleptic_gregorian"}:
+            dates=[datetime.fromtimestamp(value,timezone.utc) for value in span[:2]]
+        else:
+            from netCDF4 import num2date
+            dates=num2date(span[:2],"seconds since 1970-01-01",calendar=calendar)
+        months=[f"{date.year:04d}-{date.month:02d}" for date in dates]
+    except (ValueError,OverflowError,OSError,ImportError):
+        return dict(basis=span[2],calendar=calendar)
+    return dict(start_month=months[0],end_month=months[1],basis=span[2],calendar=calendar)
 
 
 def describe_pair(scan,cid,left,right,model_id,details):
@@ -467,7 +486,8 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
             approved_options=allowed[cid].get("possible_actions",[])
             if isinstance(approved_options,list):
                 work.extend((cid,option,action) for option in candidates[cid][2]
-                            if option in approved_options and option in allowed_actions and (option!="fusion" or cid not in blocked))
+                            if option in approved_options and option in allowed_actions and option!="convert_format"
+                            and (option!="fusion" or cid not in blocked))
         elif action in allowed_actions:
             work.append((cid,action,action))
             if action=="fusion" and "compare_station_grid" in candidates[cid][2]:
@@ -655,14 +675,18 @@ def parse_decisions(raw):
         if not isinstance(item,dict): continue
         candidate,action=item.get("candidate"),item.get("action")
         if not isinstance(candidate,str) or not re.fullmatch(r"C[1-9]\d*",candidate): continue
-        if action not in ("fusion","align_time","align_space","compare_station_grid","convert_units","convert_format","direct","insufficient","reject","pending_goal"): continue
+        if action not in ("fusion","align_time","align_space","compare_station_grid","convert_units","convert_format","quality_screen","direct","insufficient","reject","pending_goal"): continue
         goal=item.get("goal")
         if not isinstance(goal,str) or goal not in TASK_GOALS or goal=="auto":
             goal="unknown"
         quantity=item.get("physical_quantity")
         if not isinstance(quantity,str) or not re.fullmatch(r"[a-z][a-z0-9_]{1,71}",quantity) or quantity in {"unknown","uncertain"}:
             quantity=None
+        steps=item.get("algorithm_steps",[])
+        steps=[list(group) for group in steps if isinstance(group,list) and group and
+               all(isinstance(step,str) and len(step)<=100 for step in group)] if isinstance(steps,list) else []
         out.append(dict(candidate=candidate,action=action,goal=goal,physical_quantity=quantity,
+                        algorithm_steps=steps,algorithm_name=str(item.get("algorithm_name",""))[:100],
                         reason=str(item.get("reason",""))[:1000]))
     return out
 

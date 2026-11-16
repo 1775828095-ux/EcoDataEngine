@@ -85,7 +85,7 @@ def attach_samples(scan, pairs):
             field["perturbed_samples"]=samples[fid]
 
 
-def make_request(scan, approved, checked, gated, *, local_checks=()):
+def make_request(scan, approved, checked, gated, *, local_checks=(), include_samples=True):
     assert_current(scan)
     pairs={pair["id"]:pair for pair in approved["candidates"] if isinstance(pair,dict) and isinstance(pair.get("id"),str)}
     documents=approved.get("engineering_documents",[])
@@ -154,13 +154,55 @@ def make_request(scan, approved, checked, gated, *, local_checks=()):
     if not tasks:
         raise ValueError("没有通过首页核验的任务")
     # Samples are added only to the candidate-specific recommendation request.
-    attach_samples(scan,[task["context"] for task in tasks])
+    if include_samples:
+        attach_samples(scan,[task["context"] for task in tasks])
     request=dict(stage="recommendation",target_model=approved["target_model"],tasks=tasks,
                  engineering_documents=documents,
                  project_context_document_ids=approved.get("project_context_document_ids",[]),
                  engineering_inventory=approved.get("engineering_inventory",[]))
     assert_current(scan)
     return request
+
+def algorithm_registry():
+    return {key: ALGORITHM_NAMES.get(key,value) for key,value in
+            {**ALGORITHMS,**ENGINEERING,**ALIGNMENT,**PREPARATION}.items()}
+
+
+def from_decisions(summary,decisions):
+    from collections import defaultdict
+
+    by_candidate=defaultdict(list)
+    for row in decisions:
+        by_candidate[row["candidate"]].append(row)
+    entries=[]
+    for task in summary["tasks"]:
+        related=by_candidate[task["candidate"]]
+        direct=[item for item in related if item["action"]==task["operation"]]
+        preferred=direct or [item for item in related if item["action"] not in {"reject","direct"}]
+        ai=next(iter(preferred),{})
+        options=task["allowed_recipes"]
+        if options:
+            groups=[group for item in preferred for group in item.get("algorithm_steps",[])]
+            matches=[option for option in options if any(option["steps"]==group for group in groups)]
+            if not matches and groups:
+                proposed={step for group in groups for step in group}
+                matches=[option for option in options if proposed.intersection(option["steps"])]
+            chosen=matches[:4] or options[:1]
+            for option in chosen:
+                if option in matches and ai.get("reason"):
+                    reason=ai["reason"]
+                    if not any(option["steps"]==group for group in groups):
+                        reason="按 AI 提议匹配原版可执行步骤。"+reason
+                else:
+                    reason="平台按本地核验结果补充可执行组合。"+task.get("engineering_note","")
+                entries.append(dict(task=task["id"],recipe=option["id"],reason=reason))
+        else:
+            entries.append(dict(task=task["id"],recipe="advisory",name=ai.get("algorithm_name") or "处理方案待核验",
+                                reason=ai.get("reason") or task.get("engineering_note",""),
+                                alignment="按已核验的时间与空间支持对齐",
+                                fusion_trial="条件满足后比较单源和多源的留出评分"))
+    return validate({"recommendations":entries},summary)
+
 
 def validate(raw, summary):
     entries=raw.get("recommendations")

@@ -59,7 +59,7 @@ class Meter:
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
 
-def seven_zip_members(archive, temporary, stack, *, only=None):
+def seven_zip_members(archive, temporary, stack, *, only=None, shallow=False):
     from py7zr.io import Py7zIO, WriterFactory
 
     class MemberFile(Py7zIO):
@@ -101,10 +101,12 @@ def seven_zip_members(archive, temporary, stack, *, only=None):
         filename=PurePosixPath(entry.filename)
         if (safe(entry.filename) and (only is None or entry.filename==only)
                 and not getattr(entry,"is_symlink",False)
-                and (kind(entry.filename) or filename.suffix.lower() in FORMATS.keys() | DOCS
+                and (only is not None or kind(entry.filename) or filename.suffix.lower() in FORMATS.keys() | DOCS
                      or filename.name.casefold().startswith("readme")
-                     or filename.name.casefold()=="namelist.input")):
+                     or filename.name.casefold() in {"namelist.input","print.prt"})):
             selected.append(entry.filename)
+    if shallow:
+        selected=[name for name in selected if kind(name)]
     if selected:
         archive.extract(path=temporary,targets=selected,factory=factory)
     for entry in entries:
@@ -115,6 +117,17 @@ def seven_zip_members(archive, temporary, stack, *, only=None):
 def decode(blob):
     try: return blob.decode("utf-8-sig")
     except UnicodeDecodeError: return blob.decode("gb18030", errors="replace")
+
+def printable_prefix(raw):
+    if not raw or b"\x00" in raw:
+        return None
+    text=decode(raw)
+    # A bounded UTF-8 excerpt may finish inside a final multibyte character.
+    text=text.rstrip("\ufffd")
+    if "\ufffd" in text or any(not char.isprintable() and char not in "\r\n\t" for char in text):
+        return None
+    return text or None
+
 
 def spacing(values, temporal=False):
     import numpy as np
@@ -145,7 +158,11 @@ def swat_result_fields(row,lines):
         row["fields"].append(dict(name=name,unit=units.get(name,""),axis=index<7,column=index,
                                  type="number" if name in units else "unknown"))
     row["swat_output_header"]=header
-    cadence=PurePosixPath(row["name"]).stem.rsplit("_",1)[-1]
+    cadence=PurePosixPath(row["name"]).stem.rsplit("_",1)[-1].casefold()
+    period={"day":"daily","mon":"monthly","yr":"yearly","aa":"average_annual"}.get(cadence)
+    if period:
+        row["declared_output_period"]=period
+        row["time_spacing_basis"]="swat_output_period_suffix"
     if cadence=="day":
         row["declared_time_resolution"]="P1D"
         row["resolution"]["time_seconds"]=86400
@@ -440,19 +457,45 @@ def original_fields(row, content):
     row["basis"].append("原版读取器识别的变量与属性")
 
 
-def shapefile_attribute_rows(rows):
+def shapefile_attribute_rows(rows,docs):
     def key(row):
         path,archive,*_=row["ref"]
         return path if archive else None,PurePosixPath(row["name"]).with_suffix("").as_posix().casefold()
 
     tables={key(row):row for row in rows if row["format"]=="DBF" and row["fields"]}
+    projections={key(row):row for row in rows if PurePosixPath(row["name"]).suffix.casefold()==".prj"}
+    texts=dict(docs)
     for row in rows:
-        if row["format"]=="Shapefile" and (table:=tables.get(key(row))):
+        if row["format"]!="Shapefile":
+            continue
+        if table:=tables.get(key(row)):
             row["attribute_member"]={name:table[name] for name in ("ref","bytes","name")}
             row["fields"]=table["fields"]
             table["fields"]=[]
             row["basis"].append("读取同名 DBF 属性表，几何保持本地")
             row["pending"]=[note for note in row["pending"] if "原版读取器" not in note and "仅登记" not in note]
+        projection=projections.get(key(row))
+        if projection is None:
+            row["coordinate_reference"]=dict(status="companion_missing")
+            continue
+        text=texts.get(projection["name"])
+        if not text:
+            row["coordinate_reference"]=dict(status="companion_unread")
+            continue
+        try:
+            from rasterio.crs import CRS
+            from rasterio.errors import CRSError
+        except ImportError:
+            row["coordinate_reference"]=dict(status="reader_unavailable")
+            continue
+        try:
+            crs=CRS.from_wkt(text)
+            authority=crs.to_authority()
+            row["coordinate_reference"]=dict(status="declared",basis="shapefile_prj",
+                authority=":".join(authority) if authority else None,
+                kind="geographic" if crs.is_geographic else "projected" if crs.is_projected else "other")
+        except (ValueError,CRSError):
+            row["coordinate_reference"]=dict(status="companion_invalid")
 
 def scientific(row, path):
     fmt = row["format"]
@@ -472,19 +515,29 @@ def scientific(row, path):
             if all(key in ds.ncattrs() for key in grid_attrs):
                 row["ioapi_grid_signature"]=tuple(float(ds.getncattr(key)) for key in grid_attrs)
 
-            if getattr(ds,"time_coverage_resolution","") in {"PT1H","P1D","P1M"}:
-                row["declared_time_resolution"]=ds.time_coverage_resolution
+            declared=str(getattr(ds,"time_coverage_resolution","")).strip()
+            if re.fullmatch(r"P(?=\d|T\d)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?",declared):
+                row["declared_time_resolution"]=declared
             from ecodata.models.scientific_schema import REFERENCE_ATTRIBUTES
             from .soil_depth import netcdf_depth_axes, netcdf_support as soil_support
+            from .time_metadata import cell_methods
             facts={name:dict(dimensions=list(var.dimensions),attributes={
                 key:str(getattr(var,key,"")) for key in (*REFERENCE_ATTRIBUTES,*REFERENCE_METADATA)})
                 for name,var in ds.variables.items()}
-            bounds={str(getattr(v,"bounds","")) for v in ds.variables.values()}
+            bounds={str(getattr(v,key,"")) for v in ds.variables.values() for key in ("bounds","climatology")}
             depth_axes=netcdf_depth_axes(ds)
             depth_cache={}
             coords={}
+            coordinate_kinds={name:coordinate_kind(name,{key:getattr(var,key,"") for key in ("axis","standard_name","units")})
+                              for name,var in ds.variables.items()}
+            time_axes={"time"}
+            for name,var in ds.variables.items():
+                if coordinate_kinds[name]=="time":
+                    time_axes.add(name)
+                    if var.ndim==1:
+                        time_axes.update(var.dimensions)
             for k,v in ds.variables.items():
-                coordinate=coordinate_kind(k,{name:getattr(v,name,"") for name in ("axis","standard_name","units")})
+                coordinate=coordinate_kinds[k]
                 if coordinate and v.ndim in (1,2,3):
                     coords.setdefault(coordinate,v)
                 companion=ds.variables.get(k[:-4]) if k.casefold().endswith("_raw") else None
@@ -493,6 +546,8 @@ def scientific(row, path):
                     getattr(v,"source_fill_value",None) is not None)
                 row["fields"].append(dict(name=k,type=str(v.dtype),unit=str(getattr(v,"units","")).strip(),
                     standard_name=str(getattr(v,"standard_name","")), physical_variable=str(getattr(v,"physical_variable","")), long_name=str(getattr(v,"long_name","")).strip(), var_desc=str(getattr(v,"var_desc","")).strip(), raw_companion=raw_companion, temporal_semantics=str(getattr(v,"temporal_semantics","")), dimensions=list(v.dimensions), axis=bool(coordinate) or k.casefold() in AXES or (k.casefold()=="tflag" and tuple(d.casefold() for d in v.dimensions)==("tstep","var","date-time")) or k in bounds or k.casefold().endswith(("_bounds","_bnds")) or v.dimensions==(k,)))
+                if methods:=cell_methods(getattr(v,"cell_methods",""),time_axes):
+                    row["fields"][-1]["time_cell_methods"]=methods
                 if k not in depth_axes and k not in bounds and not row["fields"][-1]["axis"]:
                     support=soil_support(ds,v,depth_axes,depth_cache)
                     if support:
@@ -503,11 +558,12 @@ def scientific(row, path):
                         units=v.units
                         calendar=getattr(v,"calendar","standard")
                         edge=v[[0,len(v)-1]]
-                        bound=ds.variables.get(str(getattr(v,"bounds","")))
+                        climatology=not getattr(v,"bounds","") and bool(getattr(v,"climatology",""))
+                        bound=ds.variables.get(str(getattr(v,"climatology" if climatology else "bounds","")))
                         basis="axis_endpoints"
-                        if bound is not None and bound.ndim==2 and bound.dimensions[0]==k and bound.shape[1]==2:
+                        if bound is not None and bound.ndim==2 and bound.dimensions[0]==v.dimensions[0] and bound.shape[1]==2:
                             edge=bound[[0,len(v)-1],:]
-                            basis="cell_bounds_endpoints"
+                            basis="climatology_bounds_endpoints" if climatology else "cell_bounds_endpoints"
                         values=np.ma.asarray(edge).compressed()
                         if values.size==edge.size and np.isfinite(values).all():
                             dates=nc.num2date([min(values),max(values)],units,calendar)
@@ -634,12 +690,12 @@ class Scanner:
     def __init__(self):
         self.cached = None
 
-    def scan(self, location, progress=None):
+    def scan(self, location, progress=None, *, shallow=False):
         start = time.perf_counter()
         root = Path(location).resolve(strict=True)
         signature = tuple(inventory(root))
-        if self.cached and self.cached[:2]==(root,signature):
-            return self.cached[2], dict(seconds=time.perf_counter()-start, cached=True,
+        if self.cached and self.cached[:3]==(root,signature,shallow):
+            return self.cached[3], dict(seconds=time.perf_counter()-start, cached=True,
                                        scan_payload_bytes=0, sequential=[], scan_temp_bytes=0)
         rows, docs, warnings, sequential = [], [], [], []
         count = 0
@@ -654,8 +710,21 @@ class Scanner:
                        fields=[], resolution={}, basis=[], pending=[], evidence=[], roles=[])
             if containers:
                 row["containers"]=containers
+            row["classification_suffix"]=ext if re.fullmatch(r"\.[a-z][a-z0-9]{0,12}",ext) else None
             rows.append(row)
-            doc = ext in DOCS or p.name.lower().startswith("readme") or p.name.casefold()=="namelist.input"
+            if shallow:
+                if reader and not kind(name):
+                    raw=reader(min(size,4096))
+                    count+=len(raw)
+                    row["classification_preview"]=printable_prefix(raw)
+                    if ext in {".csv",".tsv"} and row["classification_preview"]:
+                        try:
+                            columns=next(table_reader(io.StringIO(row["classification_preview"]),row["format"]))
+                        except (csv.Error,StopIteration):
+                            columns=[]
+                        row["classification_header"]=columns[:8]
+                return row
+            doc = ext in DOCS or p.name.lower().startswith("readme") or p.name.casefold() in {"namelist.input","print.prt"}
             if doc:
                 row["engineering_text_status"]="archive_member_not_read" if not reader else "read_error"
                 if reader:
@@ -705,7 +774,7 @@ class Scanner:
                                     pass
                             if ext!=".csh" and not is_local_research:
                                 docs.append((name,content))
-                            if size<=256*1024 and (ext in {".json",".csh",".cio",".inp",".nml"} or
+                            if ext==".cli" or size<=256*1024 and (ext in {".json",".csh",".cio",".inp",".nml"} or
                                     p.name.casefold()=="namelist.input"):
                                 row["original_probe_payload"]=blob
                             row["engineering_text_status"]="complete"
@@ -750,6 +819,10 @@ class Scanner:
                 scientific(row,local)
             elif ext in FORMATS:
                 row["pending"].append("压缩成员仅登记，待定向核验内部结构")
+            if reader and not doc and not row["fields"] and not kind(name) and row["format"]=="其他":
+                prefix=decode(reader(min(size,1024)))
+                if prefix and all(char in "\r\n\t" or char.isprintable() for char in prefix) and "\ufffd" not in prefix:
+                    row["classification_preview"]=prefix
             if row["fields"] and not row["resolution"].get("time_seconds"):
                 row["pending"].append("时间间隔未知或不适用")
             return row
@@ -836,7 +909,7 @@ class Scanner:
                     try:
                         archive=stack.enter_context(py7zr.SevenZipFile(path))
                         written=0
-                        for entry,temporary in seven_zip_members(archive,Path(directory),stack):
+                        for entry,temporary in seven_zip_members(archive,Path(directory),stack,shallow=shallow):
                             if temporary is not None:
                                 written+=temporary.stat().st_size
                             member(entry.filename,entry.uncompressed,None,
@@ -860,17 +933,22 @@ class Scanner:
                     with path.open("rb") as stream:
                         return stream.read(n)
                 attempt(name,size,(path,"",None,None),read,path)
-        from .engineering_links import collect
-        if progress:
-            progress("正在关联工程说明与数据字段…")
-        collect(rows,docs)
-        shapefile_attribute_rows(rows)
-        mark_engineering_netcdf(rows,docs)
-        from .cmaq_grid_audit import audit_scan
-        cmaq_grid_checks=audit_scan(rows)
+        cmaq_grid_checks=[]
+        if not shallow:
+            from .engineering_links import collect
+            from .cmaq_grid_audit import audit_scan
+            from .time_metadata import attach_swat_print_periods
+            if progress:
+                progress("正在关联工程说明与数据字段…")
+            collect(rows,docs)
+            attach_swat_print_periods(rows,docs)
+            shapefile_attribute_rows(rows,docs)
+            mark_engineering_netcdf(rows,docs)
+            cmaq_grid_checks=audit_scan(rows)
         if tuple(inventory(root))!=signature: raise ValueError("扫描期间原始文件已变化，请重新扫描")
-        result=dict(path=root, signature=signature, rows=rows, warnings=warnings, engineering_docs=docs,cmaq_grid_checks=cmaq_grid_checks)
-        self.cached=root,signature,result
+        result=dict(path=root,signature=signature,rows=rows,warnings=warnings,engineering_docs=docs,
+                    cmaq_grid_checks=cmaq_grid_checks,shallow=shallow)
+        self.cached=root,signature,shallow,result
         return result,dict(seconds=time.perf_counter()-start,cached=False,scan_payload_bytes=count,
                            sequential=sequential, scan_temp_bytes=temporary_bytes)
 

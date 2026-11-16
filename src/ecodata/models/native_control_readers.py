@@ -37,7 +37,7 @@ def _stamp(group,prefix):
 
 SPECIAL = {'null', 'sim', '0'}
 
-def weather_dependencies(files, selected_station=None):
+def weather_dependencies(files, selected_station=None, *, unread_files=()):
     errors, warnings, links = [], [], []
     groups = {}
     for line in files.get('file.cio', b'').decode('utf-8-sig').splitlines()[1:]:
@@ -45,10 +45,14 @@ def weather_dependencies(files, selected_station=None):
         if row:
             groups[row[0]] = row[1:]
     climate = groups.get('climate', [])
-    if not climate or climate[0] not in files:
+    if not climate:
         return dict(errors=[], warnings=['没有可检查的天气站表，站点依赖未验证'],
                     stations={}, connection_tables=[], scope='weather-name dependencies only')
     station_file = climate[0]
+    if station_file not in files:
+        return dict(errors=[f'file.cio引用的天气站文件不存在：{station_file}'], warnings=[], stations={}, connection_tables=[])
+    if station_file in unread_files:
+        return dict(errors=[f'天气站文件正文未读取：{station_file}'], warnings=[], stations={}, connection_tables=[])
     lines = files[station_file].decode('utf-8-sig').splitlines()
     if len(lines) < 2:
         return dict(errors=[f'{station_file}缺少站点表头'], warnings=[], stations={}, connection_tables=[])
@@ -75,6 +79,9 @@ def weather_dependencies(files, selected_station=None):
             continue
         if name not in files:
             errors.append(f'file.cio/connect引用缺失：{name}')
+            continue
+        if name in unread_files:
+            warnings.append(f'{name}正文未读取，未验证其中的天气站关联')
             continue
         rows = files[name].decode('utf-8-sig').splitlines()
         cols = rows[1].split() if len(rows) > 1 else []
@@ -117,6 +124,8 @@ def weather_dependencies(files, selected_station=None):
     if required:
         if wgn_file not in files:
             errors.append(f'WGN引用缺失：{wgn_file}；需要统计站{sorted(required)}')
+        elif wgn_file in unread_files:
+            errors.append(f'WGN文件正文未读取：{wgn_file}')
         else:
             rows = [r.split() for r in files[wgn_file].decode('utf-8-sig').splitlines()[1:] if r.strip()]
             pos = 0

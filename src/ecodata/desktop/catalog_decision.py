@@ -22,7 +22,15 @@ def prepare(summary, *, rejected=None):
     clean=dict(summary,candidates=[],engineering_documents=docs)
 
     def draft(block, documents):
-        request=service.preview(dict(clean,sources=block,engineering_documents=documents))
+        payload=dict(clean,sources=block,engineering_documents=documents)
+        if evidence:=payload.pop("final_evidence",None):
+            ids={field["id"] for field in fields(block)}
+            relevant=dict(evidence,results=[row for row in evidence["results"] if set(row["fields"])<=ids],
+                          previous_decisions=[row for row in evidence["previous_decisions"] if set(row["fields"])<=ids])
+            payload["final_evidence"]=relevant
+            request=service.preview(payload,local_evidence=relevant)
+        else:
+            request=service.preview(payload)
         hint=service.retry_capacity_hint(request,rejected) if rejected is not None else ""
         return request_batches.Batch(request,tuple(row["id"] for row in block),hint)
 
@@ -217,7 +225,7 @@ def answer_single_field_questions(sent,allowed,answer,sample_field,mock,key,prog
                     questions=[*previous,*followup.get("questions",[])])
     return dict(answer,field_checks=list(evidence.values()))
 
-def materialize(scan,summary,originals,details,responses):
+def materialize(scan,summary,originals,details,responses,*,ask_implicit=True):
     evidence=defaultdict(lambda: dict(decisions=[],questions=[]))
     for allowed,response in responses:
         for key in ("decisions","questions"):
@@ -253,7 +261,7 @@ def materialize(scan,summary,originals,details,responses):
         if conflict:
             decisions=[dict(candidate=cid,action="insufficient",goal="unknown",
                             reason="分批判断有分歧。"+" ".join(row["reason"] for row in decisions)[:800])]
-        if not questions and (conflict or actions & {"insufficient","pending_goal"}):
+        if ask_implicit and not questions and (conflict or actions & {"insufficient","pending_goal"}):
             questions=[dict(candidate=cid,check=check) for check in ("metadata","time_coverage")]
         dialogue[cid]=dict(decisions=decisions,questions=questions)
     return candidates,dict(summary,catalog_first=False,candidates=pairs),dialogue

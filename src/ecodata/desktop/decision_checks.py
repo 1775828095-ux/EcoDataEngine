@@ -9,7 +9,9 @@ from . import sample_values
 CHECKS = {
     "numeric_samples": "指定字段的随机小数扰动数值样本",
     "metadata": "物理量、单位换算、网格角色与分辨率",
+    "field_context": "字段说明、工程引用、坐标参考及标识或类别声明",
     "time_coverage": "时间支持、间隔和覆盖重叠关系",
+    "annual_mean_comparison": "核对同一工程对象的平均年度输出与同年段逐年值的均值",
     "data_quality": "抽样有效率和质量标记登记",
     "spatial_coverage": "地理坐标样本的外包范围重叠",
     "position_agreement": "可对应位置的数值差异或类别一致率",
@@ -42,7 +44,7 @@ def parse_reply(raw):
 
 
 class LocalChecks:
-    def __init__(self, scan, candidates):
+    def __init__(self, scan, candidates, *, documents=()):
         self.scan = scan
         self.candidates = candidates
         self.cache = {}
@@ -51,6 +53,8 @@ class LocalChecks:
         self.exported = {}
         self.quantities = {}
         self.station_matches = {}
+        self.documents = [doc for doc in documents if doc.get("text")]
+        self.contexts = {}
 
     def __call__(self, candidate, check, approved):
         pair = self.candidates.get(candidate)
@@ -101,12 +105,51 @@ class LocalChecks:
             self.exported[fid]=dict(field=fid,**result)
         return self.exported[fid]
 
+    def field_context(self, item):
+        import re
+        from .discovery import field_identity, field_references, public_unit
+
+        index,fid,field=item
+        if fid in self.contexts:
+            return self.contexts[fid]
+        source=fid.partition(".")[0]
+        row=self.scan["rows"][index]
+        quantity,basis=field_identity(row,field)
+        declarations={key:field[key] for key in ("standard_name","physical_variable","long_name","var_desc","metadata_role")
+                      if field.get(key)}
+        pattern=re.compile(r"(?<!\w)"+re.escape(field["name"])+r"(?!\w)",re.I)
+        snippets=[]
+        for document in self.documents:
+            linked=source in document.get("source_ids",[])
+            if not linked and document.get("scope")!="project_context":
+                continue
+            text=document["text"]
+            if match:=pattern.search(text):
+                start=text.rfind("\n",max(0,match.start()-120),match.start())
+                end=text.find("\n",match.end(),match.end()+180)
+                snippets.append(dict(document=document["id"],source_linked=linked,
+                    text=text[start+1 if start!=-1 else max(0,match.start()-120):end if end!=-1 else match.end()+180].strip()))
+        snippets=sorted(snippets,key=lambda record:not record["source_linked"])[:4]
+        self.contexts[fid]=dict(field=fid,format=row["format"],name=field["name"],datatype=field["type"],
+                                unit=public_unit(field["unit"]),physical_quantity=quantity,
+                                identity_basis=basis,coordinate_reference=row.get("coordinate_reference"),
+                                declarations=declarations,engineering_mentions=snippets,
+                                source_role=self.scan.get("candidate_native_roles",{}).get(row["name"]),
+                                **field_references(field,fid))
+        return self.contexts[fid]
+
     def inspect(self,pair,check,quantity=None):
         from .discovery import field_identity, field_references, overlap, pair_units, public_unit_report, resolution, spacing_comparison
 
         left,right,_=pair
         rows=[self.scan["rows"][item[0]] for item in (left,right)]
         fields=[left[2],right[2]]
+        if check=="annual_mean_comparison":
+            from .annual_output_check import compare
+            return compare(rows,fields)
+        if check=="field_context":
+            return dict(status="checked",basis="local_field_context",
+                        sources=[self.field_context(item) for item in (left,right)])
         if check=="numeric_samples":
             sources=[self.field_question(item) for item in (left,right)]
             return dict(status="checked" if any(source["status"]=="checked" for source in sources) else "unavailable",

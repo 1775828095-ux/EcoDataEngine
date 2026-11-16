@@ -51,6 +51,7 @@ def probe_sources(model, prefixes):
 
 def inspect_sources(model, files, records):
     payloads=dict(files); claims={}; issues=[]
+    unread={row['file'] for row in records if row.get('payload_read') is False}
     def claim(name,role,reason,**extra):
         if name in claims and role=='data_candidate':
             return  # A resolved engineering reference is stronger than format.
@@ -103,7 +104,8 @@ def inspect_sources(model, files, records):
             except (ValueError,KeyError,UnicodeError) as exc:issues.append(dict(file=name,message='WRF控制读取失败：'+str(exc)))
         elif model=='swat_plus' and base=='file.cio':
             try:
-                local={PurePosixPath(n).name:b for n,b in files if PurePosixPath(n).parent==PurePosixPath(name).parent}
+                members={PurePosixPath(n).name:n for n in payloads if PurePosixPath(n).parent==PurePosixPath(name).parent}
+                local={base:payloads[n] for base,n in members.items()}
                 groups={}
                 for line in payloads[name].decode('utf-8-sig').splitlines()[1:]:
                     tokens=line.split('!',1)[0].split()
@@ -115,7 +117,7 @@ def inspect_sources(model, files, records):
                 for group,values in groups.items():
                     for value in values:
                         if value.lower() not in {'null','sim','0'}:reference(name,value,group)
-                check=weather_dependencies(local)
+                check=weather_dependencies(local,unread_files={base for base,n in members.items() if n in unread})
                 claims[name]['weather_dependencies']=check
                 issues.extend(dict(file=name,message=m) for m in check['errors'])
                 for climate_file in groups.get('climate',[])[2:]:
