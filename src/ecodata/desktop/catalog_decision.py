@@ -249,7 +249,7 @@ def materialize(scan,summary,originals,details,responses):
         pairs.append(pair)
         candidates[cid]=local
         actions={row["action"] for row in decisions}
-        conflict="reject" in actions and bool(actions-{"reject"})
+        conflict={"reject","fusion"}<=actions
         if conflict:
             decisions=[dict(candidate=cid,action="insufficient",goal="unknown",
                             reason="分批判断有分歧。"+" ".join(row["reason"] for row in decisions)[:800])]
@@ -287,6 +287,9 @@ def decide(scan,summary,batches,cache,mock,key,progress,feedback):
     for pair in approved["candidates"]:
         cid=pair["id"]
         initial=dialogue[cid]
+        initial_quantities={row["physical_quantity"] for row in initial["decisions"] if row.get("physical_quantity")}
+        if len(initial_quantities)==1:
+            checker.quantities[cid]=next(iter(initial_quantities))
         batch=pair_batch(approved,pair)
         reviews.append(batch)
         try:
@@ -296,15 +299,18 @@ def decide(scan,summary,batches,cache,mock,key,progress,feedback):
             reply["failures"].append(dict(batch="追问",ids=[cid],reason=str(exc),stage="local_dialogue"))
             final=initial
         rows=final.get("decisions",[])
+        if len(initial_quantities)==1 and not any(row.get("physical_quantity") for row in rows):
+            rows=[dict(row,physical_quantity=next(iter(initial_quantities))) for row in rows]
         reply["decisions"].extend(rows)
         reply["local_checks"].extend(final.get("local_checks",[]))
         gate_input.extend(rows)
         if not any(row["action"] in {"reject","direct","fusion"} for row in rows):
             gate_input.append(dict(candidate=cid,action="fusion",goal="evaluate_gain",
+                                   physical_quantity=next((row["physical_quantity"] for row in rows if row.get("physical_quantity")),None),
                                    reason="保留为融合试跑候选，评估融合收益"))
     current()
     progress("正在核验 DeepSeek 提出的组合…")
-    checked,gated=discovery.check(scan,candidates,dict(decisions=gate_input),approved)
+    checked,gated=discovery.check(scan,candidates,dict(decisions=gate_input),approved,station_matches=checker.station_matches)
     review(scan,reviews,checked,reply,mock,key,progress,checker=checker)
     current()
     return reply,checked,gated,candidates,approved

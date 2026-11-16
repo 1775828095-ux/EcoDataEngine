@@ -49,6 +49,8 @@ class LocalChecks:
         self.fields = {}
         self.values = {}
         self.exported = {}
+        self.quantities = {}
+        self.station_matches = {}
 
     def __call__(self, candidate, check, approved):
         pair = self.candidates.get(candidate)
@@ -58,7 +60,7 @@ class LocalChecks:
         if key not in self.cache:
             assert_current(self.scan)
             try:
-                result = self.inspect(pair,check)
+                result = self.inspect(pair,check,self.quantities.get(candidate))
             except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
                 result = {"status":"unavailable","basis":"local_reader_or_metadata_unavailable"}
             assert_current(self.scan)
@@ -99,7 +101,7 @@ class LocalChecks:
             self.exported[fid]=dict(field=fid,**result)
         return self.exported[fid]
 
-    def inspect(self,pair,check):
+    def inspect(self,pair,check,quantity=None):
         from .discovery import field_identity, overlap, pair_units, public_unit_report, resolution, spacing_comparison
 
         left,right,_=pair
@@ -115,7 +117,7 @@ class LocalChecks:
             return dict(status="checked" if relationship!="unknown" else "unavailable",
                         relationship=relationship, sampling_interval_seconds=durations,
                         coverage_basis=[row.get("time_coverage",(0,0,"unknown"))[2] for row in rows])
-        units=pair_units(rows[0],fields[0],rows[1],fields[1])
+        units=pair_units(rows[0],fields[0],rows[1],fields[1],quantity)
         grids=[resolution(row)[1] for row in rows]
         if check=="metadata":
             safe=public_unit_report(units)
@@ -137,6 +139,7 @@ class LocalChecks:
                 metadata.append(detail)
             return dict(status="checked", unit_status=safe["status"], metadata=metadata,
                         field_identity_basis=[field_identity(row,field)[1] for row,field in zip(rows,fields)],
+                        mapping_basis=units.get("identity_basis","local_metadata"),
                         grid_spacing=spacing_comparison(*grids),
                         grid_roles=[row.get("ioapi_grid_role") for row in rows])
         if check=="data_quality" and any(row["format"]!="NetCDF" for row in rows):
@@ -150,7 +153,25 @@ class LocalChecks:
             return dict(status="checked" if any(row["sampled"]>=MIN_SAMPLES for row in stats) else "unavailable",
                         basis="numeric_field_sample",sources=stats)
         if any(row["format"]!="NetCDF" for row in rows):
-            return dict(status="unavailable",basis="position_verification_needs_supported_coordinates")
+            from .station_grid import EXACT, NEAREST, load, task_for
+            if units["status"] not in {"equivalent","convertible"}:
+                return dict(status="unavailable",basis="physical_quantity_or_unit_unconfirmed")
+            task=task_for(self.scan,pair,"compare_station_grid",units)
+            if task is None:
+                return dict(status="unavailable",basis="position_verification_needs_supported_coordinates")
+            key=tuple(item[1] for item in (left,right)),units["quantity"]
+            if key not in self.station_matches:
+                self.station_matches[key]=load(self.scan,task)
+            frames=self.station_matches[key]
+            if check=="spatial_coverage":
+                return dict(status="checked",relationship="overlap",basis="station_points_inside_native_grid")
+            frame=frames[EXACT] if len(frames[EXACT])>=MIN_SAMPLES else frames[NEAREST]
+            if len(frame)<MIN_SAMPLES:
+                return dict(status="unavailable",basis="too_few_matching_sample_locations")
+            residual=frame.background-frame.observed
+            return dict(status="checked",basis="station_grid_collocation",sampled_pairs=len(frame),
+                        rmse=round(float((residual.pow(2).mean())**.5),3),
+                        mae=round(float(residual.abs().mean()),3))
         for item,row in zip((left,right),rows):
             if item[1] not in self.fields:
                 with self.dataset(row) as dataset:

@@ -126,7 +126,7 @@ def native_times(ds):
         for day, clock in values])
 
 
-def geometry(ds):
+def geometry(ds, *, allow_halo=False):
     """Reuse CAMx's existing sphere-LCC grid implementation with actual header."""
     from ecodata.models.adapters.camx_emissions import _grid
     a = {k:ds.getncattr(k) for k in ds.ncattrs()}
@@ -138,7 +138,12 @@ def geometry(ds):
         p_bet=a['P_BET'], itzon=0))
     expected_x=(g['xorig']+(np.arange(g['ncols'])+.5)*g['xcell'])/1000
     expected_y=(g['yorig']+(np.arange(g['nrows'])+.5)*g['ycell'])/1000
-    if not np.allclose(ds['X'][:],expected_x) or not np.allclose(ds['Y'][:],expected_y):
+    def matches(actual,expected):
+        if allow_halo and len(actual)==len(expected)+2:
+            step=expected[1]-expected[0]
+            expected=np.r_[expected[0]-step,expected,expected[-1]+step]
+        return actual.shape==expected.shape and np.allclose(actual,expected)
+    if not matches(ds['X'][:],expected_x) or not matches(ds['Y'][:],expected_y):
         raise ValueError('原生X/Y与投影网格中心不一致')
     return lon, lat
 

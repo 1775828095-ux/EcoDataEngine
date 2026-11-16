@@ -172,6 +172,25 @@ def cards(result, check):
                               reason=(benefit + "。" if benefit else "") + check["conversion_reason"]))
     for entry in result.get("original_report", []) if result.get("mode")=="selected_operations" else []:
         for report in entry["report"] if isinstance(entry["report"],list) else []:
+            if entry.get("backend")=="station_grid":
+                methods=report["methods"]
+                title=recipe_name(methods)
+                score=report.get("heldout_correction")
+                baseline=report.get("heldout_baseline")
+                if not score:
+                    items.append(dict(task=entry["task"],title=title,selected=False,metrics={},methods=methods,
+                        parameters="",proxy=False,format_line=format_line,
+                        reason=f"配对成功，共 {report['matched_records']} 条。"))
+                    continue
+                selected=report["selected"]
+                for rank,(name,metrics) in enumerate(sorted(
+                        [("background",baseline),("corrected",score)],key=lambda item:item[1]["rmse"]),1):
+                    items.append(dict(task=entry["task"],title=title if name=="corrected" else "原始格点单源基线",
+                        family="订正试跑" if name=="corrected" else "单源",rank=rank,selected=name==selected,
+                        metrics=dict(RMSE=metrics["rmse"],MAE=metrics["mae"],count=metrics["count"]),
+                        methods=methods,parameters="",proxy=False,format_line=format_line,
+                        reason="在同一批站点留出时刻比较误差，适用范围为已配对站点。"))
+                continue
             weighted = str(report.get("method","")).startswith("fusion.uncertainty_weighted.")
             if report.get("operation") not in {"align_time","align_space"} and not weighted:
                 continue

@@ -73,7 +73,7 @@ def field_identity(row, field):
     return None, None
 
 
-def pair_units(ar, a, br, b):
+def pair_units(ar, a, br, b, inferred_quantity=None):
     qa, ba = field_identity(ar,a)
     qb, bb = field_identity(br,b)
     trusted={"standard_name","physical_variable","long_name","verified_ioapi_var_desc","declared_observation_schema"}
@@ -81,6 +81,9 @@ def pair_units(ar, a, br, b):
         return compare_units(qa,a["unit"],qb,b["unit"])
     if qa and qb and qa!=qb and {ba,bb}<=trusted:
         return dict(compare_units(qa,a["unit"],qb,b["unit"]),status="quantity_conflict")
+    if inferred_quantity:
+        return dict(compare_units(inferred_quantity,a["unit"],inferred_quantity,b["unit"]),
+                    identity_basis="deepseek")
     # An explicitly trusted product audit may independently establish identity later.
     return compare_units(None,a["unit"],None,b["unit"])
 
@@ -307,10 +310,13 @@ def describe_pair(scan,cid,left,right,model_id,details):
     t2,g2=resolution(br)
     time_spacing=spacing_comparison(t1,t2)
     grid_spacing=spacing_comparison(g1,g2)
-    actions=["fusion"]
-    if time_spacing=="different":
+    from .station_grid import eligible
+    actions=["fusion","convert_units","convert_format"]
+    if eligible(ar,a,br) or eligible(br,b,ar):
+        actions.extend(("compare_station_grid","align_time","align_space"))
+    if time_spacing=="different" and "align_time" not in actions:
         actions.append("align_time")
-    if grid_spacing=="different" or (g1 and g2 and grid_spacing in {"unknown","not_comparable"}):
+    if "align_space" not in actions and (grid_spacing=="different" or (g1 and g2 and grid_spacing in {"unknown","not_comparable"})):
         actions.append("align_space")
     unit_check=pair_units(ar,a,br,b)
     pair=dict(id=cid,fields=[af,bf],possible_actions=actions,target_model=MODELS.get(model_id),
@@ -373,7 +379,7 @@ def audit_precipitation(scan,row,field,raw,dataset):
                 pass
     return dict(product=audit["product"],**detail)
 
-def check(scan,candidates,reply,approved_summary):
+def check(scan,candidates,reply,approved_summary,*,station_matches=None):
     from .scan import read_selected
     from ecodata.recognition import recognise_file
     assert_current(scan)
@@ -402,14 +408,19 @@ def check(scan,candidates,reply,approved_summary):
     task_goal=approved_summary.get("task_goal","auto")
     from .reference_search import plan as reference_plan
     proposals=reply.get("decisions",[])
+    proposed_quantities={}
+    for proposal in proposals:
+        if quantity:=proposal.get("physical_quantity"):
+            proposed_quantities.setdefault(proposal["candidate"],set()).add(quantity)
     blocked={p["candidate"] for p in proposals if p["action"]=="reject"}
     work=[]
     for proposal in proposals:
         cid,action=proposal["candidate"],proposal["action"]
-        if cid in blocked:
-            if action=="reject":
-                results.append(dict(candidate=cid,action=action,status="未核验",
-                                    reason="DeepSeek 明确反对处理"))
+        if action=="reject":
+            results.append(dict(candidate=cid,action=action,status="未核验",
+                                reason="DeepSeek 明确反对融合"))
+            continue
+        if cid in blocked and action=="fusion":
             continue
         if cid not in allowed or cid not in candidates:
             continue
@@ -423,22 +434,25 @@ def check(scan,candidates,reply,approved_summary):
             results.append(dict(candidate=cid,action=action,status="无需新增处理",
                                 reason="DeepSeek 建议按当前任务目标分别使用。"))
             continue
-        allowed_actions={"align_space","align_time","fusion"}
+        allowed_actions={"align_space","align_time","fusion","compare_station_grid","convert_units","convert_format"}
         if action=="pending_goal" or (action=="insufficient" and goal not in TASK_GOALS):
-            allowed_actions={"align_space","align_time"}
+            allowed_actions={"align_space","align_time","compare_station_grid","convert_units","convert_format"}
             if ready_reference:
                 allowed_actions.add("fusion")
         if action in {"insufficient","pending_goal"}:
             approved_options=allowed[cid].get("possible_actions",[])
             if isinstance(approved_options,list):
                 work.extend((cid,option,action) for option in candidates[cid][2]
-                            if option in approved_options and option in allowed_actions)
+                            if option in approved_options and option in allowed_actions and (option!="fusion" or cid not in blocked))
         elif action in allowed_actions:
             work.append((cid,action,action))
+            if action=="fusion" and "compare_station_grid" in candidates[cid][2]:
+                work.append((cid,"compare_station_grid",action))
         else:
             results.append(dict(candidate=cid,action=action,status="与任务目标不符",
                                 reason="逐格比较只需核验对齐。评估融合需明确补缺、订正或对比收益的目标。"))
     seen=set()
+    station_matches={} if station_matches is None else station_matches
     for cid,action,online_action in work:
         if (cid,action) in seen:
             continue
@@ -461,13 +475,16 @@ def check(scan,candidates,reply,approved_summary):
         if a["axis"] or b["axis"]:
             row.update(block_code="coordinate_field",reason="坐标轴可用于对齐，不能作为待融合的观测变量")
             continue
-        unit_check=pair_units(ar,a,br,b)
+        guesses=proposed_quantities.get(cid,set())
+        inferred=next(iter(guesses)) if len(guesses)==1 else None
+        unit_check=pair_units(ar,a,br,b,inferred)
         _,basis_a=field_identity(ar,a)
         _,basis_b=field_identity(br,b)
         same_quantity=bool(unit_check["quantity"])
         row["unit_check"]=unit_check
-        row["physical_identity"]=dict(left_basis=basis_a,right_basis=basis_b,match=same_quantity)
-        if unit_check["status"] not in {"equivalent","convertible","physical_identity_unconfirmed"}:
+        row["physical_identity"]=dict(left_basis=basis_a,right_basis=basis_b,match=same_quantity,
+                                      mapping_basis=unit_check.get("identity_basis","local_metadata"))
+        if action!="convert_format" and unit_check["status"] not in {"equivalent","convertible","physical_identity_unconfirmed"}:
             row["block_code"]={"quantity_conflict":"quantity_conflict","unit_not_convertible":"unit_conflict"}.get(
                 unit_check["status"],"unit_unknown")
             row["reason"]=("两份元数据明确声明了不同物理量" if row["block_code"]=="quantity_conflict"
@@ -478,6 +495,31 @@ def check(scan,candidates,reply,approved_summary):
             row["reason"]="I/O API 边界和内部字段承担不同模型角色。只有经工程确认来源及角色后才能拿来比较或融合。"
             continue
         try:
+            if action in {"convert_units","convert_format"}:
+                from .pair_processing import conversion_task
+                if action=="convert_units" and unit_check["status"] not in {"convertible","equivalent"}:
+                    row["block_code"]="quantity_unknown"
+                    raise ValueError("还需确定可共同换算的物理量和单位")
+                if action=="convert_units" and unit_check["status"]=="equivalent":
+                    results.pop()
+                    continue
+                task=conversion_task(scan,[(ai,a),(bi,b)],action,unit_check)
+                prepared[(cid,action)]=task
+                row.update(status="通过",reason="可独立转换字段并回读核对，供后续配对和融合使用。")
+                continue
+            if "compare_station_grid" in detected and action in {"compare_station_grid","align_time","align_space","fusion"}:
+                from .station_grid import load, plan, task_for
+                if unit_check["status"] not in {"equivalent","convertible"}:
+                    row["block_code"]="quantity_unknown"
+                    raise ValueError("请识别共同物理量并检查单位后进行站点配对")
+                task=task_for(scan,(left,right),action,unit_check)
+                evidence_key=tuple(item[1] for item in (left,right)),unit_check["quantity"]
+                if evidence_key not in station_matches:
+                    station_matches[evidence_key]=load(scan,task)
+                task["recipe_steps"]=plan(station_matches[evidence_key],action)
+                prepared[(cid,action)]=task
+                row.update(status="通过",reason="原始站点与网格时空配对通过。可运行已登记的组合。")
+                continue
             if physical(a)==physical(b)=="precipitation":
                 read_for_check(ai,a)
                 read_for_check(bi,b)
@@ -539,7 +581,8 @@ def check(scan,candidates,reply,approved_summary):
                 if not ("observations" in ar["roles"] and "background" in br["roles"] or
                         "observations" in br["roles"] and "background" in ar["roles"]):
                     task=dict(action=action,route="pair_processing",fields=[(ai,a["name"]),(bi,b["name"])],
-                        quantity=unit_check["quantity"],unit=unit_check["target_unit"])
+                        quantity=unit_check["quantity"],unit=unit_check["target_unit"],
+                        identity_basis=unit_check.get("identity_basis"),field_metadata=[a,b])
                     task["methods"]=pair_processing.methods([read_for_check(ai,a),read_for_check(bi,b)],task)
                     prepared[(cid,action)]=task
                     row.update(status="通过",next_step="alignment_then_fusion",
@@ -567,7 +610,8 @@ def check(scan,candidates,reply,approved_summary):
                     raise ValueError("核验输入超过 64 MiB，请准备字段子集")
                 from .pair_processing import methods
                 task=dict(action=action,route="pair_processing",fields=[(ai,a["name"]),(bi,b["name"])],
-                    quantity=unit_check["quantity"],unit=unit_check["target_unit"])
+                    quantity=unit_check["quantity"],unit=unit_check["target_unit"],
+                        identity_basis=unit_check.get("identity_basis"),field_metadata=[a,b])
                 task["methods"]=methods([read_for_check(ai,a),read_for_check(bi,b)],task)
                 prepared[(cid,action)]=task
                 detail=("时间重采样采用共同覆盖内较粗的原始采样间隔。" if action=="align_time" else
@@ -587,11 +631,14 @@ def parse_decisions(raw):
         if not isinstance(item,dict): continue
         candidate,action=item.get("candidate"),item.get("action")
         if not isinstance(candidate,str) or not re.fullmatch(r"C[1-9]\d*",candidate): continue
-        if action not in ("fusion","align_time","align_space","direct","insufficient","reject","pending_goal"): continue
+        if action not in ("fusion","align_time","align_space","compare_station_grid","convert_units","convert_format","direct","insufficient","reject","pending_goal"): continue
         goal=item.get("goal")
         if not isinstance(goal,str) or goal not in TASK_GOALS or goal=="auto":
             goal="unknown"
-        out.append(dict(candidate=candidate,action=action,goal=goal,
+        quantity=item.get("physical_quantity")
+        if not isinstance(quantity,str) or not re.fullmatch(r"[a-z][a-z0-9_]{1,71}",quantity) or quantity in {"unknown","uncertain"}:
+            quantity=None
+        out.append(dict(candidate=candidate,action=action,goal=goal,physical_quantity=quantity,
                         reason=str(item.get("reason",""))[:1000]))
     return out
 

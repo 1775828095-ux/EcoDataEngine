@@ -34,18 +34,125 @@ def fields(scan, task):
     return datasets, [hashlib.sha256(raw).hexdigest() for raw in payloads]
 
 
+def conversion_task(scan, selections, action, unit_check):
+    from ecodata.io.structures import FORMATS
+
+    fields=[]
+    for index,field in selections:
+        fmt=scan["rows"][index]["format"]
+        if fmt not in {*FORMATS,"HDF5","RDB","NOAA ISD","Shapefile"}:
+            raise ValueError("原版结构转换器未登记此输入格式")
+        fields.append(dict(index=index,name=field["name"],header=field.get("original_header",field["name"]),
+                           unit=field["unit"]))
+    labels=[scan["rows"][item["index"]]["format"] for item in fields]
+    grid_formats={"NetCDF","GeoTIFF","HDF5","HDF5-NetCDF"}
+    formats=[["format.netcdf"],["format.hdf5_netcdf"]] if any(fmt in grid_formats for fmt in labels) else [
+        ["format.parquet"],["format.excel"]]
+    if all(fmt in {"GeoJSON","Shapefile","Shapefile ZIP"} for fmt in labels):
+        formats.append(["format.geojson"])
+    if action=="convert_units":
+        formats=[["units.harmonize",*recipe] for recipe in formats]
+    return dict(action=action,route="structure_conversion",fields=fields,recipe_steps=formats,
+                target_unit=unit_check.get("target_unit"))
+
+
+def conversion_source(scan,index):
+    from pathlib import PurePosixPath
+    import zipfile
+    from .scan import local_member
+
+    row=scan["rows"][index]
+    name=row["name"]
+    if row["format"]!="Shapefile":
+        with local_member(row) as path:
+            return name,path.read_bytes()
+    stem=PurePosixPath(name).with_suffix("").as_posix().casefold()
+    members={PurePosixPath(item["name"]).suffix.casefold():item for item in scan["rows"]
+             if item["ref"][0]==row["ref"][0] or not row["ref"][1] and not item["ref"][1]
+             if PurePosixPath(item["name"]).with_suffix("").as_posix().casefold()==stem}
+    required={".shp",".shx",".dbf",".prj"}
+    if not required<=members.keys():
+        raise ValueError("Shapefile 缺少原版读取器要求的同名配套文件")
+    buffer=io.BytesIO()
+    with zipfile.ZipFile(buffer,"w") as archive:
+        for suffix in sorted(required | (members.keys() & {".cpg"})):
+            with local_member(members[suffix]) as path:
+                archive.write(path,"source"+suffix)
+    return "source.zip",buffer.getvalue()
+
+
+def run_conversion(scan,task_id,task,folder,model_id,progress):
+    from ecodata.engines.units import UnitEngine
+    from ecodata.io.structures import export_structure, read_structure
+    files,artifacts,reports=[],[],[]
+    output_formats=[]
+    for index,recipe in enumerate(task["recipes"],1):
+        if recipe not in task["recipe_steps"]:
+            raise ValueError("转换方案未登记")
+        targets={"format.netcdf":"NetCDF","format.hdf5_netcdf":"HDF5-NetCDF",
+                 "format.parquet":"Parquet","format.excel":"Excel","format.geojson":"GeoJSON"}
+        target=targets[recipe[-1]]
+        output_formats.append(target)
+        for position,source in enumerate(task["fields"],1):
+            row=scan["rows"][source["index"]]
+            input_name,content=conversion_source(scan,source["index"])
+            with read_structure(input_name,content,record_read_source=False) as dataset:
+                field=source["name"] if source["name"] in dataset else source["header"]
+                if field not in dataset:
+                    raise ValueError("原版读取器无法绑定扫描字段")
+                if "units.harmonize" in recipe:
+                    data=dataset[field]
+                    if data.dtype.kind not in "iuf":
+                        values=np.asarray(pd.to_numeric(data.values.reshape(-1),errors="coerce")).reshape(data.shape)
+                        data=data.copy(data=values)
+                    if not np.isfinite(data.values).any():
+                        raise ValueError("单位转换没有有效数值")
+                    data.attrs=dict(data.attrs,units=source["unit"])
+                    dataset=dataset.assign({field:UnitEngine().convert(data,task["target_unit"])})
+                raw,exported,_=export_structure(dataset,target)
+                name=f"conversion-{index}-source-{position}"+exported[exported.rfind("."):]
+                with read_structure(name,raw,record_read_source=False) as restored:
+                    if field not in restored or restored[field].shape!=dataset[field].shape:
+                        raise ValueError("输出回读未保留所选字段和维度")
+                    if "units.harmonize" in recipe:
+                        np.testing.assert_allclose(dataset[field].values,restored[field].values,equal_nan=True)
+                files.append((name,raw))
+                artifacts.append(dict(name=name,dimensions=dict(dataset.sizes),fields=list(dataset.data_vars)))
+                reports.append(dict(source_format=row["format"],target_format=target,field=field,
+                                    target_unit=dataset[field].attrs.get("units"),methods=recipe))
+    return dict(files=files,source_formats=[scan["rows"][item["index"]]["format"] for item in task["fields"]],
+                target_format=" / ".join(dict.fromkeys(output_formats)),original_report=reports,
+                local=dict(artifacts=artifacts,reason="原版单位和格式转换完成，选中字段已回读核对。"))
+
+
 def prepare(datasets, task):
     out = []
     variable = task["quantity"]
-    for dataset, (_, name) in zip(datasets, task["fields"]):
-        data = dataset[name].copy(deep=False)
+    metadata=task.get("field_metadata",[{} for _ in datasets])
+    for dataset,(_,name),field in zip(datasets,task["fields"],metadata):
+        header=field.get("original_header")
+        if name not in dataset and header in dataset:
+            dataset=dataset.rename({header:name})
+        data=dataset[name].copy(deep=False)
         if data.dtype.kind not in "iuf":
-            raise ValueError("所选字段不是数值字段")
+            raw=data.values.astype(str)
+            parsed=np.asarray(pd.to_numeric(raw.reshape(-1),errors="coerce")).reshape(raw.shape)
+            if not np.isfinite(parsed).any() or np.any((np.char.strip(raw)!="") & ~np.isfinite(parsed)):
+                raise ValueError("所选字段包含不能明确转换的数值")
+            data=data.copy(data=parsed)
+        if not data.attrs.get("units") and field.get("unit"):
+            data.attrs=dict(data.attrs,units=field["unit"])
+        if not data.attrs.get("temporal_semantics") and field.get("temporal_semantics"):
+            data.attrs=dict(data.attrs,temporal_semantics=field["temporal_semantics"])
         if name != variable and variable in dataset:
             raise ValueError("标准变量名与现有字段冲突")
         input_unit = data.attrs.get("units")
         if input_unit != task["unit"]:
-            data = convert_matched_field(data, variable, task["unit"], verified_quantity=variable)
+            if task.get("identity_basis")=="deepseek":
+                from ecodata.engines.units import UnitEngine
+                data=UnitEngine().convert(data,task["unit"])
+            else:
+                data = convert_matched_field(data, variable, task["unit"], verified_quantity=variable)
         qc = dataset.get("qc_flag")
         if qc is not None and qc.dims == data.dims:
             if not set(np.unique(qc.values.astype(str))) <= {"VALID","INVALID","MISSING"}:
@@ -340,7 +447,7 @@ def run(scan, task_id, task, folder, model_id, progress):
     files, artifacts, reports, searches = [], [], [], {}
     seeds_by_method = {}
     for recipe in task["recipes"]:
-        alignments = tuple(step for step in recipe if step not in SPATIAL_SEEDS)
+        alignments = tuple(step for step in recipe if step not in (*SPATIAL_SEEDS,"units.harmonize","format.normalize"))
         seeds_by_method.setdefault(alignments, [])
         for seed in recipe:
             if seed in SPATIAL_SEEDS and seed not in seeds_by_method[alignments]:

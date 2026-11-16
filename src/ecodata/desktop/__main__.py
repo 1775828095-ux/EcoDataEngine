@@ -612,6 +612,7 @@ class Window(QMainWindow):
 
     def show_local_explanation(self, reply=None, checked=()):
         labels={"fusion":"融合","align_time":"统一时间分辨率","align_space":"统一空间分辨率",
+                "compare_station_grid":"站点与网格配对","convert_units":"单位换算","convert_format":"格式转换",
                 "direct":"分别使用","insufficient":"依据不足","reject":"明确反对处理","pending_goal":"待确认用途"}
         count=sum(bool(row["fields"]) for row in self.scan["rows"])
         model_name=discovery.MODELS.get(self.decision_model,"尚未选择")

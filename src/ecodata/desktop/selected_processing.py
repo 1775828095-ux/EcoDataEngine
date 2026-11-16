@@ -5,7 +5,7 @@ from .service import ALGORITHMS, bundle, run_original_workbench, run_station_bat
 
 def run(scan, tasks, folder, progress=None, *, model_id=None):
     from ecodata.core.exceptions import EcoDataError
-    from . import gap_search, independent_alignment, pair_processing, reference_search
+    from . import gap_search, independent_alignment, pair_processing, reference_search, station_grid
 
     assert_current(scan)
     files, artifacts, reports, formats, outputs, notes = [], [], [], [], [], []
@@ -17,7 +17,11 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         if progress:
             progress(f"正在处理 {index}/{len(tasks)} · {task_id}")
         try:
-            if route == "pair_processing":
+            if route == "station_grid":
+                result = station_grid.run(scan,task_id,task,stage,model_id,progress)
+            elif route == "structure_conversion":
+                result = pair_processing.run_conversion(scan,task_id,task,stage,model_id,progress)
+            elif route == "pair_processing":
                 result = pair_processing.run(scan,task_id,task,stage,model_id,progress)
             elif route == "observation_gap_search":
                 result = gap_search.run(scan,task_id,task,stage,model_id,progress)

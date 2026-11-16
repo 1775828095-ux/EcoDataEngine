@@ -25,7 +25,21 @@ ALIGNMENT = {
     "reference.native_grid_support": "原版卫星 QA 筛选、投影转换与目标尺度面积聚合",
 }
 
+from .station_grid import NAMES as STATION_METHODS
+
+PREPARATION = {
+    "units.harmonize":"原版物理单位换算",
+    "format.normalize":"原版读取器转换为统一结构",
+    "format.netcdf":"原版结构转换后导出 NetCDF",
+    "format.parquet":"原版结构转换后导出 Parquet",
+    "format.hdf5_netcdf":"原版结构转换后导出 HDF5-NetCDF",
+    "format.excel":"原版结构转换后导出 Excel",
+    "format.geojson":"原版矢量及坐标系转换后导出 GeoJSON",
+    **STATION_METHODS,
+}
+
 ALGORITHM_NAMES = {
+    **PREPARATION,
     "spatial.regrid.conservative": "保守重网格",
     "spatial.blend": "加权融合",
     "spatial.idw": "反距离权重插值（IDW）",
@@ -92,11 +106,20 @@ def make_request(scan, approved, checked, gated, *, local_checks=()):
             recipes=[[REFERENCE_ALIGNMENT,method] for method in ("spatial.blend","spatial.residual_idw","spatial.idw")]
         elif advisory:
             recipes=[]
+        elif task.get("recipe_steps"):
+            recipes=task["recipe_steps"]
         elif task.get("route")=="pair_processing":
             recipes=([([time] if time else [])+[method,seed]
                       for time in task.get("time_methods",[None]) for method in task["methods"] for seed in SPATIAL_SEEDS]
                      if action=="fusion" else [[method] for method in task["methods"]])
             recipes.extend([method] for method in task.get("weighted_methods",[]))
+            field_rows=[scan["rows"][index] for index,_ in task["fields"]]
+            prep=[]
+            if result.get("unit_check",{}).get("status")=="convertible":
+                prep.append("units.harmonize")
+            if len({row["format"] for row in field_rows})>1:
+                prep.append("format.normalize")
+            recipes=[[*prep,*recipe] for recipe in recipes]
         elif task.get("route")=="observation_gap_search":
             recipes=[[seed] for seed in ("spatial.idw","spatial.residual_idw")]
         elif task.get("route")=="independent_alignment":
@@ -114,7 +137,7 @@ def make_request(scan, approved, checked, gated, *, local_checks=()):
             recipes=[["temporal.semantic"]]
         else:
             recipes=[[method] for method in task["methods"] if method in ALIGNMENT]
-        methods={**ALGORITHMS,**ENGINEERING,**ALIGNMENT}
+        methods={**ALGORITHMS,**ENGINEERING,**ALIGNMENT,**PREPARATION}
         options=[dict(id=f"R{number}",name=recipe_name(steps),steps=steps,description=" → ".join(methods[k] for k in steps))
                  for number,steps in enumerate(recipes,1)]
         tasks.append(dict(id=f"{cid}:{action}",candidate=cid,operation=action,context=pair,
