@@ -1,5 +1,6 @@
 """Build and retry bounded DeepSeek requests for decisions and recommendations."""
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, replace
 import json
 
 from . import service
@@ -45,10 +46,10 @@ def scoped(summary, item_key, items):
     return result
 
 
-def prepare(summary):
+def prepare(summary, *, rejected=None):
     if summary.get("catalog_first") and summary["stage"]=="decision":
         from .catalog_decision import prepare
-        return prepare(summary)
+        return prepare(summary,rejected=rejected)
     item_key = {"decision": "candidates", "recommendation": "tasks"}[summary["stage"]]
     items = summary[item_key]
     if any(not isinstance(item, dict) or not isinstance(item.get("id"), str) for item in items):
@@ -62,13 +63,13 @@ def prepare(summary):
             summary[key] = unique(summary[key])
 
     complete = service.preview(summary)
-    if not service.request_capacity_error(complete):
+    if rejected is None:
         return [Batch(complete, tuple(ids))]
 
     def make_batch(group):
         payload = scoped(summary, item_key, group) if group else summary
         draft = service.preview(payload)
-        reason = service.request_capacity_error(draft)
+        reason = service.retry_capacity_hint(draft,rejected)
         if reason:
             docs = [doc for doc in payload.get("engineering_documents", []) if doc.get("text")]
             docs.sort(key=lambda doc: len(doc["text"]), reverse=True)
@@ -79,7 +80,7 @@ def prepare(summary):
                     {k:v for k,v in doc.items() if k!="text"} for doc in payload["engineering_documents"]],
                     engineering_text_delivery="工程全文已在第一步分批发送，本轮附引用及本地核验结果")
                 fallback=service.preview(payload)
-                if not service.request_capacity_error(fallback):
+                if not service.retry_capacity_hint(fallback,rejected):
                     return Batch(fallback,tuple(item["id"] for item in group))
             if docs:
                 sizes = "、".join(f"{doc['id']} ({len(doc['text'].encode('utf8')) / 1024:.0f} KiB)"
@@ -112,6 +113,14 @@ def prepare(summary):
     return [batch for batch, _ in merged]
 
 
+def enqueue_smaller(pending,batch,attempted):
+    retries=prepare(json.loads(batch.request.summary),rejected=batch.request)
+    smaller=[replace(retry,blocked="") for retry in retries if (
+        len(retry.request.body)<len(batch.request.body) and retry.request.digest not in attempted)]
+    pending.extendleft(reversed(smaller))
+    return bool(smaller)
+
+
 def decision_dialogue(draft, reply, checker, mock, key, progress, check_current, *, receipts=None):
     from .decision_checks import CHECKS, MAX_QUESTIONS, MAX_ROUNDS
 
@@ -138,17 +147,22 @@ def decision_dialogue(draft, reply, checker, mock, key, progress, check_current,
             result=checker(cid,check,candidates[cid])
             seen.add((cid,check))
             evidence.append(dict(candidate=cid,check=check,**result))
-        continuation=service.preview(approved,local_evidence=dict(
+        local_evidence=dict(
             rounds_completed=turn+1, final_round=turn+1==MAX_ROUNDS or len(seen)>=MAX_QUESTIONS,
             results=evidence, previous_decisions=[row for values in decisions.values() for row in values],
-            awaiting_decision=[cid for cid in candidates if cid not in decisions]))
+            awaiting_decision=[cid for cid in candidates if cid not in decisions])
+        continuation=service.preview(approved,local_evidence=local_evidence)
         check_current()
-        if service.request_capacity_error(continuation):
-            for cid,_ in pending:
-                unresolved[cid]="后续请求超出上下文容量，本地证据未回传。"
-            break
-        reply=service.send(continuation,continuation.digest,mock,api_key=key,
-                           on_receipt=receipts.append if receipts is not None else None)
+        receipt=receipts.append if receipts is not None else None
+        try:
+            reply=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=receipt)
+        except service.RequestCapacityError:
+            lean=dict(approved,engineering_documents=[
+                {k:v for k,v in doc.items() if k!="text"} for doc in approved.get("engineering_documents",[])])
+            if lean["engineering_documents"]==approved.get("engineering_documents",[]):
+                raise
+            continuation=service.preview(lean,local_evidence=local_evidence)
+            reply=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=receipt)
         check_current()
 
     rows=[]
@@ -167,10 +181,20 @@ def send(batches, cache, mock, key, progress, check_current, *, feedback=None, c
     stage = batches[0].request.stage
     result_key = "decisions" if stage == "decision" else "recommendations"
     identity = "candidate" if stage == "decision" else "task"
-    for index, batch in enumerate(batches, 1):
+
+    pending=deque(batches)
+    attempted=set()
+    index=0
+    while pending:
+        batch=pending.popleft()
+        if batch.request.digest in attempted:
+            continue
+        attempted.add(batch.request.digest)
+        index+=1
+        total=index+len(pending)
         check_current()
         if not batch.blocked:
-            progress(f"正在处理第 {index}/{len(batches)} 批 · {', '.join(batch.ids)}")
+            progress(f"正在处理第 {index}/{total} 批 · {', '.join(batch.ids)}")
         reply_rows = []
         failure = None
         batch_receipts = []
@@ -196,18 +220,28 @@ def send(batches, cache, mock, key, progress, check_current, *, feedback=None, c
             reply_rows = reply[result_key]
             rows.extend(reply_rows)
             local_checks.extend(reply.get("local_checks",[]))
+        except service.RequestCapacityError as error:
+            if enqueue_smaller(pending,batch,attempted):
+                progress("DeepSeek 确认请求超限，正在自动分批重试…")
+                if feedback is not None:
+                    feedback(dict(batch=index,total=index+len(pending),request_batch=batch,rows=[],failure=None,
+                                  notice=str(error)+"，将分批重试",api_receipts=batch_receipts))
+                receipts.extend(batch_receipts)
+                continue
+            failure=dict(batch=index,ids=list(batch.ids),reason=str(error),blocked=True)
+            failures.append(failure)
         except (ValueError, OSError, KeyError, TypeError, IndexError) as error:
             failure = dict(batch=index, ids=list(batch.ids), reason=str(error), blocked=bool(batch.blocked))
             failures.append(failure)
         receipts.extend(batch_receipts)
         check_current()
         if feedback is not None:
-            feedback(dict(batch=index, total=len(batches), rows=reply_rows, failure=failure,
+            feedback(dict(batch=index, total=total, request_batch=batch, rows=reply_rows, failure=failure,
                           api_receipts=batch_receipts, local_cache=cached,
                           local_checks=reply.get("local_checks",[]) if failure is None else []))
     check_current()
     return dict(mode="模拟；真实 API 未调用" if mock else "DeepSeek API",
-                **{result_key: rows}, failures=failures, batch_count=len(batches), local_checks=local_checks,
+                **{result_key: rows}, failures=failures, batch_count=index, local_checks=local_checks,
                 api_receipts=receipts, reused_batches=reused)
 
 

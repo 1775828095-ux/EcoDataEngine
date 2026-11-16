@@ -484,9 +484,15 @@ class Window(QMainWindow):
 
     def show_batch_reply(self, selector, event):
         index=event["batch"]-1
+        _,entries=self.batch_state[selector]
+        batch=event.get("request_batch")
+        if batch is not None and index==len(entries):
+            title=f"第 {index+1} 批 · {', '.join(batch.ids) or '工程上下文'}"
+            entries.append((title,batch))
+            selector.addItem(title)
         feedback,replies=self.batch_response[selector]
         failure=event["failure"]
-        text=s.dump(dict(失败原因=failure["reason"] if failure else None,线上响应=event.get("api_receipts",[]),
+        text=s.dump(dict(提示=event.get("notice"),失败原因=failure["reason"] if failure else None,线上响应=event.get("api_receipts",[]),
                          复用本地结果=event.get("local_cache",False),
                          自动回传核验=event.get("local_checks",[]),最终结果=event["rows"]))
         replies[index]=text
@@ -560,8 +566,8 @@ class Window(QMainWindow):
             if self.decision_batches:
                 lines.append(f"已整理为 {len(self.decision_batches)} 批融合判断。在「融合判断 · 实际分批」查看请求。"
                              "平台优先把完整字段目录和已读取的脱敏工程全文一次发送。"
-                             "单批请求体上限 20 MiB，同时检查模型上下文容量。"
-                             "需要拆批时，确认一次后依次发送，收到回复时自动切换批次。")
+                             "先一次发送完整 JSON。若 DeepSeek 明确拒绝请求大小或上下文长度，平台自动分批重试。"
+                             "只需确认一次，收到回复时自动切换批次。")
                 for batch in self.decision_batches:
                     if batch.blocked:
                         lines.append(f"待处理 · {'、'.join(batch.ids)} · {batch.blocked}")

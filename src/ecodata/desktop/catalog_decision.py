@@ -1,5 +1,5 @@
 """Discover cross-source combinations from the approved field catalogue."""
-from collections import defaultdict
+from collections import defaultdict, deque
 from itertools import combinations
 import json
 
@@ -12,7 +12,7 @@ def fields(sources):
     return [field for source in sources for field in source["fields"]]
 
 
-def prepare(summary):
+def prepare(summary, *, rejected=None):
     sources=summary["sources"]
     ids=[source["id"] for source in sources]
     field_ids=[field["id"] for field in fields(sources)]
@@ -23,7 +23,8 @@ def prepare(summary):
 
     def draft(block, documents):
         request=service.preview(dict(clean,sources=block,engineering_documents=documents))
-        return request_batches.Batch(request,tuple(row["id"] for row in block),service.request_capacity_error(request))
+        hint=service.retry_capacity_hint(request,rejected) if rejected is not None else ""
+        return request_batches.Batch(request,tuple(row["id"] for row in block),hint)
 
     first=draft(sources,docs)
     if not first.blocked:
@@ -123,9 +124,19 @@ def local_fields(scan,summary):
 
 def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply):
     responses=[]
-    for index,batch in enumerate(batches,1):
+
+    pending=deque(batches)
+    attempted=set()
+    index=0
+    while pending:
+        batch=pending.popleft()
+        if batch.request.digest in attempted:
+            continue
+        attempted.add(batch.request.digest)
+        index+=1
+        total=index+len(pending)
         current()
-        progress(f"DeepSeek 正在分析字段目录 · 第 {index}/{len(batches)} 批")
+        progress(f"DeepSeek 正在分析字段目录 · 第 {index}/{total} 批")
         draft=batch.request
         markers=[]
         rows=[]
@@ -144,12 +155,22 @@ def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply):
             sent=json.loads(draft.summary)
             rows=answer.get("decisions",[]) or answer.get("questions",[])
             responses.append(({field["id"] for field in fields(sent["sources"])},answer))
+        except service.RequestCapacityError as exc:
+            if request_batches.enqueue_smaller(pending,batch,attempted):
+                progress("DeepSeek 确认请求超限，正在自动分批重试…")
+                feedback(dict(batch=index,total=index+len(pending),request_batch=batch,rows=[],failure=None,
+                              notice=str(exc)+"，将分批重试",api_receipts=markers))
+                reply["api_receipts"].extend(markers)
+                continue
+            failure=dict(batch=index,ids=list(batch.ids),reason=str(exc),blocked=True)
+            reply["failures"].append(failure)
         except (ValueError,OSError,TypeError,KeyError,IndexError) as exc:
             failure=dict(batch=index,ids=list(batch.ids),reason=str(exc),blocked=bool(batch.blocked))
             reply["failures"].append(failure)
         reply["api_receipts"].extend(markers)
-        feedback(dict(batch=index,total=len(batches),rows=rows,failure=failure,api_receipts=markers,
+        feedback(dict(batch=index,total=total,request_batch=batch,rows=rows,failure=failure,api_receipts=markers,
                       local_cache=cached,local_checks=[]))
+    reply["batch_count"]=index
     return responses
 
 
@@ -199,12 +220,7 @@ def pair_batch(approved,pair):
     scoped=request_batches.scoped(approved,"candidates",[pair])
     # The initial request already included the full field catalogue.
     scoped["sources"]=[]
-    draft=service.preview(scoped)
-    if service.request_capacity_error(draft):
-        scoped["engineering_documents"]=[{name:value for name,value in doc.items() if name!="text"}
-                                         for doc in scoped.get("engineering_documents",[])]
-        draft=service.preview(scoped)
-    return request_batches.Batch(draft,(pair["id"],))
+    return request_batches.Batch(service.preview(scoped),(pair["id"],))
 
 
 def decide(scan,summary,batches,cache,mock,key,progress,feedback):

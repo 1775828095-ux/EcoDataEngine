@@ -225,23 +225,39 @@ def preview(summary, file=None, *, local_evidence=None):
                    max_tokens=output_tokens)).encode("utf8")
     return Preview(stage,body,hashlib.sha256(body).hexdigest(),brief)
 
-# DeepSeek Flash context is 1,048,576 total tokens. Use a conservative
-# byte-based estimate for long requests, with room for response and framing.
-REQUEST_BODY_LIMIT = 20 * 1024**2
+class RequestCapacityError(ValueError):
+    """The official endpoint explicitly rejected the request size or context."""
 
 
-def request_capacity_error(approved):
-    if len(approved.body) > REQUEST_BODY_LIMIT:
-        return "脱敏全文请求超过平台单批 20 MiB 上限"
-    if len(approved.body) < 512 * 1024:
+def retry_capacity_hint(approved, rejected):
+    # Used only to plan smaller retries after an actual server rejection.
+    if len(approved.body)>=max(1,len(rejected.body)//2):
+        return "需要比被拒请求更小的批次"
+    envelope=json.loads(approved.body)
+    content="".join(message["content"] for message in envelope["messages"])
+    estimate=(len(content.encode("utf8"))+len(content))*3//10
+    if estimate+envelope["max_tokens"]+32768>=1048576:
+        return "重试批次预计超过模型上下文容量"
+    return ""
+
+
+def capacity_rejection(error):
+    if error.code==413:
+        return "DeepSeek 拒绝了请求体大小（HTTP 413）"
+    if error.code not in {400,422}:
         return ""
-    envelope = json.loads(approved.body)
-    content = "".join(message["content"] for message in envelope["messages"])
-    raw_bytes = len(content.encode("utf8"))
-    # JSON numeric inventories tend to tokenize more densely than prose.
-    estimate = (raw_bytes + len(content)) * 3 // 10
-    if estimate + envelope["max_tokens"] + 32768 >= 1048576:
-        return "脱敏全文预计超过模型上下文预算"
+    try:
+        details=json.loads(error.read(16*1024)).get("error",{})
+        code=str(details.get("code") or "").casefold()
+        message=" ".join(str(details.get("message") or "").casefold().split())
+    except (OSError,ValueError,AttributeError,TypeError):
+        return ""
+    if (code in {"context_length_exceeded","max_context_length_exceeded","request_too_large"}
+        or "maximum context length" in message or "context length exceeded" in message
+        or ("context" in message and any(text in message for text in ("too long","exceeds","over the limit")))
+        or ("token" in message and any(text in message for text in ("too many input","too many prompt","exceeds the token limit")))
+        or "request body is too large" in message):
+        return "DeepSeek 拒绝了请求体或上下文长度（HTTP "+str(error.code)+"）"
     return ""
 
 
@@ -251,9 +267,6 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def send(approved, approved_digest, mock=False, *, api_key=None, on_receipt=None):
     if hashlib.sha256(approved.body).hexdigest()!=approved_digest or approved.digest!=approved_digest:
         raise ValueError("待发送内容已改变，须重新审核")
-    capacity_error = request_capacity_error(approved)
-    if capacity_error:
-        raise ValueError(capacity_error)
     if mock and approved.stage=="fusion_review":
         from .fusion_review import HARD_STOPS
         return {"reviews":[dict(candidate=row["candidate"],verdict="uphold" if row["code"] in HARD_STOPS else "retain",
@@ -311,7 +324,11 @@ def send(approved, approved_digest, mock=False, *, api_key=None, on_receipt=None
         with urllib.request.build_opener(NoRedirect(),handler).open(req,timeout=180 if len(approved.body)>1024**2 else 45) as response:
             reply=json.loads(response.read(4*1024**2))
     except urllib.error.HTTPError as exc:
-        message={401:"密钥无效",402:"账户余额不足",413:"服务端拒绝了该请求体的大小，工程全文未提交成功",429:"请求过于频繁"}.get(exc.code,"服务返回错误")
+        with exc:
+            reason=capacity_rejection(exc)
+        if reason:
+            raise RequestCapacityError(reason) from None
+        message={401:"密钥无效",402:"账户余额不足",429:"请求过于频繁"}.get(exc.code,"服务返回错误")
         raise ValueError(f"DeepSeek HTTP {exc.code}：{message}") from None
     except (urllib.error.URLError, TimeoutError):
         raise ValueError("无法连接 DeepSeek，请检查网络后重试") from None
