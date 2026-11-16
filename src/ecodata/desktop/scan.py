@@ -9,17 +9,19 @@ import re
 import tarfile
 import time
 import zipfile
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 from shutil import copyfileobj
 from tempfile import TemporaryDirectory
+
+from ecodata.core.exceptions import EcoDataError
 from pathlib import Path, PurePosixPath
 
 PREFIX = 16384
 FORMATS = {".csv":"CSV", ".tsv":"TSV", ".xlsx":"Excel", ".parquet":"Parquet",
-           ".nc":"NetCDF", ".nc4":"NetCDF", ".h5":"HDF5", ".hdf5":"HDF5",
+           ".nc":"NetCDF", ".nc4":"NetCDF", ".netcdf":"NetCDF", ".h5":"HDF5", ".hdf5":"HDF5", ".hdf":"HDF5",
            ".tif":"GeoTIFF", ".tiff":"GeoTIFF", ".json":"JSON", ".geojson":"GeoJSON",
-           ".shp":"Shapefile"}
-SCIENTIFIC = {"NetCDF","Excel","GeoTIFF","Parquet","HDF5"}
+           ".shp":"Shapefile", ".dbf":"DBF", ".rdb":"RDB", ".isd":"NOAA ISD", ".gz":"NOAA ISD"}
+SCIENTIFIC = {"NetCDF","Excel","GeoTIFF","Parquet","HDF5","GeoJSON","DBF","RDB","NOAA ISD"}
 DOCS = {".md",".txt",".json",".csh",".yaml",".yml",".toml",".ini",".cfg",".nml",".xml",".cio",".sim",".inp",".qgs",".prj",".cli",".rst",".conf",".lst"}
 AXES = {"time","time_utc","date","datetime","timestamp","lat","latitude","lon","longitude","x","y"}
 
@@ -57,7 +59,7 @@ class Meter:
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
 
-def seven_zip_members(archive, temporary, stack):
+def seven_zip_members(archive, temporary, stack, *, only=None):
     from py7zr.io import Py7zIO, WriterFactory
 
     class MemberFile(Py7zIO):
@@ -97,7 +99,8 @@ def seven_zip_members(archive, temporary, stack):
     selected=[]
     for entry in entries:
         filename=PurePosixPath(entry.filename)
-        if (safe(entry.filename) and not getattr(entry,"is_symlink",False)
+        if (safe(entry.filename) and (only is None or entry.filename==only)
+                and not getattr(entry,"is_symlink",False)
                 and (filename.suffix.lower() in FORMATS.keys() | DOCS
                      or filename.name.casefold().startswith("readme")
                      or filename.name.casefold()=="namelist.input")):
@@ -195,7 +198,7 @@ def tabular(row, blob, complete):
             if step is not None:
                 typ = "time"
                 row["resolution"]["time_seconds"] = step
-        row["fields"].append(dict(name=name, original_header=title, type=typ, unit=unit, axis=base in AXES))
+        row["fields"].append(dict(name=name, original_header=title, column=i, type=typ, unit=unit, axis=base in AXES))
     if row["format"]=="CSV" and {"station_id","time_utc","latitude","longitude","levels"} <= set(header):
         from ecodata.models.task_dispatch import OBSERVATION_COLUMNS
         for field in row["fields"]:
@@ -331,6 +334,35 @@ def curvilinear_support(row, ds, coordinates):
         row["grid_spacing_basis"]="sampled_curvilinear_neighbor_distance"
 
 
+def original_fields(row, content):
+    from ecodata.io.structures import read_structure
+    from ecodata.io.structures import GEOMETRY
+    with read_structure(row["name"],content,record_read_source=False) as dataset:
+        for name,variable in dataset.variables.items():
+            if name==GEOMETRY:
+                continue
+            keys=("standard_name","physical_variable","long_name","var_desc","temporal_semantics")
+            metadata={key:str(variable.attrs[key]) for key in keys if variable.attrs.get(key) is not None}
+            row["fields"].append(dict(name=name,type=str(variable.dtype),unit=str(variable.attrs.get("units","")),
+                axis=name in dataset.coords or name.casefold() in AXES,dimensions=list(variable.dims),**metadata))
+    row["original_reader"]=True
+    row["basis"].append("原版读取器识别的变量与属性")
+
+
+def shapefile_attribute_rows(rows):
+    def key(row):
+        path,archive,*_=row["ref"]
+        return path if archive else None,PurePosixPath(row["name"]).with_suffix("").as_posix().casefold()
+
+    tables={key(row):row for row in rows if row["format"]=="DBF" and row["fields"]}
+    for row in rows:
+        if row["format"]=="Shapefile" and (table:=tables.get(key(row))):
+            row["attribute_member"]={name:table[name] for name in ("ref","bytes","name")}
+            row["fields"]=table["fields"]
+            table["fields"]=[]
+            row["basis"].append("读取同名 DBF 属性表，几何保持本地")
+            row["pending"]=[note for note in row["pending"] if "原版读取器" not in note and "仅登记" not in note]
+
 def scientific(row, path):
     fmt = row["format"]
     if fmt == "NetCDF":
@@ -412,7 +444,7 @@ def scientific(row, path):
             for i in range(ds.count):
                 name=saved.get("export_variable","value") if ds.count==1 else (ds.descriptions[i] or f"band_{i+1}")
                 attrs=saved.get("variables",{}).get(name,{})
-                row["fields"].append(dict(name=name,type=ds.dtypes[i],unit=attrs.get("units") or ds.units[i] or "",
+                row["fields"].append(dict(name=name,band=i+1,type=ds.dtypes[i],unit=attrs.get("units") or ds.units[i] or "",
                     standard_name=attrs.get("standard_name",""), physical_variable=attrs.get("physical_variable",""),
                     long_name=attrs.get("long_name",""),axis=False))
             if ds.count>1:
@@ -455,6 +487,15 @@ def scientific(row, path):
         row["basis"].append("Parquet 页脚 schema；未读数据行")
     elif fmt=="HDF5":
         scan_hdf(row,path)
+    elif fmt=="DBF":
+        import shapefile
+        with path.open("rb") as stream, shapefile.Reader(dbf=stream) as dataset:
+            row["fields"]=[dict(name=name,type=("integer" if decimals==0 else "number") if typ in {"N","F"} else "text",
+                                 unit="",axis=name.casefold() in AXES)
+                           for name,typ,_,decimals in dataset.fields[1:]]
+        row["basis"].append("DBF 属性表字段")
+    elif fmt in {"GeoJSON","RDB","NOAA ISD"}:
+        original_fields(row,path.read_bytes())
     else:
         row["pending"].append("需按所选处理目标用原版读取器核验")
 
@@ -507,6 +548,23 @@ class Scanner:
                         if "\x00" in content or "\ufffd" in content:
                             row["engineering_text_status"]="binary_or_encoding_unreadable"
                         else:
+                            if ext==".json":
+                                from json import loads, JSONDecodeError
+                                try:
+                                    parsed=loads(content)
+                                except JSONDecodeError:
+                                    parsed=None
+                                if (isinstance(parsed,list) and all(isinstance(record,dict) for record in parsed)
+                                        or isinstance(parsed,dict) and parsed.get("type")=="FeatureCollection"):
+                                    original_fields(row,blob)
+                            elif ext==".txt":
+                                from ecodata.io.raw_tables import locate_header
+                                try:
+                                    locate_header(content)
+                                except EcoDataError:
+                                    pass
+                                else:
+                                    original_fields(row,blob)
                             is_local_research=False
                             if ext==".json" and size<=256*1024:
                                 import json
@@ -532,7 +590,15 @@ class Scanner:
                     # A materialized member can be read directly.
                     blob=reader(size)
                 count+=len(blob)
-                tabular(row,blob,len(blob)==size)
+                if ext==".csv" and (b"LEGEND FOR FIELD NAMES" in blob[:200] or
+                        blob.lstrip(b"\xef\xbb\xbf").startswith(b"Latitude:") and b"Daymet" in blob[:2000]):
+                    if open_member and not local and ref[1]=="tar":
+                        with local_member(row) as source:
+                            original_fields(row,source.read_bytes())
+                    else:
+                        original_fields(row,reader(size))
+                else:
+                    tabular(row,blob,len(blob)==size)
             elif open_member and not local and row["format"] in SCIENTIFIC:
                 # Random access to the member is needed by the scientific
                 # readers. Stream to disk in fixed-size buffers, then scan
@@ -566,7 +632,7 @@ class Scanner:
             k=kind(path)
             def attempt(*args):
                 try: item(*args)
-                except (ValueError,OSError,RuntimeError,ImportError,csv.Error) as exc:
+                except (EcoDataError,ValueError,OSError,RuntimeError,ImportError,csv.Error) as exc:
                     warnings.append(f"{args[0]}: {exc}")
                     if rows and rows[-1]["name"]==args[0]:
                         rows[-1]["pending"].append("字段或坐标读取未完成，详见扫描警告")
@@ -622,6 +688,7 @@ class Scanner:
                 warnings.append(f"{name}: {exc}")
         from .engineering_links import collect
         collect(rows,docs)
+        shapefile_attribute_rows(rows)
         mark_engineering_netcdf(rows,docs)
         from .cmaq_grid_audit import audit_scan
         cmaq_grid_checks=audit_scan(rows)
@@ -663,6 +730,45 @@ def assert_current(scan):
     if tuple(inventory(scan["path"]))!=scan["signature"]:
         raise ValueError("原文件已变化，旧预览与授权已失效。请重新扫描。")
 
+@contextmanager
+def local_member(row):
+    """Expose one scanned member as a seekable file for format-specific sampling."""
+    path,kind,name,offset=row["ref"]
+    if not kind:
+        yield path
+        return
+    with TemporaryDirectory(prefix="ecodata-probe-") as directory, ExitStack() as stack:
+        root=Path(directory)
+        if kind=="7z":
+            import py7zr
+            archive=stack.enter_context(py7zr.SevenZipFile(path))
+            member=next((member for entry,member in seven_zip_members(archive,root,stack,only=name)
+                         if entry.filename==name and member is not None),None)
+            if member is None or member.stat().st_size!=row["bytes"]:
+                raise ValueError("归档成员已变化")
+            yield member
+            return
+        if kind=="zip":
+            archive=stack.enter_context(zipfile.ZipFile(path))
+            item=next((item for item in archive.infolist()
+                       if item.header_offset==offset and item.filename==name),None)
+            stream=stack.enter_context(archive.open(item)) if item is not None else None
+        elif kind=="tar":
+            archive=stack.enter_context(tarfile.open(path,"r|*"))
+            item=next((item for item in archive if item.isfile() and item.offset_data==offset and item.name==name),None)
+            stream=stack.enter_context(archive.extractfile(item)) if item is not None else None
+        else:
+            raise ValueError("不支持此归档格式")
+        if stream is None:
+            raise ValueError("归档成员已变化")
+        destination=root/("member"+PurePosixPath(name).suffix)
+        with destination.open("wb") as output:
+            copyfileobj(stream,output,length=1024*1024)
+        if destination.stat().st_size!=row["bytes"]:
+            raise ValueError("归档成员已变化")
+        yield destination
+
+
 def read_selected(row, limit=256*1024**2):
     path,k,name,offset=row["ref"]
     if row["bytes"]>limit: raise ValueError(f"单成员深读超过 {limit//1024**2} MiB；请先准备所需字段或数据块")
@@ -677,7 +783,6 @@ def read_selected(row, limit=256*1024**2):
                     with t.extractfile(member) as f: return f.read(limit+1)
         raise ValueError("成员已变化")
     if k=="7z":
-        from tempfile import TemporaryDirectory
         from ecodata.models.archive_inputs import normalize_archives
         from ecodata.interface.engineering_upload import LocalUpload
         with TemporaryDirectory(prefix="ecodata-selected-") as d:

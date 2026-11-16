@@ -192,7 +192,8 @@ def preview(summary, file=None, *, local_evidence=None):
             "有 checked 才能引用该核验，unavailable 不能当作不一致。"
             "范围重叠不能证明逐格对应或时间统计口径一致，抽样差异不能证明融合收益。"
             "同源边界与内部网格优先问 position_agreement；卫星与模型可问时间覆盖、空间覆盖、数据质量。"
-            "禁止请求原始值、文件名、路径、坐标或任意代码。"
+            "需要了解字段量级时可请求 numeric_samples。样本已加随机小数，只用于理解量级，不能用于评分。"
+            "禁止请求未处理的原始值、路径、坐标或任意代码。"
         )
     if stage=="decision" and loaded.get("catalog_first"):
         prompt=(
@@ -208,7 +209,9 @@ def preview(summary, file=None, *, local_evidence=None):
             "action 可为 fusion、align_time、align_space、insufficient、pending_goal、reject。"
             "goal 可为 grid_comparison、gap_fill、bias_correction、evaluate_gain、unknown。"
             "questions 数组每项含 fields（两个字段 id）和 check（只选 automatic_local_checks.checks 中的键）。"
-            "存在合理组合即使只能提问，也要给出两字段 id。不能请求原始数据、位置或任意代码。"
+            "如需先了解某个字段的量级，可在 questions 中填 fields:[一个字段 id] 和 check:numeric_samples。"
+            "local_check_results 里的随机小数扰动样本只用于理解量级，不能用于评分。两字段的问题必须给出两个字段 id。"
+            "不能请求原始数据、位置或任意代码。"
         )
     if stage in {"decision","recommendation"}:
         prompt += " 工程文件的 sharing 标记区分完整说明、混合文件、数据和待确认文件；按 classification_reason 及结构读证据。替换区和空正文中没有可用于判断的观测值。"

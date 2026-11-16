@@ -51,11 +51,17 @@ def render_local_check(record, labels):
     if record["status"]=="outside_scope":
         text="超出授权范围"
     elif record["status"]!="checked":
-        reasons={"unsupported_format_or_read_budget":"格式或定向读取预算暂不支持",
+        reasons={"sample_format_unavailable":"此文件格式尚未识别到可读取的数值字段",
+                 "no_numeric_samples":"抽样未取得有限的数值",
+                 "position_verification_needs_supported_coordinates":"此组合缺少当前同位置核验支持的坐标结构",
                  "sampled_time_records_not_verified_equal":"未证实抽样记录的时间与口径一致",
                  "too_few_matching_sample_locations":"本次抽样可对应位置少于 10 个，无法直接核对同位置的值",
                  "verified_geographic_coordinates_missing":"缺少可核验的地理坐标"}
         text=reasons.get(record.get("basis"),"有效证据不足")
+    elif "sample_fields" in record:
+        text="；".join(f"{item['field']} 返回 {len(item.get('perturbed_samples',[]))} 个扰动数值" for item in record["sample_fields"])
+    elif "perturbed_samples" in record:
+        text=f"返回 {len(record['perturbed_samples'])} 个扰动数值"
     elif "sampled_pairs" in record:
         text=f"{record['sampled_pairs']} 对抽样位置"
         if "agreement_percent" in record:
@@ -556,7 +562,7 @@ class Window(QMainWindow):
                "将发送扫描到的全部原表头、变量元数据、时空分辨率和工程说明。DeepSeek 先从这些数据中提出组合。",
                "平台只改待发送副本。正文保留段落和表格。文件引用用编号代替，匹配到的敏感信息用占位符替换，普通数值加随机小数。精确时间戳、坐标和完整观测序列留在本机。请在 JSON 中复核工程说明里的项目名、地名等敏感文字。"]
         lines.append("确认发送也授权本轮自动核验。DeepSeek 可追问其提出组合的单位、时间覆盖、空间重叠、"
-                     "数据质量和对应位置一致性。平台最多自动回复两轮，只回传状态、计数和粗粒度统计。"
+                     "数据质量和对应位置一致性，也可以按字段请求数值样本。平台给样本加随机小数后回传。"
                      "本地拦截融合时，同一次确认也授权 DeepSeek 复核预览范围内的候选及脱敏拦截原因。")
         if self.decision_model is None:
             lines.append("请先选择目标模型，再确认发送。")

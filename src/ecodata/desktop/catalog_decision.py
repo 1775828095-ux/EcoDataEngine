@@ -122,7 +122,7 @@ def local_fields(scan,summary):
     return originals,approved
 
 
-def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply):
+def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply,*,sample_field=None):
     responses=[]
 
     pending=deque(batches)
@@ -145,16 +145,21 @@ def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply):
         try:
             if batch.blocked:
                 raise ValueError(batch.blocked)
+            sent=json.loads(draft.summary)
+            allowed={field["id"] for field in fields(sent["sources"])}
             if draft.digest in cache:
                 answer=cache[draft.digest]
                 reply["reused_batches"]+=1
                 cached=True
             else:
                 answer=service.send(draft,draft.digest,mock,api_key=key,on_receipt=markers.append)
+                if sample_field is not None:
+                    answer=answer_single_field_questions(sent,allowed,answer,sample_field,
+                                                        mock,key,progress,current,markers.append)
                 cache[draft.digest]=answer
-            sent=json.loads(draft.summary)
+            reply.setdefault("local_checks",[]).extend(answer.get("field_checks",[]))
             rows=answer.get("decisions",[]) or answer.get("questions",[])
-            responses.append(({field["id"] for field in fields(sent["sources"])},answer))
+            responses.append((allowed,answer))
         except service.RequestCapacityError as exc:
             if request_batches.enqueue_smaller(pending,batch,attempted):
                 progress("DeepSeek 确认请求超限，正在自动分批重试…")
@@ -173,6 +178,44 @@ def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply):
     reply["batch_count"]=index
     return responses
 
+
+def answer_single_field_questions(sent,allowed,answer,sample_field,mock,key,progress,current,on_receipt):
+    from .decision_checks import MAX_QUESTIONS, MAX_ROUNDS
+    evidence={}
+    for turn in range(MAX_ROUNDS):
+        questions=[]
+        for question in answer.get("questions",[]):
+            if not isinstance(question,dict) or question.get("check")!="numeric_samples":
+                continue
+            refs=question.get("fields")
+            if (isinstance(refs,list) and len(refs)==1 and isinstance(refs[0],str) and refs[0] in allowed
+                    and refs[0] not in evidence and refs[0] not in questions):
+                questions.append(refs[0])
+        questions=questions[:MAX_QUESTIONS-len(evidence)]
+        if not questions:
+            break
+        progress("正在抽取字段数值并回传扰动样本…")
+        for fid in questions:
+            current()
+            evidence[fid]=dict(candidate=fid,check="numeric_samples",**sample_field(fid))
+        context=dict(results=list(evidence.values()),rounds_completed=turn+1,
+                     final_round=turn+1==MAX_ROUNDS or len(evidence)>=MAX_QUESTIONS,
+                     previous_decisions=answer.get("decisions",[]))
+        continuation=service.preview(sent,local_evidence=context)
+        try:
+            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt)
+        except service.RequestCapacityError:
+            lean=dict(sent,engineering_documents=[
+                {k:v for k,v in doc.items() if k!="text"} for doc in sent.get("engineering_documents",[])])
+            if lean["engineering_documents"]==sent.get("engineering_documents",[]):
+                raise
+            continuation=service.preview(lean,local_evidence=context)
+            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt)
+        previous=[row for row in answer.get("questions",[]) if isinstance(row,dict)
+                  and isinstance(row.get("fields"),list) and len(row["fields"])==2]
+        answer=dict(followup,decisions=followup.get("decisions") or answer.get("decisions",[]),
+                    questions=[*previous,*followup.get("questions",[])])
+    return dict(answer,field_checks=list(evidence.values()))
 
 def materialize(scan,summary,originals,details,responses):
     evidence=defaultdict(lambda: dict(decisions=[],questions=[]))
@@ -232,9 +275,13 @@ def decide(scan,summary,batches,cache,mock,key,progress,feedback):
     originals,details=local_fields(scan,summary)
     reply=dict(mode="模拟；真实 API 未调用" if mock else "DeepSeek API",failures=[],batch_count=len(batches),
                local_checks=[],api_receipts=[],reused_batches=0,decisions=[])
-    responses=read_catalogue(batches,cache,mock,key,progress,feedback,current,reply)
+    checker=LocalChecks(scan,{})
+    def sample_field(fid):
+        return (checker.field_question(originals[fid]) if fid in originals
+                else dict(field=fid,status="outside_scope"))
+    responses=read_catalogue(batches,cache,mock,key,progress,feedback,current,reply,sample_field=sample_field)
     candidates,approved,dialogue=materialize(scan,summary,originals,details,responses)
-    checker=LocalChecks(scan,candidates)
+    checker.candidates=candidates
     reviews=[]
     gate_input=[]
     for pair in approved["candidates"]:
