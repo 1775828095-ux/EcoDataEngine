@@ -194,7 +194,7 @@ def _source_on_port(source,port):
     return output
 
 
-def process_port(port,sources,folder,progress=None):
+def process_port(port,sources,folder,progress=None,*,request_builder=None):
     from ecodata.evaluation.quality_gates import RawInputQualityGate,ResultQualityGate
     folder.mkdir()
     original_port=port
@@ -218,7 +218,7 @@ def process_port(port,sources,folder,progress=None):
         support_binding='native_station_identifiers' if 'station_id' in port.data.coords else 'explicit_geographic_coordinates')
     semantic_type='categorical' if kind=='categorical' else 'continuous'
     from .search_bridge import search_port
-    output,execution=search_port(port,arrays,sources,folder/'decision',progress=progress)
+    output,execution=search_port(port,arrays,sources,folder/'decision',progress=progress,request_builder=request_builder)
     raw=RawInputQualityGate().validate(output,variable=port.quantity,requires_spatial=False,expected_unit=port.unit)
     quality=ResultQualityGate().validate(port.data,output,variable=port.quantity,semantic_type=semantic_type,expected_output_unit=port.unit)
     if raw['status']=='BLOCK' or quality['status']=='BLOCK':raise ValueError('公共双层质量门拒绝端口产品')
@@ -242,7 +242,7 @@ def process_port(port,sources,folder,progress=None):
     return field,report
 
 
-def prepare_engineering_inputs(uploads,model,folder,progress=None):
+def prepare_engineering_inputs(uploads,model,folder,progress=None,*,request_builder=None):
     """The public shared planner; drivers do not select scientific algorithms."""
     folder=Path(folder)
     with ExitStack() as stack:
@@ -282,7 +282,7 @@ def prepare_engineering_inputs(uploads,model,folder,progress=None):
                 if exported is None:return None
                 if exported['manifest']['status']=='CONVERSION_FAILED':return exported
                 post=folder/'engineering_post_export';post.mkdir()
-                return prepare_engineering_inputs([LocalUpload('exported_project.zip',Path(exported['archive']))],model,post,progress)
+                return prepare_engineering_inputs([LocalUpload('exported_project.zip',Path(exported['archive']))],model,post,progress,request_builder=request_builder)
             try:ports,unknown=weather_ports(files,metadata,requested_quantities={s['quantity'] for s in sources} if sources else None)
             except ValueError as exc:
                 if sources:raise
@@ -348,7 +348,7 @@ def prepare_engineering_inputs(uploads,model,folder,progress=None):
             port=members[0][0]
             try:
                 port,mapping=combine_ports(members)
-                values,report=process_port(port,members[0][1],stage/str(i),progress=progress)
+                values,report=process_port(port,members[0][1],stage/str(i),progress=progress,request_builder=request_builder)
             except SearchNotReady as exc:
                 failure=dict(port=port.resource,variable=port.quantity,**exc.report)
                 (stage/'search_blocked.json').write_text(json.dumps(failure,ensure_ascii=True,indent=2),encoding='utf8')

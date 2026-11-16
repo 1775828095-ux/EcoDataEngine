@@ -22,7 +22,7 @@ from ecodata.algorithms.scientific_state import signature
 from ecodata.algorithms.dag import Artifact
 
 
-def resolve_registered_policy(request):
+def resolve_registered_policy(request, *, allow_unmatched=False):
     """Use an unambiguous reviewed task policy, never invent model preferences."""
     from ecodata.models import portrait_policy
     from ecodata.algorithms import attribute_registry
@@ -37,7 +37,10 @@ def resolve_registered_policy(request):
             for scenario in policy['scenarios']:
                 if all(scenario[k]==selection[k] for k in ('role','field')) and scenario['task']==request['task']:
                     matches.append(dict(version=policy['version'],scenario=scenario['id']))
-        if len(matches)!=1:raise ValueError('Choose an explicit registered portrait_policy: zero or multiple matching task policies')
+        if len(matches)!=1:
+            if allow_unmatched:
+                return dict(request, soft_guidance=False)
+            raise ValueError('Choose an explicit registered portrait_policy: zero or multiple matching task policies')
         request['portrait_policy']=matches[0]
         request['policy_resolution']='Unique registered model/role/field/task policy; no inferred simulator sensitivity'
     if request.get('portrait_policy') and not request.get('scoring'):

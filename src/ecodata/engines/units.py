@@ -42,7 +42,8 @@ class UnitEngine:
 
     @staticmethod
     def parse(unit):
-        if not unit or str(unit).casefold() in {"unknown", "未知"}:
+        unit = str(unit).strip() if unit is not None else ""
+        if not unit or unit.casefold() in {"unknown", "未知"}:
             raise SchemaError("源单位未知，不能自动换算")
         aliases = {"℃": "degC", "°C": "degC", "Celsius": "degC", "degrees_Celsius": "degC",
                    "µ": "u", "μ": "u", "UG/M3": "ug/m3",

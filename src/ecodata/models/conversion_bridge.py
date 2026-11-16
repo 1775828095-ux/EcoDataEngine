@@ -10,7 +10,14 @@ from . import converter_contract as _contracts
 
 def entry_points(**kwargs):
     # Retain the original bridge's public discovery seam for existing tests.
-    return _contracts.entry_points(**kwargs)
+    entries = _contracts.entry_points(**kwargs)
+    if entries or kwargs.get("group")!="ecodata.model_converters":
+        return entries
+    converter = _contracts.bundled_converter(kwargs.get("name"))
+    if converter is None:
+        return entries
+    from types import SimpleNamespace
+    return [SimpleNamespace(load=lambda:converter)]
 
 
 def finish_preparation(folder, model_id, products, receipt):

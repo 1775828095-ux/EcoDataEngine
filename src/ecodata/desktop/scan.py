@@ -1,0 +1,715 @@
+"""Bounded local inventory. No extraction, execution or network access."""
+import bz2
+import csv
+import gzip
+import io
+import lzma
+import os
+import re
+import tarfile
+import time
+import zipfile
+from pathlib import Path, PurePosixPath
+
+PREFIX = 16384
+ENGINEERING_TEXT_BUDGET = 4 * 1024**2
+MAX_ENTRIES = 20000
+SEQUENTIAL = 64 * 1024**2
+SCIENCE_MEMBER = 8 * 1024**2
+SCIENCE_TOTAL = 40 * 1024**2
+FORMATS = {".csv":"CSV", ".tsv":"TSV", ".xlsx":"Excel", ".parquet":"Parquet",
+           ".nc":"NetCDF", ".nc4":"NetCDF", ".h5":"HDF5", ".hdf5":"HDF5",
+           ".tif":"GeoTIFF", ".tiff":"GeoTIFF", ".json":"JSON", ".geojson":"GeoJSON",
+           ".shp":"Shapefile"}
+DOCS = {".md",".txt",".json",".csh",".yaml",".yml",".toml",".ini",".cfg",".nml",".xml",".cio",".sim",".inp",".qgs",".prj",".cli",".rst",".conf",".lst"}
+AXES = {"time","time_utc","date","datetime","timestamp","lat","latitude","lon","longitude","x","y"}
+
+def kind(path):
+    s = str(path).lower()
+    if s.endswith(".zip"): return "zip"
+    if s.endswith(".7z"): return "7z"
+    if s.endswith((".tar",".tgz",".tar.gz",".tar.bz2",".tar.xz")): return "tar"
+    return ""
+
+def safe(name):
+    p = PurePosixPath(name)
+    return bool(name and not p.is_absolute() and ".." not in p.parts and "\\" not in name and ":" not in name)
+
+def inventory(path):
+    result = []
+    paths = (Path(folder)/name for folder, _, files in os.walk(path, followlinks=False)
+             for name in sorted(files)) if path.is_dir() else [path]
+    for p in paths:
+        if p.is_symlink() or not p.is_file(): continue
+        if not p.resolve().is_relative_to(path if path.is_dir() else path.parent): continue
+        stat = p.stat()
+        result.append((p, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino))
+        if len(result) > MAX_ENTRIES: raise ValueError("目录超过轻扫成员上限，请缩小扫描范围")
+    return sorted(result)
+
+class Meter:
+    def __init__(self, stream, limit=None):
+        self.stream, self.limit, self.count = stream, limit, 0
+
+    def read(self, size=-1):
+        if self.limit is not None and (size < 0 or self.count + size > self.limit):
+            raise ValueError("顺序解压已到轻扫上限，清单可能不完整")
+        data = self.stream.read(size)
+        self.count += len(data)
+        return data
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+class MeteredZipMember:
+    """File-like view with an explicit budget for both reads and seek replay."""
+    def __init__(self, source, size, limit):
+        self.source,self.size,self.limit,self.count=source,size,limit,0
+
+    def tell(self):
+        return self.source.tell()
+
+    def charge(self,size):
+        if size<0 or self.count+size>self.limit:
+            raise OSError("读取压缩归档元数据超出顺序解码预算")
+        self.count+=size
+
+    def read(self,size=-1):
+        remaining=self.size-self.tell()
+        size=remaining if size<0 else min(size,remaining)
+        self.charge(size)
+        return self.source.read(size)
+
+    def readinto(self,buffer):
+        data=self.read(len(buffer))
+        buffer[:len(data)]=data
+        return len(data)
+
+    def seek(self,offset,whence=0):
+        start=self.tell()
+        target=offset if whence==0 else start+offset if whence==1 else self.size+offset
+        if not 0<=target<=self.size:
+            raise OSError("归档元数据偏移超界")
+        self.charge(target-start if target>=start else target)
+        return self.source.seek(target)
+
+
+def decode(blob):
+    try: return blob.decode("utf-8-sig")
+    except UnicodeDecodeError: return blob.decode("gb18030", errors="replace")
+
+def spacing(values, temporal=False):
+    import numpy as np
+    if temporal:
+        import pandas as pd
+        values = pd.to_datetime(values, errors="coerce", format="mixed", utc=True).dropna().to_numpy(dtype="datetime64[s]").astype("int64")
+    a = np.unique(np.asarray(values, dtype=float))
+    d = np.diff(a)
+    return float(d[0]) if len(d) and np.allclose(d, d[0],rtol=1e-5,atol=1e-9) else None
+
+def tabular(row, blob, complete):
+    decoded = decode(blob)
+    lines = decoded.splitlines()
+    if not complete and not decoded.endswith(("\n","\r")):
+        lines = lines[:-1]
+        if not lines:
+            row["pending"].append("CSV / TSV 表头超出前缀读取预算")
+            return
+    if not lines: return
+    reader = csv.reader(lines, delimiter="\t" if row["format"]=="TSV" else ",", strict=True)
+    header = next(reader)
+    import itertools
+    samples = [r for r in itertools.islice(reader, 16) if len(r)==len(header)]
+    for i, title in enumerate(header[:512]):
+        values = [r[i] for r in samples if r[i].strip()]
+        m = re.fullmatch(r"(.+?)\s*[\[(]([^\])]+)[\])]", title)
+        name, unit = (m[1].strip(),m[2]) if m else (title,"")
+        base = name.casefold().strip()
+        typ = "unknown"
+        if values:
+            try:
+                for v in values: float(v)
+                typ = "integer" if all(re.fullmatch(r"[+-]?\d+",v.strip()) for v in values) else "number"
+            except ValueError: typ = "text"
+        if base in {"time","date","datetime","timestamp","time_utc"} and typ=="text":
+            import pandas as pd
+            values = [v.replace("_","T",1) for v in values] if base=="time_utc" else values
+            parsed=pd.to_datetime(values,errors="coerce",format="mixed",utc=True).dropna()
+            if len(parsed):
+                row["time_coverage"]=(parsed.min().timestamp(),parsed.max().timestamp(),
+                    "all_table_records" if complete and len(lines)<=17 and len(parsed)==len(samples) else "sampled_table_records")
+            step = spacing(values, True)
+            if step is not None:
+                typ = "time"
+                row["resolution"]["time_seconds"] = step
+        row["fields"].append(dict(name=name, type=typ, unit=unit, axis=base in AXES))
+    if len(header)>512:
+        row["pending"].append(f"表头共 {len(header)} 列，本次读取前 512 列")
+    if row["format"]=="CSV" and {"station_id","time_utc","latitude","longitude","levels"} <= set(header):
+        from ecodata.models.task_dispatch import OBSERVATION_COLUMNS
+        for field in row["fields"]:
+            name = field["name"]
+            if name in OBSERVATION_COLUMNS and name+"_qc" in header:
+                quantity, unit = OBSERVATION_COLUMNS[name]
+                field.update(type="number", unit=unit, standard_name=quantity,
+                             temporal_semantics="instantaneous", observation_contract=True)
+    row["basis"].append(f"表头及最多 {len(samples)} 条记录；间隔为样本估计，站点间距不当作网格分辨率")
+
+def netcdf_support(row, dataset, *, read_values=True):
+    from datetime import datetime, timedelta, timezone
+    from math import isfinite
+
+    def hhmmss(code):
+        code=int(code)
+        hours, mmss=divmod(code,10000)
+        minutes, seconds=divmod(mmss,100)
+        if code<0 or minutes>=60 or seconds>=60:
+            raise ValueError("invalid IOAPI clock")
+        return hours*3600+minutes*60+seconds
+
+    if not row.get("time_coverage"):
+        try:
+            first,last=(datetime.fromisoformat(str(getattr(dataset,key)).replace("Z","+00:00"))
+                        for key in ("time_coverage_start","time_coverage_end"))
+            if first.tzinfo is not None and last.tzinfo is not None and first<last:
+                row["time_coverage"]=(first.timestamp(),last.timestamp(),"dataset_declared_interval","gregorian")
+        except (AttributeError,ValueError,TypeError,OverflowError):
+            pass
+    flag=dataset.variables.get("TFLAG")
+    if flag is None or tuple(flag.dimensions)!=("TSTEP","VAR","DATE-TIME"):
+        if read_values and "Times" in dataset.variables:
+            wrf_time_support(row,dataset.variables["Times"])
+        return
+    try:
+        cols,rows=(float(getattr(dataset,key)) for key in ("XCELL","YCELL"))
+        if all(isfinite(value) and value>0 for value in (cols,rows)):
+            row["resolution"].update(x=dict(step=cols,unit="m"),y=dict(step=rows,unit="m"))
+            row["grid_spacing_basis"]="ioapi_xcell_ycell"
+    except (AttributeError,ValueError,TypeError):
+        pass
+    if not read_values:
+        return
+    try:
+        n=len(dataset.dimensions["TSTEP"])
+        if n<1 or flag.shape[1]<1 or flag.shape[2]!=2:
+            return
+        times=[]
+        for i in sorted({0,n-1}):
+            date,clock=map(int,flag[i,0,:])
+            year,day=divmod(date,1000)
+            anchor=datetime(year,1,1,tzinfo=timezone.utc)+timedelta(days=day-1)
+            if day<1 or anchor.year!=year:
+                raise ValueError("invalid IOAPI day")
+            times.append((anchor+timedelta(seconds=hhmmss(clock))).timestamp())
+        if times[-1]>=times[0]:
+            row["time_coverage"]=(times[0],times[-1],"ioapi_tflag_endpoints","gregorian")
+        step=hhmmss(dataset.TSTEP)
+        if n>1 and step>0 and times[-1]-times[0]==step*(n-1):
+            row["resolution"]["time_seconds"]=float(step)
+            row["time_spacing_basis"]="ioapi_timestep_and_tflag"
+    except (AttributeError,ValueError,TypeError,OverflowError):
+        pass
+
+
+def wrf_time_support(row, variable):
+    from datetime import datetime
+    from numpy.ma import is_masked
+    if variable.ndim!=2 or variable.shape[1]!=19 or not len(variable):
+        return
+    indices=sorted(set(range(min(8,len(variable)))) | {len(variable)-1})
+    times=[]
+    try:
+        for index in indices:
+            value=variable[index,:]
+            if is_masked(value):
+                return
+            times.append(datetime.strptime(value.tobytes().decode("ascii"),"%Y-%m-%d_%H:%M:%S"))
+    except (ValueError,UnicodeError,AttributeError,TypeError):
+        return
+    if any(later<=earlier for earlier,later in zip(times,times[1:])):
+        return
+    step=(times[1]-times[0]).total_seconds() if len(times)>1 else None
+    # WRF Times omit a UTC offset. Preserve clock evidence without publishing a guessed UTC coverage.
+    if step and all((value-times[0]).total_seconds()==index*step for value,index in zip(times,indices)):
+        row["resolution"]["time_seconds"]=step
+        row["time_spacing_basis"]="wrf_times_samples_and_endpoints"
+
+
+def coordinate_kind(name, attributes):
+    standard = str(attributes.get("standard_name","")).casefold()
+    axis = str(attributes.get("axis","")).upper()
+    unit = str(attributes.get("units","")).strip().casefold()
+    if axis=="T" or standard=="time" or " since " in unit or name.casefold() in {"time","valid_time","forecast_time"}:
+        return "time"
+    if standard=="longitude" or unit in {"degrees_east","degree_east","degrees_e"} or name.casefold() in {"lon","longitude","xlong"}:
+        return "lon"
+    if standard=="latitude" or unit in {"degrees_north","degree_north","degrees_n"} or name.casefold() in {"lat","latitude","xlat"}:
+        return "lat"
+    if axis=="X" or standard=="projection_x_coordinate" or name.casefold()=="x":
+        return "x"
+    if axis=="Y" or standard=="projection_y_coordinate" or name.casefold()=="y":
+        return "y"
+    return None
+
+
+def curvilinear_support(row, ds, coordinates):
+    import numpy as np
+    if row["resolution"].get("x") and row["resolution"].get("y"):
+        return
+    dx,dy=(getattr(ds,key,None) for key in ("DX","DY"))
+    if getattr(ds,"MAP_PROJ",None) in (1,2,3) and all(isinstance(v,(int,float,np.number)) and np.isfinite(v) and v>0 for v in (dx,dy)):
+        row["resolution"].update(x=dict(step=float(dx),unit="m"),y=dict(step=float(dy),unit="m"))
+        row["grid_spacing_basis"]="wrf_projected_dx_dy"
+        return
+    lat,lon=(coordinates.get(key) for key in ("lat","lon"))
+    if lat is None or lon is None or lat.shape!=lon.shape or lat.dimensions!=lon.dimensions or lat.ndim not in (2,3):
+        return
+    if min(lat.shape[-2:])<2:
+        return
+    from pyproj import Geod
+    key=(0,slice(0,8),slice(0,8)) if lat.ndim==3 else (slice(0,8),slice(0,8))
+    y,x=(np.ma.asarray(v[key],dtype=float).filled(np.nan) for v in (lat,lon))
+    if not np.isfinite(x).all() or not np.isfinite(y).all() or np.any(abs(y)>90) or np.any(abs(x)>360):
+        return
+    geodesic=Geod(ellps="WGS84")
+    for axis,a,b in (("x",np.s_[:,:-1],np.s_[:,1:]),("y",np.s_[:-1,:],np.s_[1:,:])):
+        distance=geodesic.inv(x[a],y[a],x[b],y[b])[2]
+        if np.isfinite(distance).all() and np.min(distance)>0:
+            row["resolution"][axis]=dict(step=float(np.median(distance)),unit="m")
+    if "x" in row["resolution"] and "y" in row["resolution"]:
+        row["grid_spacing_basis"]="sampled_curvilinear_neighbor_distance"
+
+
+def scientific(row, path, blob=None, *, header_only=False, stream=None):
+    fmt = row["format"]
+    if fmt == "NetCDF":
+        import netCDF4 as nc
+        with (nc.Dataset(str(path)) if blob is None else nc.Dataset("member.nc",memory=blob)) as ds:
+            row["dimensions"] = {k:len(v) for k,v in ds.dimensions.items()}
+            attrs = {name:ds.getncattr(name) for name in ("TITLE","IOAPI_VERSION","CAMx_NAME",
+                "MAP_PROJ","TRUELAT1","TRUELAT2","STAND_LON","DX","DY") if name in ds.ncattrs()}
+            if attrs:
+                row["original_native_header"] = dict(attributes=attrs,dimensions=row["dimensions"],
+                    variables={name:{} for name in ("Times","TFLAG") if name in ds.variables})
+            row["metadata"] = {k:str(ds.getncattr(k))[:300] for k in ("title","Conventions","crs","source") if k in ds.ncattrs()}
+            row["native_product"]=str(getattr(ds,"product",""))
+            grid_attrs=("GDTYP","P_ALP","P_BET","P_GAM","XCENT","YCENT",
+                        "XORIG","YORIG","XCELL","YCELL","NCOLS","NROWS")
+            if all(key in ds.ncattrs() for key in grid_attrs):
+                row["ioapi_grid_signature"]=tuple(float(ds.getncattr(key)) for key in grid_attrs)
+
+            if getattr(ds,"time_coverage_resolution","") in {"PT1H","P1D","P1M"}:
+                row["declared_time_resolution"]=ds.time_coverage_resolution
+            bounds={str(getattr(v,"bounds","")) for v in ds.variables.values()}
+            coords={}
+            if len(ds.variables)>512:
+                row["pending"].append(f"NetCDF 共 {len(ds.variables)} 个变量，本次读取前 512 个")
+            for k,v in list(ds.variables.items())[:512]:
+                coordinate=coordinate_kind(k,{name:getattr(v,name,"") for name in ("axis","standard_name","units")})
+                if coordinate and v.ndim in (1,2,3):
+                    coords.setdefault(coordinate,v)
+                companion=ds.variables.get(k[:-4]) if k.casefold().endswith("_raw") else None
+                raw_companion=companion is not None and (
+                    getattr(companion,"source_scale_factor",None) is not None or
+                    getattr(v,"source_fill_value",None) is not None)
+                row["fields"].append(dict(name=k,type=str(v.dtype),unit=str(getattr(v,"units","")).strip(),
+                    standard_name=str(getattr(v,"standard_name","")), physical_variable=str(getattr(v,"physical_variable","")), long_name=str(getattr(v,"long_name","")).strip(), var_desc=str(getattr(v,"var_desc","")).strip()[:240], raw_companion=raw_companion, temporal_semantics=str(getattr(v,"temporal_semantics","")), dimensions=list(v.dimensions), axis=bool(coordinate) or k.casefold() in AXES or (k.casefold()=="tflag" and tuple(d.casefold() for d in v.dimensions)==("tstep","var","date-time")) or k in bounds or k.casefold().endswith(("_bounds","_bnds")) or v.dimensions==(k,)))
+                if header_only:
+                    continue
+                if v.ndim==1 and coordinate=="time" and len(v):
+                    try:
+                        import numpy as np
+                        units=v.units
+                        calendar=getattr(v,"calendar","standard")
+                        edge=v[[0,len(v)-1]]
+                        bound=ds.variables.get(str(getattr(v,"bounds","")))
+                        basis="axis_endpoints"
+                        if bound is not None and bound.ndim==2 and bound.dimensions[0]==k and bound.shape[1]==2:
+                            edge=bound[[0,len(v)-1],:]
+                            basis="cell_bounds_endpoints"
+                        values=np.ma.asarray(edge).compressed()
+                        if values.size==edge.size and np.isfinite(values).all():
+                            dates=nc.num2date([min(values),max(values)],units,calendar)
+                            first,last=nc.date2num(dates,"seconds since 1970-01-01",calendar)
+                            calendars={"standard":"gregorian","gregorian":"gregorian","proleptic_gregorian":"proleptic_gregorian"}
+                            row["time_coverage"]=(float(first),float(last),basis,calendars.get(calendar,calendar))
+                            if len(v)==1 and basis=="cell_bounds_endpoints" and last>first:
+                                row["time_cell_seconds"]=float(last-first)
+                    except (AttributeError,ValueError,TypeError,OverflowError):
+                        pass
+                if v.ndim==1 and coordinate and len(v)>=2:
+                    if coordinate=="time":
+                        u=str(getattr(v,"units","")).lower().split(" since ")[0]
+                        factor={"seconds":1,"minutes":60,"hours":3600,"days":86400}.get(u)
+                        delta=spacing(v[:8]) if factor else None
+                        if delta is not None: row["resolution"]["time_seconds"]=delta*factor
+                    else:
+                        delta=spacing(v[:8])
+                        if delta is not None: row["resolution"][coordinate]=dict(step=delta, unit=str(getattr(v,"units","")))
+            netcdf_support(row,ds,read_values=not header_only)
+            if not header_only:
+                curvilinear_support(row,ds,coords)
+            else:
+                row["pending"].append("已读 NetCDF 头，坐标数组尚未核验")
+            if "TFLAG" in ds.variables and ds.variables["TFLAG"].dimensions==("TSTEP","VAR","DATE-TIME"):
+                dimensions=set(ds.dimensions)
+                if "PERIM" in dimensions:
+                    row["ioapi_grid_role"]="boundary"
+                elif {"ROW","COL"} <= dimensions:
+                    row["ioapi_grid_role"]="interior"
+            row["basis"].append("NetCDF 维度、变量属性、坐标小样本或 IOAPI 时间标记")
+    elif fmt=="GeoTIFF":
+        import rasterio
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            src=stack.enter_context(rasterio.MemoryFile(blob)) if blob is not None else None
+            ds=stack.enter_context(src.open() if src is not None else rasterio.open(path))
+            row["resolution"]["pixel"]=dict(step=list(ds.res),crs=str(ds.crs))
+            row["dimensions"]=dict(width=ds.width,height=ds.height)
+            import json
+            saved=json.loads(ds.tags().get("ecodata_metadata","{}"))
+            for i in range(min(ds.count,512)):
+                name=saved.get("export_variable","value") if ds.count==1 else (ds.descriptions[i] or f"band_{i+1}")
+                attrs=saved.get("variables",{}).get(name,{})
+                row["fields"].append(dict(name=name,type=ds.dtypes[i],unit=attrs.get("units") or ds.units[i] or "",
+                    standard_name=attrs.get("standard_name",""), physical_variable=attrs.get("physical_variable",""),
+                    long_name=attrs.get("long_name",""),axis=False))
+            if ds.count>1:
+                row["pending"].append("多波段处理前需核验波段及原版读取器映射")
+            row["basis"].append("栅格元数据；未读像元")
+    elif fmt=="Excel":
+        from openpyxl import load_workbook
+        with (io.BytesIO(blob) if blob is not None else path.open("rb")) as stream:
+            workbook=load_workbook(stream,read_only=True,data_only=True)
+            try:
+                visible=[sheet for sheet in workbook if sheet.sheet_state=="visible" and sheet.title!="_ecodata_metadata"]
+                if len(visible)!=1:
+                    row["pending"].append("多工作表需要通过原版规则确认数据区")
+                    return
+                sheet=visible[0]
+                buffer=io.StringIO()
+                writer=csv.writer(buffer)
+                writer.writerows(sheet.iter_rows(max_row=17,max_col=min(sheet.max_column or 512,512),values_only=True))
+                tabular(row,buffer.getvalue().encode("utf8"),False)
+                if "_ecodata_metadata" in workbook.sheetnames:
+                    import json
+                    from itertools import islice
+                    records=list(islice(workbook["_ecodata_metadata"].values, 16))
+                    try:
+                        metadata=json.loads("".join(str(record[0]) for record in records[1:]))["variables"]
+                    except (ValueError, KeyError, TypeError):
+                        metadata={}
+                    for field in row["fields"]:
+                        attrs=metadata.get(field["name"],{})
+                        field.update(unit=attrs.get("units",field["unit"]),standard_name=attrs.get("standard_name",""),
+                                     physical_variable=attrs.get("physical_variable",""))
+            finally:
+                workbook.close()
+    elif fmt=="Parquet":
+        import pyarrow.parquet as pq
+        row["fields"]=[dict(name=f.name,type=str(f.type),unit="",axis=f.name.casefold() in AXES)
+                       for f in list(pq.read_schema(io.BytesIO(blob) if blob is not None else path))[:512]]
+        row["basis"].append("Parquet 页脚 schema；未读数据行")
+    elif fmt=="HDF5":
+        scan_hdf(row,stream if stream is not None else io.BytesIO(blob) if blob is not None else path)
+    else:
+        row["pending"].append("需按所选处理目标用原版读取器核验")
+
+def scan_hdf(row,source):
+    import h5py
+    with h5py.File(source) as ds:
+        def visitor(k,v):
+            if isinstance(v,h5py.Dataset):
+                row["fields"].append(dict(name=k,type=str(v.dtype),unit=str(v.attrs.get("units","")),axis=False))
+            if len(row["fields"])>=512: return True
+        ds.visititems(visitor)
+    row["basis"].append("HDF5 数据集属性；未读数据数组")
+
+class Scanner:
+    def __init__(self):
+        self.cached = None
+
+    def scan(self, location):
+        start = time.perf_counter()
+        root = Path(location).resolve(strict=True)
+        signature = tuple(inventory(root))
+        if self.cached and self.cached[:2]==(root,signature):
+            return self.cached[2], dict(seconds=time.perf_counter()-start, cached=True,
+                                       scan_payload_bytes=0, sequential=[], scan_temp_bytes=0)
+        rows, docs, warnings, sequential = [], [], [], []
+        count = 0
+        scientific_bytes = 0
+        doc_bytes = 0
+
+        def item(name, size, ref, reader=None, local=None, open_member=None):
+            nonlocal count, scientific_bytes, doc_bytes
+            if not safe(name): return
+            if len(rows)>=MAX_ENTRIES: raise ValueError("达到成员上限，清单可能不完整")
+            p = PurePosixPath(name)
+            ext = p.suffix.lower()
+            row = dict(name=name, bytes=size, ref=ref, format=FORMATS.get(ext,"其他"),
+                       fields=[], resolution={}, basis=[], pending=[], evidence=[], roles=[])
+            rows.append(row)
+            doc = ext in DOCS or p.name.lower().startswith("readme") or p.name.casefold()=="namelist.input"
+            if doc:
+                row["engineering_text_status"]="archive_member_not_read" if not reader else "read_error"
+                if reader and doc_bytes+size<=ENGINEERING_TEXT_BUDGET:
+                    blob=reader(size)
+                    count+=len(blob)
+                    doc_bytes+=len(blob)
+                    if len(blob)==size:
+                        content=decode(blob)
+                        if "\x00" in content or "\ufffd" in content:
+                            row["engineering_text_status"]="binary_or_encoding_unreadable"
+                        else:
+                            is_local_research=False
+                            if ext==".json" and size<=256*1024:
+                                import json
+                                try:
+                                    declaration=json.loads(content)
+                                    from .research_dispatch import SCHEMA, toolkit_request
+                                    is_local_research=(isinstance(declaration,dict) and declaration.get("schema")==SCHEMA
+                                                       or toolkit_request(declaration))
+                                except ValueError:
+                                    pass
+                            if ext!=".csh" and not is_local_research:
+                                docs.append((name,content))
+                            if size<=256*1024 and (ext in {".json",".csh",".cio",".inp",".nml"} or
+                                    p.name.casefold()=="namelist.input"):
+                                row["original_probe_payload"]=blob
+                            row["engineering_text_status"]="complete"
+                            row["basis"].append("工程说明全文已读取")
+                elif reader:
+                    row["engineering_text_status"]="text_budget_exceeded"
+            elif reader and ext in {".csv",".tsv"}:
+                blob=reader(min(size,PREFIX))
+                count+=len(blob)
+                tabular(row,blob,len(blob)==size)
+            elif reader and not local and row["format"] in {"NetCDF","Excel","GeoTIFF","Parquet","HDF5"}:
+                budget=SCIENCE_TOTAL-scientific_bytes
+                if size<=min(SCIENCE_MEMBER,budget):
+                    blob=reader(size)
+                    scientific_bytes+=len(blob)
+                    count+=len(blob)
+                    scientific(row,p,blob)
+                elif row["format"]=="HDF5" and open_member and budget>=65536:
+                    with open_member() as stream:
+                        view=MeteredZipMember(stream,size,min(budget,SCIENCE_MEMBER))
+                        try:
+                            scientific(row,p,stream=view)
+                        finally:
+                            scientific_bytes+=view.count
+                            count+=view.count
+                elif row["format"]=="NetCDF" and ref[1]!="7z" and budget>=65536:
+                    blob=reader(min(size,256*1024,budget))
+                    scientific_bytes+=len(blob)
+                    count+=len(blob)
+                    if blob.startswith(b"CDF"):
+                        scientific(row,p,blob,header_only=True)
+                        row["header_only"]=True
+                    elif open_member and blob.startswith(b"\x89HDF"):
+                        with open_member() as stream:
+                            view=MeteredZipMember(stream,size,min(SCIENCE_TOTAL-scientific_bytes,SCIENCE_MEMBER))
+                            try:
+                                scan_hdf(row,view)
+                                row["header_only"]=True
+                                row["pending"].append("已读取部分 NetCDF4 元数据，时间覆盖及坐标仍需核验")
+                            finally:
+                                scientific_bytes+=view.count
+                                count+=view.count
+                    else:
+                        row["pending"].append("此归档 NetCDF 需定向读取后确认字段")
+                else:
+                    row["pending"].append("该成员超出本次轻扫元数据预算")
+            elif reader and ext in {".sqlite",".sqlite3",".db"}:
+                prefix=reader(16)
+                count+=len(prefix)
+                if prefix==b"SQLite format 3\x00":
+                    row["original_sqlite_header"]=True
+            elif local and ext in FORMATS:
+                scientific(row,local)
+            elif ext in FORMATS:
+                row["pending"].append("压缩成员仅登记，待定向核验内部结构")
+            if kind(name) and not local:
+                row["pending"].append("嵌套压缩包：轻扫不展开")
+            if row["fields"] and not row["resolution"].get("time_seconds"):
+                row["pending"].append("时间间隔未知或不适用")
+
+        for path,size,*_ in signature:
+            name=path.name if root.is_file() else path.relative_to(root).as_posix()
+            k=kind(path)
+            def attempt(*args):
+                try: item(*args)
+                except (ValueError,OSError,RuntimeError,ImportError,csv.Error) as exc:
+                    warnings.append(f"{args[0]}: {exc}")
+                    if rows and rows[-1]["name"]==args[0]:
+                        rows[-1]["pending"].append("字段或坐标读取未完成，详见扫描警告")
+            def read(n):
+                with path.open("rb") as f: return f.read(n)
+            try:
+                if k=="zip":
+                    with path.open("rb") as raw:
+                        meter=Meter(raw)
+                        with zipfile.ZipFile(meter) as z:
+                            for entry in z.infolist()[:MAX_ENTRIES]:
+                                if not entry.is_dir():
+                                    def prefix(n):
+                                        with z.open(entry) as f: return f.read(n)
+                                    attempt(entry.filename,entry.file_size,(path,k,entry.filename,entry.header_offset),prefix,None,
+                                            lambda entry=entry:z.open(entry))
+                            if len(z.infolist())>MAX_ENTRIES: warnings.append(f"{name} ZIP 成员列表已截断")
+                        sequential.append(dict(name=name,raw_read_bytes=meter.count))
+                elif k=="tar":
+                    with path.open("rb") as raw:
+                        physical=Meter(raw)
+                        header=raw.read(6); raw.seek(0); physical.count+=len(header)
+                        op=next((fn for magic,fn in [(b"\x1f\x8b",gzip.GzipFile),(b"BZh",bz2.BZ2File),(b"\xfd7zXZ",lzma.LZMAFile)] if header.startswith(magic)),None)
+                        from contextlib import nullcontext
+                        with (op(fileobj=physical) if op is gzip.GzipFile else op(physical) if op else nullcontext(physical)) as stream:
+                            decoded=Meter(stream,SEQUENTIAL)
+                            try:
+                                with tarfile.open(fileobj=decoded,mode="r|") as tar:
+                                    for i,entry in enumerate(tar):
+                                        if i>=MAX_ENTRIES: raise ValueError("达到 TAR 成员上限")
+                                        if entry.isfile():
+                                            def prefix(n):
+                                                with tar.extractfile(entry) as f: return f.read(n)
+                                            attempt(entry.name,entry.size,(path,k,entry.name,entry.offset_data),prefix)
+                            finally:
+                                sequential.append(dict(name=name, raw_read_bytes=physical.count, decoded_stream_bytes=decoded.count))
+                elif k=="7z":
+                    import py7zr
+                    with path.open("rb") as raw:
+                        meter=Meter(raw)
+                        from py7zr.io import BytesIOFactory
+                        with py7zr.SevenZipFile(meter) as z:
+                            entries=[entry for entry in z.list()[:MAX_ENTRIES] if not entry.is_directory]
+                            selected={}
+                            if len(z.list())<=MAX_ENTRIES and sum(entry.uncompressed or 0 for entry in entries)<=SEQUENTIAL:
+                                selected={e.filename:e.uncompressed for e in entries
+                                          if safe(e.filename) and isinstance(e.uncompressed,int) and e.uncompressed<=SCIENCE_MEMBER and
+                                          (PurePosixPath(e.filename).suffix.lower() in (FORMATS.keys()|DOCS)
+                                           or PurePosixPath(e.filename).name.casefold()=="namelist.input")}
+                                factory=BytesIOFactory(SCIENCE_MEMBER+1)
+                                if selected:
+                                    z.extract(targets=list(selected),factory=factory)
+                            else:
+                                warnings.append(f"{name}: 7z 声明解压量超过轻扫预算，已登记成员")
+                            for e in entries:
+                                reader=None
+                                if e.filename in selected:
+                                    def reader(n):
+                                        item=factory.get(e.filename)
+                                        item.seek(0)
+                                        return item.read(n)
+                                attempt(e.filename,e.uncompressed,(path,k,e.filename,None),reader)
+                        sequential.append(dict(name=name,raw_read_bytes=meter.count,decoded_payload_bytes=sum(selected.values())))
+                else: attempt(name,size,(path,"",None,None),read,path)
+            except (ValueError,OSError,RuntimeError,tarfile.TarError,zipfile.BadZipFile,ImportError) as exc:
+                warnings.append(f"{name}: {exc}")
+        from .engineering_links import collect
+        collect(rows,docs)
+        payload, reads=inspect_engineering_netcdf(rows,docs)
+        count+=payload
+        sequential.extend(reads)
+        from .cmaq_grid_audit import audit_scan
+        cmaq_grid_checks=audit_scan(rows)
+        if tuple(inventory(root))!=signature: raise ValueError("扫描期间原始文件已变化，请重新扫描")
+        result=dict(path=root, signature=signature, rows=rows, warnings=warnings, engineering_docs=docs,cmaq_grid_checks=cmaq_grid_checks)
+        self.cached=root,signature,result
+        return result,dict(seconds=time.perf_counter()-start,cached=False,scan_payload_bytes=count,
+                           sequential=sequential, scan_temp_bytes=0)
+
+def inspect_engineering_netcdf(rows, docs):
+    """Open bounded ZIP members referenced by engineering text, with no extraction."""
+    member_limit=48*1024**2
+    remaining=80*1024**2
+    purpose=re.compile(r"用途|输入|驱动|对照|配对|融合|分辨率|网格|单位|观测|验证|"
+                       r"comparison|fusion|resolution|model_input|forcing|observation|units",re.I)
+    note_suffixes={".md",".rst",".txt"}
+    prose=[text for name,text in docs if PurePosixPath(name).suffix.casefold() in note_suffixes]
+    referenced_dirs={match.casefold().rstrip("/")+"/" for text in prose if purpose.search(text)
+                     for match in re.findall(r"\x60([^\x60\r\n]+/)\x60",text)}
+    from .document_content import classify
+    descriptive=set()
+    structured_purpose=re.compile(r'"(?:purpose|description|model_input_candidate|用途|说明|变量说明)"\s*:',re.I)
+    for name,text in docs:
+        suffix=PurePosixPath(name).suffix.casefold()
+        if not purpose.search(text) or len(text)>128*1024:
+            continue
+        if suffix in note_suffixes or suffix==".json" and structured_purpose.search(text):
+            document=classify(name,text)
+            if document.mode in {"full","mixed"}:
+                descriptive.add(name)
+    targets=[]
+    for index,row in enumerate(rows):
+        if row["format"]!="NetCDF" or (row["fields"] and not row.get("header_only")) or row["ref"][1]!="zip":
+            continue
+        exact=any(item["document"] in descriptive for item in row["evidence"])
+        folder=any(row["name"].casefold().startswith(prefix) for prefix in referenced_dirs)
+        if exact or folder:
+            targets.append((not exact,row["bytes"],index))
+    raw_reads=[]
+    total=0
+    for _,size,index in sorted(targets):
+        row=rows[index]
+        if size>member_limit or size>remaining:
+            row["pending"].append("工程关联 NetCDF 超出定向读取预算")
+            continue
+        path,_,name,offset=row["ref"]
+        remaining-=size
+        try:
+            with path.open("rb") as stream:
+                meter=Meter(stream)
+                with zipfile.ZipFile(meter) as archive:
+                    member=next(item for item in archive.infolist()
+                                if item.header_offset==offset and item.filename==name)
+                    with archive.open(member) as source:
+                        blob=source.read(size+1)
+                raw_reads.append(dict(name=path.name,member=name,raw_read_bytes=meter.count))
+            total+=len(blob)
+            if len(blob)!=size:
+                raise ValueError("成员大小变化")
+            scanned=dict(row,fields=[],pending=list(row["pending"]),basis=list(row["basis"]))
+            scientific(scanned,PurePosixPath(name),blob)
+            row.update(scanned)
+            row.pop("header_only",None)
+            row["engineering_probe"]=True
+            row["basis"].append("工程说明关联后定向读取此成员")
+            row["pending"]=[note for note in row["pending"]
+                            if note not in {"压缩成员仅登记，待定向核验内部结构",
+                                            "已读 NetCDF 头，坐标数组尚未核验",
+                                            "此归档 NetCDF 含 HDF5，需定向读取后确认字段",
+                                            *({"时间间隔未知或不适用"} if row["resolution"].get("time_seconds") else set())}]
+        except (OSError,ValueError,RuntimeError,ImportError,StopIteration,zipfile.BadZipFile):
+            row["pending"].append("工程关联 NetCDF 定向读取失败")
+    return total,raw_reads
+
+
+def assert_current(scan):
+    if tuple(inventory(scan["path"]))!=scan["signature"]:
+        raise ValueError("原文件已变化，旧预览与授权已失效。请重新扫描。")
+
+def read_selected(row, limit=256*1024**2):
+    path,k,name,offset=row["ref"]
+    if row["bytes"]>limit: raise ValueError(f"单成员深读超过 {limit//1024**2} MiB；请先准备所需字段或数据块")
+    if k=="zip":
+        with zipfile.ZipFile(path) as z:
+            with z.open(next(x for x in z.infolist() if x.header_offset==offset and x.filename==name)) as f:
+                return f.read(limit+1)
+    if k=="tar":
+        with tarfile.open(path,"r|*") as t:
+            for member in t:
+                if member.offset_data==offset and member.name==name and member.isfile():
+                    with t.extractfile(member) as f: return f.read(limit+1)
+        raise ValueError("成员已变化")
+    if k=="7z":
+        from tempfile import TemporaryDirectory
+        from ecodata.models.archive_inputs import normalize_archives
+        from ecodata.interface.engineering_upload import LocalUpload
+        with TemporaryDirectory(prefix="ecodata-selected-") as d:
+            uploads,_=normalize_archives([LocalUpload(path.name,path)],d)
+            with zipfile.ZipFile(uploads[0].path) as z:
+                with z.open(name) as f: return f.read(limit+1)
+    with path.open("rb") as f: return f.read(limit+1)
+

@@ -23,7 +23,7 @@ from ecodata.fusion.residual import residual_difference, residual_addition
 from ecodata.algorithms.quality_aware import fit_affine_frames
 from ecodata.evaluation.quality_gates import RawInputQualityGate,ResultQualityGate
 from ecodata.io.structures import table_frame
-from ecodata.algorithms.spatial_selection_protocol import split_locations, fixed_support, error_metrics
+from ecodata.algorithms.spatial_selection_protocol import split_locations, fixed_support, xskillscore_assessment
 
 VERSION = 'spatial_relationship_fusion_v1_2_selection_assessment'
 COMPONENTS = {
@@ -174,17 +174,43 @@ class SpatialTask:
     def build(cls, parsed, request, audit):
         if request.get('semantic_type') != 'continuous' or not request.get('unit') or request['unit']=='UNKNOWN':
             raise ValueError('Continuous variable and confirmed unit required for spatial estimation')
+        from ecodata.models.scientific_schema import compare_units, convert_matched_field, identity
+
         variable = request['variable']; fields=[]; auxiliary=[]; observations=[]; targets=[]; primary=None
+        requested_quantity=identity(request.get('physical_variable',''),{})[0] or request.get('physical_variable')
         for role, ds in parsed:
             if role=='observations':
                 frame=table_frame(ds).copy()
                 if 'crs' not in frame and ds.attrs.get('crs'):frame['crs']=ds.attrs['crs']
+                if {'unit','value','variable'} <= set(frame.columns):
+                    frame=frame.reset_index(drop=True)
+                    if not frame.unit.eq(request['unit']).all():
+                        frame['value']=frame.value.astype(float)
+                    for (name,source_unit), group in frame.groupby(['variable','unit'],sort=False):
+                        quantity=identity(name,{})[0] or name
+                        if requested_quantity and quantity!=requested_quantity:
+                            raise ValueError('Observation physical variable conflict')
+                        if source_unit!=request['unit']:
+                            report=compare_units(requested_quantity or quantity,request['unit'],quantity,source_unit)
+                            if report["status"] not in {"equivalent","convertible"}:
+                                raise ValueError('Observation physical identity or unit mismatch')
+                            frame.loc[group.index,'value']=group.value*report["scale"]+report["offset"]
+                            frame.loc[group.index,'unit']=request['unit']
+                        frame.loc[group.index,'variable']=quantity
                 observations.append(frame)
             elif role=='target':
                 targets.append(ds)
             elif role in {'primary','background'}:
                 if variable not in ds:
                     raise ValueError('Same-variable source missing target; other variables must be auxiliary')
+                physical_label=ds[variable].attrs.get('physical_variable')
+                identity_label=identity(physical_label,{})[0] or physical_label
+                if ds[variable].attrs.get('units') != request['unit']:
+                    quantity=requested_quantity or identity_label
+                    ds=ds.assign({variable:convert_matched_field(ds[variable],quantity,request['unit'],
+                                                                 verified_quantity=identity_label)})
+                if physical_label and physical_label!=identity_label:
+                    ds=ds.assign({variable:ds[variable].assign_attrs(physical_variable=identity_label)})
                 support = ds[variable].attrs.get('spatial_semantics')
                 if support not in {'point','grid_estimate','cell_mean'}:
                     raise ValueError('Unknown spatial support or unsupported cell totals/flux')
@@ -230,7 +256,7 @@ class SpatialTask:
         else: times=pd.DatetimeIndex(sorted(pd.to_datetime(pd.concat(observations).time).unique()))
         if not len(times) or times.has_duplicates or not times.is_monotonic_increasing:
             raise ValueError('Unique increasing target dates required')
-        physical=request.get('physical_variable')
+        physical=requested_quantity
         for ds in fields:
             a=ds[variable]; attrs=a.attrs
             if attrs.get('units')!=request['unit'] or not attrs.get('physical_variable') or not attrs.get('physical_definition'):
@@ -441,7 +467,7 @@ class SpatialSearch:
         else:
             frame=task.observations[task.observations.station_id.isin(self.location_protocol['test_ids'])]
             origin=self.location_protocol['reason']
-        report=dict(used_for_selection=False,source=origin,
+        report=dict(used_for_selection=False,source=origin,metric_backend='xskillscore',
             reference_basis='PRIMARY_GRID_RECONSTRUCTION_PROXY' if task.self_reference else 'STATION_OBSERVATIONS_UPSTREAM_INDEPENDENCE_UNKNOWN',
             statistical_independence_verified=False,accuracy_improvement='NOT_ESTABLISHED')
         if frame.empty:return dict(report,status='NO_SEPARATE_LOCATION_TEST')
@@ -454,8 +480,12 @@ class SpatialSearch:
             reference_sha256=sha256(reference.tobytes()).hexdigest(),support_sha256=fixed_support(reference,ids,times),
             schemes={},times=[str(t) for t in times])
         executor=self.executor(cohort,'validation_audit')
+        scored={}
         for name,key in keys.items():
             if key is None:continue
+            if key in scored:
+                report['schemes'][name]=dict(scored[key])
+                continue
             try:
                 executed=executor.run(self.nodes(key),key)
                 prediction=executed['outputs']['field'].value[:,:len(ids)]
@@ -464,9 +494,10 @@ class SpatialSearch:
                 mask=np.isfinite(reference)
                 if bounds is not None and ((prediction[mask]<bounds[0])|(prediction[mask]>bounds[1])).any():
                     raise ValueError('Assessment prediction outside declared application range')
-                report['schemes'][name]=dict(status='PASS',key=key,metrics=error_metrics(prediction,reference),trace=executed['trace'])
+                report['schemes'][name]=dict(status='PASS',key=key,metrics=xskillscore_assessment(prediction,reference),trace=executed['trace'])
             except Exception as exc:
                 report['schemes'][name]=dict(status='NOT_EVALUATED_RESOURCE_LIMIT' if isinstance(exc,SearchBudgetExceeded) or getattr(exc,'details',{}).get('budget_exhausted') else 'FAILED',key=key,error=str(exc))
+            scored[key]=report['schemes'][name]
         report['status']='PASS' if report['schemes'] and all(s['status']=='PASS' for s in report['schemes'].values()) else 'INCOMPLETE'
         if report['status']=='PASS' and 'selected' in report['schemes'] and 'single_source_baseline' in report['schemes']:
             report['RMSE_reduction_vs_single_on_this_reference']=(report['schemes']['single_source_baseline']['metrics']['RMSE']-report['schemes']['selected']['metrics']['RMSE'])
@@ -721,6 +752,21 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     save(folder/'request.json',dict(request=request,inputs=audit,budget=budget,seed=seed,version=VERSION))
     search=SpatialSearch(task,folder,budget,seed,model=model);search.budget=budget
     leaves=sorted(search.leaves,key=lambda k:(search.portraits.order_key(k),k)) if search.portraits else search.leaves
+    seed_receipt=[]
+    requested=request.get('initial_algorithms',[])
+    if not isinstance(requested,list) or any(x not in {'spatial.idw','spatial.residual_idw','spatial.blend'} for x in requested):
+        raise ValueError('Unsupported initial algorithm ID')
+    for operation in dict.fromkeys(requested):
+        keys=[k for k in [*leaves,*search.comparison_seeds()] if search.records[k]['operation']==operation]
+        if operation=='spatial.idw':
+            keys=[k for k in keys if search.records[k]['parameters'].get('power')==2. and task.observations is not None and not task.observations.empty]
+        if not keys:raise ValueError('Initial algorithm prerequisites not met: '+operation)
+        key=keys[0]
+        search.execute(key,'confirmed_initial')
+        row=next((r for r in search.rows if r['key']==key),None)
+        if row is None:raise ValueError('Insufficient search budget for confirmed initial candidate')
+        seed_receipt.append(dict(algorithm=operation,key=key,status=row['status'],metrics=row.get('metrics'),error=row.get('error')))
+    if requested:save(folder/'confirmed_initial.json',seed_receipt)
     for key in leaves:
         if search.exhausted():break
         search.execute(key)
@@ -738,7 +784,8 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     out,trace=search.product(best['key']);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
     with xr.open_dataset(path,engine='h5netcdf') as readback:xr.testing.assert_equal(out,readback.load())
     assessment=search.post_selection_assessment(dict(selected=best['key'],
-        single_source_baseline=comparison['families']['SINGLE_SOURCE']['best_key']))
+        single_source_baseline=comparison['families']['SINGLE_SOURCE']['best_key'],
+        multisource_candidate=comparison['families']['MULTISOURCE']['best_key']))
     confirmation=[]
     # Independent date-block confirmation is post-selection only; no promotion.
     if len(search.confirm_times):
@@ -760,7 +807,7 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     else:confirm=dict(status='NO_SEPARATE_DATE_BLOCK',used_for_selection=False)
     groups=[dict(held_station_ids=f['held'],training_station_ids=f['train'],reference_sha256=sha256(f['reference'].tobytes()).hexdigest()) for f in search.folds]
     result=dict(status='PASS',version=VERSION,product=str(path),best=best,initial_key=initial_key,
-        optimizer=optimizer,counts=dict(evaluated=len(search.rows),proposals=search.attempts),
+        confirmed_initial=seed_receipt,optimizer=optimizer,counts=dict(evaluated=len(search.rows),proposals=search.attempts),
         stop_reason=search.stopper.reason or ('BUDGET_OR_PROPOSAL_LIMIT' if backend=='random' else 'NO_MUTATION_CONTROL'),
         selected_graph=dict(key=best['key'],records={n.id:search.records[n.id] for n in search.nodes(best['key'])}),
         deployment_trace=trace,current_input_deployment=dict(status='PASS'),total_cost=search.account.receipt(),
@@ -783,6 +830,11 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
         portrait_scope='Experimental existing three-portrait exploration heuristic; final selection by held-location RMSE' if search.portraits else 'Hard quantity/unit/support/model contracts active; no invented soft benefit ranking for new spatial ports',
         soft_guidance=dict(enabled=search.portraits is not None,candidate_pool=search.candidate_pool,
             changed_choices=sum(t['guidance_changed_choice'] for t in search.transitions)))
+    if search.portraits is not None:
+        state=model['state_policy']
+        result['portrait_strategy']=dict(version=state['policy_version'],scenario=state['scenario']['id'],
+            candidate_order=leaves,portrait_proposals=sum(t['strategy']=='portrait' for t in search.transitions),
+            changed_choices=sum(t['guidance_changed_choice'] for t in search.transitions))
     result['component_catalog']=COMPONENTS
     result['input_relationships']=task.relationships
     save(folder/'selection_comparison.json',comparison);save(folder/'post_selection_assessment.json',assessment)

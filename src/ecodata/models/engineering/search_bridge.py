@@ -15,7 +15,7 @@ class SearchNotReady(ValueError):
         super().__init__(report.get('reason',report['status']))
 
 
-def search_port(port,arrays,sources,folder,*,budget=None,seed=11,progress=None):
+def search_port(port,arrays,sources,folder,*,budget=None,seed=11,progress=None,request_builder=None):
     from ecodata.algorithms.platform_search import SearchInput,process_current_input
     folder=Path(folder);folder.mkdir()
     inputs=[];shape=port.data[port.quantity].shape
@@ -54,6 +54,8 @@ def search_port(port,arrays,sources,folder,*,budget=None,seed=11,progress=None):
         request['application_contract']=dict(id='native-input-port',version='1',field=port.quantity,unit=port.unit,
             semantic_type='continuous',valid_range=None,issues=[],
             evidence='Actual native port binding '+port.resource+' '+str(port.binding.get('sha256',''))+'; model soft preferences and unprovided physical bounds remain unknown')
+    if request_builder is not None:
+        request=request_builder(request)
     try:result=process_current_input(inputs,request,folder/'search',budget=budget,seed=seed,progress=progress)
     except ValueError as exc:
         message=str(exc)

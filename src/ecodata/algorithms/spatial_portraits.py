@@ -15,11 +15,17 @@ class SpatialPortraits:
             c=fold['cohort'];y=c['y'];finite=y[np.isfinite(y)]
             scale=float(np.std(finite)) if len(finite) else 0.;scale=scale or 1.
             # Neighbours are geographic, never adjacent columns of a point table.
-            distances,indices=cKDTree(c['sxy']).query(c['sxy'],k=2)
-            changes=np.abs(y-y[:,indices[:,1]]);known=changes[np.isfinite(changes)]
-            variation=float(known.mean()/scale) if len(known) else None
-            nearest=cKDTree(c['sxy']).query(c['allxy'][:c['query_count']])[0]
-            spacing=float(np.median(distances[:,1]));distance=float(nearest.mean()/spacing) if spacing>0 else 1.
+            tree=cKDTree(c['sxy'])
+            variation=None
+            distance=1.
+            if len(c['sxy'])>1:
+                distances,indices=tree.query(c['sxy'],k=2)
+                changes=np.abs(y-y[:,indices[:,1]]);known=changes[np.isfinite(changes)]
+                variation=float(known.mean()/scale) if len(known) else None
+                nearest=tree.query(c['allxy'][:c['query_count']])[0]
+                spacing=float(np.median(distances[:,1]))
+                if spacing>0:
+                    distance=float(nearest.mean()/spacing)
             self.profiles.append(dict(missing_fraction=float(1-np.isfinite(y).mean()),
                 negative_fraction=float(np.mean(finite<0)) if len(finite) else None,
                 grid_gap=True,variation={'spatial':variation},support_distance={'spatial':distance},

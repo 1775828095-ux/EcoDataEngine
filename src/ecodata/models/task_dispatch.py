@@ -170,9 +170,13 @@ def normalise(table, field):
     return model,reference,template,target,accepted,report
 
 
-def dispatch_preparation(uploads, model_id, folder, progress=None, task=None):
+def dispatch_preparation(uploads, model_id, folder, progress=None, task=None, *, initial_algorithms=(), selected_fields=None, request_builder=None):
     """A data-task stage independent of the downstream target model."""
     candidates,audit=discover(uploads)
+    if selected_fields is not None:
+        candidates=[(table,[field for field in matches if (field['file'],field['field']) in selected_fields])
+                    for table,matches in candidates if (table['file'],table['field']) in selected_fields]
+        candidates=[(table,matches) for table,matches in candidates if matches]
     folder=Path(folder)
     plan=dict(version='data_task_dispatch_v1',target_model=model_id,audit=audit,
               candidate_tasks=[dict(task='observation_gap_recovery',quantity=t['quantity'],table=t['file'],
@@ -199,6 +203,10 @@ def dispatch_preparation(uploads, model_id, folder, progress=None, task=None):
             semantic_type='continuous',physical_variable=quantity,temporal_semantics='instantaneous',
             allow_training=True,mutation_control='random',soft_guidance=False,observation_crs='EPSG:4326',
             nonnegative=quantity in {'air_temperature','air_pressure','relative_humidity'},target_times=report['times'])
+        if initial_algorithms:
+            request['initial_algorithms']=list(initial_algorithms)
+        if request_builder is not None:
+            request=request_builder(request)
         budget=dict(objective_limit=240,total_call_limit=240,proposal_limit=40,wall_seconds=60,probe_call_limit=0)
         save(stage/'request.json',dict(request=request,budget=budget,seed=11))
         if progress:progress('按数据任务调用公共数值处理：'+quantity+' 缺失恢复')
