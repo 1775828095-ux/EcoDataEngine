@@ -115,6 +115,8 @@ def read_structure(name: str, content: bytes, *, hdf_value: str = "", hdf_x: str
         # numeric conversion is explicit when a numeric operation is requested.
         frame = pd.read_csv(io.BytesIO(content), sep="\t" if suffix == ".tsv" else ",", dtype=str, keep_default_na=False)
         dataset = table_dataset(frame)
+        from ecodata.io.noaa_global_hourly import add_variables
+        add_variables(dataset)
         if b'LEGEND FOR FIELD NAMES' in content[:200]:
             from ecodata.io.raw_tables import read_monitoring_text, attach_table_evidence
             frame,evidence=read_monitoring_text(content)

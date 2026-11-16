@@ -1,10 +1,11 @@
 """Read small numerical samples from fields registered by the local scanner."""
 import csv
+from io import TextIOWrapper
 from itertools import islice, product
 from math import ceil, isfinite, nextafter
 from secrets import randbelow
 
-from .scan import local_member
+from .scan import local_member, open_tabular_member
 
 SAMPLE_SIZE = 16
 PROBE_ROWS = 4096
@@ -48,14 +49,14 @@ def numeric_grid(variable):
             (variable[index] for index in islice(product(*axes),PROBE_ROWS)))
 
 
-def tabular_values(path,field,fmt):
-    delimiter="\t" if fmt=="TSV" else ","
+def tabular_values(row,field):
+    delimiter="\t" if row["format"]=="TSV" else ","
     for encoding in ("utf-8-sig","gb18030"):
         try:
-            with path.open(encoding=encoding,newline="") as stream:
+            with open_tabular_member(row) as raw, TextIOWrapper(raw,encoding=encoding,newline="") as stream:
                 rows=csv.reader(stream,delimiter=delimiter)
                 headers=next(rows,[])
-                original=field.get("original_header",field["name"])
+                original=field.get("source_column") or field.get("original_header",field["name"])
                 column=field.get("column")
                 if column is None:
                     column=headers.index(original)
@@ -82,8 +83,6 @@ def raw_sample(path,row,field):
         import shapefile
         with path.open("rb") as stream, shapefile.Reader(dbf=stream) as dataset:
             return list(numeric(record[name] for record in islice(dataset.iterRecords(fields=[name]),PROBE_ROWS)))
-    if fmt in {"CSV","TSV"}:
-        return list(numeric(tabular_values(path,field,fmt)))
     if fmt=="Excel":
         from openpyxl import load_workbook
         with path.open("rb") as stream:
@@ -130,6 +129,13 @@ def itertools_batches(batches):
 
 
 def field_sample(row,field):
+    if row["format"] in {"CSV","TSV"} and not row.get("original_reader"):
+        values=tabular_values(row,field)
+        if field.get("noaa_component"):
+            from ecodata.io.noaa_global_hourly import COMPONENTS, decode
+            _,width,component=COMPONENTS[field["name"]]
+            return [decode(value,width,component) for value in values]
+        return list(numeric(values))
     with local_member(row.get("attribute_member",row)) as path:
         return raw_sample(path,row,field)
 

@@ -83,6 +83,13 @@ class LocalChecks:
         if item[2].get("axis"):
             return dict(field=fid,status="outside_scope",basis="coordinate_or_time_axis")
         if fid not in self.exported:
+            if item[2].get("noaa_compound"):
+                source=self.scan["rows"][item[0]]["fields"]
+                parts=[self.field_question((item[0],f"{fid.split('.')[0]}.F{index}",field))
+                       for index,field in enumerate(source,1) if field.get("noaa_component")
+                       and field.get("column")==item[2].get("column")]
+                return dict(field=fid,status="checked" if any(part["status"]=="checked" for part in parts) else "unavailable",
+                            basis="noaa_decoded_components",sample_fields=parts)
             assert_current(self.scan)
             try:
                 result=sample_values.export_sample(self.numbers(item))

@@ -210,6 +210,7 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
                 standard_name=field.get("standard_name") or None, physical_variable=field.get("physical_variable") or None,
                 long_name=field.get("long_name") or None, var_desc=field.get("var_desc") or None,
                 temporal_semantics=field.get("temporal_semantics") or None,
+                source_column=field.get("source_column"),
                 dimensions=field.get("dimensions"), shape=field.get("shape"), sheet=field.get("sheet"), axis=field["axis"],
                 raw_companion=field.get("raw_companion",False),
                 physical_meaning=metadata[1] if metadata else ("叶面积与地面积之比" if family=="leaf_area_index" else None),
@@ -281,7 +282,7 @@ def discover(scan, model_id=None, task_goal="auto"):
         sources=sources,candidates=[],engineering_documents=docs,
         project_context_document_ids=[d["id"] for d in docs if d["scope"]=="project_context"],
         engineering_inventory=[dict(id=f"M{i}",kind=row["format"],nested_archive=bool(kind(row["name"])),
-                                    nested_members_read=False)
+                                    nested_members_read=row.get("nested_members_read",False))
                                for i,row in enumerate(scan["rows"],1)
                                if kind(row["name"]) or not row["fields"]]), {}
 

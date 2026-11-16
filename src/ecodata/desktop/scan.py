@@ -101,7 +101,7 @@ def seven_zip_members(archive, temporary, stack, *, only=None):
         filename=PurePosixPath(entry.filename)
         if (safe(entry.filename) and (only is None or entry.filename==only)
                 and not getattr(entry,"is_symlink",False)
-                and (filename.suffix.lower() in FORMATS.keys() | DOCS
+                and (kind(entry.filename) or filename.suffix.lower() in FORMATS.keys() | DOCS
                      or filename.name.casefold().startswith("readme")
                      or filename.name.casefold()=="namelist.input")):
             selected.append(entry.filename)
@@ -207,6 +207,20 @@ def tabular(row, blob, complete):
                 quantity, unit = OBSERVATION_COLUMNS[name]
                 field.update(type="number", unit=unit, standard_name=quantity,
                              temporal_semantics="instantaneous", observation_contract=True)
+    if row["format"]=="CSV":
+        from ecodata.io.noaa_global_hourly import COMPONENTS, is_global_hourly
+        if is_global_hourly(header):
+            source_columns={entry[0] for entry in COMPONENTS.values()}
+            for field in row["fields"]:
+                if field["name"] in source_columns:
+                    field["noaa_compound"]=True
+            for name,(source,_,component) in COMPONENTS.items():
+                if source in header and name not in header:
+                    row["fields"].append(dict(name=name,type="number",axis=False,unit=component.unit,
+                        standard_name=component.quantity,source_column=source,column=header.index(source),
+                        noaa_component=True,temporal_semantics="instantaneous",
+                        long_name=f"NOAA Global Hourly {source} decoded observation"))
+            row["basis"].append("NOAA Global Hourly 复合列已登记数值分量；保留原表头与质控码")
     row["basis"].append(f"表头及最多 {len(samples)} 条记录；间隔为样本估计，站点间距不当作网格分辨率")
 
 def netcdf_support(row, dataset, *, read_values=True):
@@ -529,13 +543,15 @@ class Scanner:
         count = 0
         temporary_bytes = 0
 
-        def item(name, size, ref, reader=None, local=None, open_member=None):
+        def item(name,size,ref,reader=None,local=None,open_member=None,containers=()):
             nonlocal count, temporary_bytes
             if not safe(name): return
             p = PurePosixPath(name)
             ext = p.suffix.lower()
             row = dict(name=name, bytes=size, ref=ref, format=FORMATS.get(ext,"其他"),
                        fields=[], resolution={}, basis=[], pending=[], evidence=[], roles=[])
+            if containers:
+                row["containers"]=containers
             rows.append(row)
             doc = ext in DOCS or p.name.lower().startswith("readme") or p.name.casefold()=="namelist.input"
             if doc:
@@ -622,70 +638,114 @@ class Scanner:
                 scientific(row,local)
             elif ext in FORMATS:
                 row["pending"].append("压缩成员仅登记，待定向核验内部结构")
-            if kind(name) and not local:
-                row["pending"].append("嵌套压缩包：轻扫不展开")
             if row["fields"] and not row["resolution"].get("time_seconds"):
                 row["pending"].append("时间间隔未知或不适用")
+            return row
+
+        def attempt(name,size,ref,reader=None,local=None,open_member=None,containers=()):
+            nonlocal count,temporary_bytes
+            row=None
+            try:
+                row=item(name,size,ref,reader,local,open_member,containers)
+                archive_kind=kind(name)
+                if not row or not archive_kind or not ref[1]:
+                    return
+                if local is not None:
+                    walk_archive(local,archive_kind,name,ref[0],(*containers,(ref,size)))
+                elif open_member is not None:
+                    with TemporaryDirectory(prefix="ecodata-nested-") as directory:
+                        temporary=Path(directory)/"archive"
+                        with open_member() as source, temporary.open("wb") as destination:
+                            copyfileobj(source,destination,length=1024*1024)
+                        copied=temporary.stat().st_size
+                        count+=copied
+                        temporary_bytes+=copied
+                        if copied!=size:
+                            raise ValueError("内层归档实际大小与清单不一致")
+                        walk_archive(temporary,archive_kind,name,ref[0],(*containers,(ref,size)))
+                else:
+                    raise ValueError("内层归档没有可读取的成员入口")
+                row["nested_members_read"]=True
+            except (EcoDataError,ValueError,OSError,RuntimeError,ImportError,csv.Error,tarfile.TarError,
+                    zipfile.BadZipFile,EOFError) as exc:
+                warnings.append(f"{name}: {exc}")
+                if row is None and rows and rows[-1]["name"]==name:
+                    row=rows[-1]
+                if row is not None:
+                    row["pending"].append("内层归档扫描失败，详见扫描警告" if kind(name)
+                                          else "字段或坐标读取未完成，详见扫描警告")
+
+        def walk_archive(path,archive_kind,label,original,containers=()):
+            nonlocal temporary_bytes
+            namespace=label+"!/" if containers else ""
+
+            def member(name,size,offset,open_member=None,local=None):
+                if not safe(name):
+                    return
+
+                def prefix(n):
+                    with open_member() as stream:
+                        return stream.read(n)
+
+                attempt(namespace+name,size,(original,archive_kind,name,offset),
+                        prefix if open_member else None,local,open_member,containers)
+
+            if archive_kind=="zip":
+                with path.open("rb") as raw:
+                    meter=Meter(raw)
+                    with zipfile.ZipFile(meter) as archive:
+                        for entry in archive.infolist():
+                            if not entry.is_dir():
+                                member(entry.filename,entry.file_size,entry.header_offset,
+                                       lambda entry=entry:archive.open(entry))
+                    sequential.append(dict(name=label,raw_read_bytes=meter.count))
+            elif archive_kind=="tar":
+                with path.open("rb") as raw:
+                    physical=Meter(raw)
+                    header=physical.read(6)
+                    raw.seek(0)
+                    op=next((fn for magic,fn in [(b"\x1f\x8b",gzip.GzipFile),(b"BZh",bz2.BZ2File),
+                                                (b"\xfd7zXZ",lzma.LZMAFile)] if header.startswith(magic)),None)
+                    with (op(fileobj=physical) if op is gzip.GzipFile else op(physical) if op else nullcontext(physical)) as stream:
+                        decoded=Meter(stream)
+                        try:
+                            with tarfile.open(fileobj=decoded,mode="r|") as archive:
+                                for entry in archive:
+                                    if entry.isfile():
+                                        member(entry.name,entry.size,entry.offset_data,
+                                               lambda entry=entry:archive.extractfile(entry))
+                        finally:
+                            sequential.append(dict(name=label,raw_read_bytes=physical.count,decoded_stream_bytes=decoded.count))
+            elif archive_kind=="7z":
+                import py7zr
+                with TemporaryDirectory(prefix="ecodata-scan-7z-") as directory, ExitStack() as stack:
+                    try:
+                        archive=stack.enter_context(py7zr.SevenZipFile(path))
+                        written=0
+                        for entry,temporary in seven_zip_members(archive,Path(directory),stack):
+                            if temporary is not None:
+                                written+=temporary.stat().st_size
+                            member(entry.filename,entry.uncompressed,None,
+                                   (lambda temporary=temporary:temporary.open("rb")) if temporary is not None else None,
+                                   temporary)
+                        temporary_bytes+=written
+                        sequential.append(dict(name=label,archive_bytes=path.stat().st_size,decoded_payload_bytes=written))
+                    except py7zr.exceptions.ArchiveError as exc:
+                        raise ValueError(str(exc)) from exc
 
         for path,size,*_ in signature:
             name=path.name if root.is_file() else path.relative_to(root).as_posix()
-            k=kind(path)
-            def attempt(*args):
-                try: item(*args)
-                except (EcoDataError,ValueError,OSError,RuntimeError,ImportError,csv.Error) as exc:
-                    warnings.append(f"{args[0]}: {exc}")
-                    if rows and rows[-1]["name"]==args[0]:
-                        rows[-1]["pending"].append("字段或坐标读取未完成，详见扫描警告")
-            def read(n):
-                with path.open("rb") as f: return f.read(n)
-            try:
-                if k=="zip":
-                    with path.open("rb") as raw:
-                        meter=Meter(raw)
-                        with zipfile.ZipFile(meter) as z:
-                            for entry in z.infolist():
-                                if not entry.is_dir():
-                                    def prefix(n):
-                                        with z.open(entry) as f: return f.read(n)
-                                    attempt(entry.filename,entry.file_size,(path,k,entry.filename,entry.header_offset),prefix,None,
-                                            lambda entry=entry:z.open(entry))
-                        sequential.append(dict(name=name,raw_read_bytes=meter.count))
-                elif k=="tar":
-                    with path.open("rb") as raw:
-                        physical=Meter(raw)
-                        header=raw.read(6); raw.seek(0); physical.count+=len(header)
-                        op=next((fn for magic,fn in [(b"\x1f\x8b",gzip.GzipFile),(b"BZh",bz2.BZ2File),(b"\xfd7zXZ",lzma.LZMAFile)] if header.startswith(magic)),None)
-                        with (op(fileobj=physical) if op is gzip.GzipFile else op(physical) if op else nullcontext(physical)) as stream:
-                            decoded=Meter(stream)
-                            try:
-                                with tarfile.open(fileobj=decoded,mode="r|") as tar:
-                                    for entry in tar:
-                                        if entry.isfile():
-                                            def prefix(n):
-                                                with tar.extractfile(entry) as f: return f.read(n)
-                                            attempt(entry.name,entry.size,(path,k,entry.name,entry.offset_data),prefix,None,
-                                                    lambda entry=entry:tar.extractfile(entry))
-                            finally:
-                                sequential.append(dict(name=name, raw_read_bytes=physical.count, decoded_stream_bytes=decoded.count))
-                elif k=="7z":
-                    import py7zr
-                    with TemporaryDirectory(prefix="ecodata-scan-7z-") as directory, ExitStack() as stack:
-                        archive=stack.enter_context(py7zr.SevenZipFile(path))
-                        written=0
-                        for entry,member in seven_zip_members(archive,Path(directory),stack):
-                            if member is None:
-                                attempt(entry.filename,entry.uncompressed,(path,k,entry.filename,None))
-                                continue
-                            written+=member.stat().st_size
-                            def prefix(n,member=member):
-                                with member.open("rb") as source:
-                                    return source.read(n)
-                            attempt(entry.filename,entry.uncompressed,(path,k,entry.filename,None),prefix,member)
-                        temporary_bytes+=written
-                        sequential.append(dict(name=name,archive_bytes=size,decoded_payload_bytes=written))
-                else: attempt(name,size,(path,"",None,None),read,path)
-            except (ValueError,OSError,RuntimeError,tarfile.TarError,zipfile.BadZipFile,ImportError) as exc:
-                warnings.append(f"{name}: {exc}")
+            archive_kind=kind(path)
+            if archive_kind:
+                try:
+                    walk_archive(path,archive_kind,name,path)
+                except (ValueError,OSError,RuntimeError,tarfile.TarError,zipfile.BadZipFile,ImportError,EOFError) as exc:
+                    warnings.append(f"{name}: {exc}")
+            else:
+                def read(n,path=path):
+                    with path.open("rb") as stream:
+                        return stream.read(n)
+                attempt(name,size,(path,"",None,None),read,path)
         from .engineering_links import collect
         collect(rows,docs)
         shapefile_attribute_rows(rows)
@@ -733,7 +793,16 @@ def assert_current(scan):
 @contextmanager
 def local_member(row):
     """Expose one scanned member as a seekable file for format-specific sampling."""
-    path,kind,name,offset=row["ref"]
+    path,*reference=row["ref"]
+    with ExitStack() as stack:
+        for parent,size in row.get("containers",()):
+            path=stack.enter_context(materialize_member((path,*parent[1:]),size))
+        yield stack.enter_context(materialize_member((path,*reference),row["bytes"]))
+
+
+@contextmanager
+def materialize_member(ref, size):
+    path,kind,name,offset=ref
     if not kind:
         yield path
         return
@@ -744,10 +813,21 @@ def local_member(row):
             archive=stack.enter_context(py7zr.SevenZipFile(path))
             member=next((member for entry,member in seven_zip_members(archive,root,stack,only=name)
                          if entry.filename==name and member is not None),None)
-            if member is None or member.stat().st_size!=row["bytes"]:
+            if member is None or member.stat().st_size!=size:
                 raise ValueError("归档成员已变化")
             yield member
             return
+        destination=root/("member"+PurePosixPath(name).suffix)
+        with archive_stream(path,kind,name,offset) as stream, destination.open("wb") as output:
+            copyfileobj(stream,output,length=1024*1024)
+        if destination.stat().st_size!=size:
+            raise ValueError("归档成员已变化")
+        yield destination
+
+
+@contextmanager
+def archive_stream(path,kind,name,offset):
+    with ExitStack() as stack:
         if kind=="zip":
             archive=stack.enter_context(zipfile.ZipFile(path))
             item=next((item for item in archive.infolist()
@@ -761,17 +841,29 @@ def local_member(row):
             raise ValueError("不支持此归档格式")
         if stream is None:
             raise ValueError("归档成员已变化")
-        destination=root/("member"+PurePosixPath(name).suffix)
-        with destination.open("wb") as output:
-            copyfileobj(stream,output,length=1024*1024)
-        if destination.stat().st_size!=row["bytes"]:
-            raise ValueError("归档成员已变化")
-        yield destination
+        yield stream
+
+
+@contextmanager
+def open_tabular_member(row):
+    """Sample archive tables without materializing the potentially large leaf."""
+    path,kind,name,offset=row["ref"]
+    with ExitStack() as stack:
+        for parent,size in row.get("containers",()):
+            path=stack.enter_context(materialize_member((path,*parent[1:]),size))
+        if kind in {"zip","tar"}:
+            yield stack.enter_context(archive_stream(path,kind,name,offset))
+        else:
+            local=stack.enter_context(materialize_member((path,kind,name,offset),row["bytes"]))
+            yield stack.enter_context(local.open("rb"))
 
 
 def read_selected(row, limit=256*1024**2):
     path,k,name,offset=row["ref"]
     if row["bytes"]>limit: raise ValueError(f"单成员深读超过 {limit//1024**2} MiB；请先准备所需字段或数据块")
+    if row.get("containers"):
+        with local_member(row) as member, member.open("rb") as stream:
+            return stream.read(limit+1)
     if k=="zip":
         with zipfile.ZipFile(path) as z:
             with z.open(next(x for x in z.infolist() if x.header_offset==offset and x.filename==name)) as f:
