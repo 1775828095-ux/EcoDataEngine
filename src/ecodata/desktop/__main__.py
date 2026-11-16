@@ -725,7 +725,7 @@ class Window(QMainWindow):
             raise ValueError("这里需要本地数据路径。请把密钥粘贴到首页下方的「DeepSeek 线上 API」输入框。")
         def scan_job(log):
             log("正在读取包索引、表头和工程资料…")
-            scanned,metrics=self.scanner.scan(path)
+            scanned,metrics=self.scanner.scan(path,progress=log)
             log("正在识别候选并整理脱敏工程资料…")
             summary,candidates=discovery.discover(scanned,self.decision_model)
             return scanned,metrics,summary,candidates

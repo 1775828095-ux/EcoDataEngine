@@ -129,6 +129,16 @@ def itertools_batches(batches):
 
 
 def field_sample(row,field):
+    if row.get("swat_output_header") is not None:
+        with open_tabular_member(row) as raw, TextIOWrapper(raw,encoding="utf-8-sig",errors="strict") as stream:
+            for _ in range(row["swat_output_header"]+2):
+                next(stream,None)
+            column=field["column"]
+            values=[]
+            for line in islice(stream,PROBE_ROWS):
+                parts=line.split()
+                values.append(parts[column].replace("D","E") if len(parts)>column else None)
+            return [value if value is not None and abs(value)<1e30 else None for value in numeric(values)]
     if row["format"] in {"CSV","TSV"} and not row.get("original_reader"):
         values=tabular_values(row,field)
         if field.get("noaa_component"):

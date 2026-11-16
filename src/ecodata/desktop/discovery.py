@@ -197,6 +197,20 @@ def model_field_matches(row, model_id, model_roles):
     return dict(matches)
 
 
+def field_references(field,fid):
+    if not field.get("variable_references"):
+        return {}
+    source=fid.partition(".")[0]
+    def described(edge):
+        record={key:value for key,value in edge.items() if key not in {"field_index","target_references"}}
+        if index:=edge.get("field_index"):
+            record["field_id"]=f"{source}.F{index}"
+        if children:=edge.get("target_references"):
+            record["target_references"]=[described(child) for child in children]
+        return record
+    return {"variable_references":[described(edge) for edge in field["variable_references"]]}
+
+
 def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
     family=physical(field)
     roles=[ROLE_LABELS[r] for r in row["roles"] if r in ROLE_LABELS]
@@ -216,6 +230,9 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
                 source_column=field.get("source_column"),
                 dimensions=field.get("dimensions"), shape=field.get("shape"), sheet=field.get("sheet"), axis=field["axis"],
                 raw_companion=field.get("raw_companion",False),
+                **({"metadata_role":field["metadata_role"]} if field.get("metadata_role") else {}),
+                **({"soil_depth":field["soil_depth"]} if field.get("soil_depth") else {}),
+                **field_references(field,fid),
                 physical_meaning=metadata[1] if metadata else ("叶面积与地面积之比" if family=="leaf_area_index" else None),
                 description_source="I/O API var_desc" if metadata else None,
                 grid_role=role,
@@ -319,6 +336,10 @@ def describe_pair(scan,cid,left,right,model_id,details):
     if "align_space" not in actions and (grid_spacing=="different" or (g1 and g2 and grid_spacing in {"unknown","not_comparable"})):
         actions.append("align_space")
     unit_check=pair_units(ar,a,br,b)
+    soil={}
+    if a.get("soil_depth") or b.get("soil_depth"):
+        from .soil_depth import compare
+        soil["soil_depth_comparison"]=compare(a.get("soil_depth"),b.get("soil_depth"))
     pair=dict(id=cid,fields=[af,bf],possible_actions=actions,target_model=MODELS.get(model_id),
               pair_details=[dict(details[af],source="A"),dict(details[bf],source="B")],
               resolution_comparison=dict(time_spacing=time_spacing,grid_spacing=grid_spacing,
@@ -326,7 +347,7 @@ def describe_pair(scan,cid,left,right,model_id,details):
               relative_spacing=dict(time=relative_spacing(t1,t2),grid=relative_spacing(g1,g2)),
               match_basis="deepseek_catalog",roles=[ar["roles"],br["roles"]],
               engineering_reference=bool(ar["evidence"] or br["evidence"]),
-              unit_check=public_unit_report(unit_check),units_equal=unit_check["status"]=="equivalent")
+              unit_check=public_unit_report(unit_check),units_equal=unit_check["status"]=="equivalent",**soil)
     return pair,(left,right,actions)
 
 def local_overview(scan,candidates):
@@ -338,7 +359,10 @@ def local_overview(scan,candidates):
                 candidate_scan_limit=scan.get("candidate_scan_limit",False),
                 local_field_inventory=[dict(file=r["name"],format=r["format"],total_fields=len(r["fields"]),
                     resolution=r["resolution"],pending=r["pending"],roles=r["roles"],
-                    fields=[dict(name=f.get("original_header",f["name"]),type=f["type"],unit=f["unit"]) for f in r["fields"]])
+                    fields=[dict(name=f.get("original_header",f["name"]),type=f["type"],unit=f["unit"],
+                                **({"soil_depth":f["soil_depth"]} if f.get("soil_depth") else {}),
+                                **({"variable_references":f["variable_references"]} if f.get("variable_references") else {}))
+                            for f in r["fields"]])
                     for r in scan["rows"] if r["fields"] or r["pending"]],
                 candidates=[dict(id=k,actions=actions,fields=[
                     dict(file=scan["rows"][i]["name"],field=f["name"],unit=f["unit"],

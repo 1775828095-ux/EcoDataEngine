@@ -125,6 +125,36 @@ def spacing(values, temporal=False):
     d = np.diff(a)
     return float(d[0]) if len(d) and np.allclose(d, d[0],rtol=1e-5,atol=1e-9) else None
 
+
+def swat_result_fields(row,lines):
+    from ecodata.interface.swat_results import has_output_header, output_header
+
+    if not has_output_header(lines):
+        return False
+    row["format"]="SWAT+ 输出表"
+    try:
+        header,columns,units,_=output_header(lines)
+    except ValueError as exc:
+        # Keep declarations visible even if the original reader cannot align
+        # an invalid or unrecognized unit row.
+        header=next(index for index,line in enumerate(lines) if line.split()[:4]==["jday","mon","day","yr"])
+        columns=lines[header].split()
+        units={}
+        row["pending"].append(str(exc))
+    for index,name in enumerate(columns):
+        row["fields"].append(dict(name=name,unit=units.get(name,""),axis=index<7,column=index,
+                                 type="number" if name in units else "unknown"))
+    row["swat_output_header"]=header
+    cadence=PurePosixPath(row["name"]).stem.rsplit("_",1)[-1]
+    if cadence=="day":
+        row["declared_time_resolution"]="P1D"
+        row["resolution"]["time_seconds"]=86400
+        row["time_spacing_basis"]="swat_native_daily_output"
+    elif cadence in {"mon","yr"}:
+        row["declared_time_resolution"]={"mon":"P1M","yr":"P1Y"}[cadence]
+    row["basis"].append("原版 SWAT+ 输出表头和单位行；观测记录留在本机")
+    return True
+
 def table_reader(stream, fmt):
     return csv.reader(stream, delimiter="\t" if fmt=="TSV" else ",", strict=True)
 
@@ -198,7 +228,11 @@ def tabular(row, blob, complete):
             if step is not None:
                 typ = "time"
                 row["resolution"]["time_seconds"] = step
-        row["fields"].append(dict(name=name, original_header=title, column=i, type=typ, unit=unit, axis=base in AXES))
+        field=dict(name=name,original_header=title,column=i,type=typ,unit=unit,axis=base in AXES)
+        from .soil_depth import text_support
+        if support:=text_support(title):
+            field["soil_depth"]=support
+        row["fields"].append(field)
     if row["format"]=="CSV" and {"station_id","time_utc","latitude","longitude","levels"} <= set(header):
         from ecodata.models.task_dispatch import OBSERVATION_COLUMNS
         for field in row["fields"]:
@@ -348,17 +382,60 @@ def curvilinear_support(row, ds, coordinates):
         row["grid_spacing_basis"]="sampled_curvilinear_neighbor_distance"
 
 
+REFERENCE_METADATA=("units","standard_name","long_name","axis","positive","grid_mapping_name","flag_meanings")
+
+
+def attach_variable_references(row,facts):
+    from ecodata.models.scientific_schema import describe_variables, variable_references
+
+    summary={"variables":facts}
+    graph=variable_references(summary)
+    roles={item["name"]:item["role"] for item in describe_variables(summary,references=graph)}
+    identifiers={field["name"]:index for index,field in enumerate(row["fields"],1)}
+
+    def witness(edge):
+        details=dict(edge)
+        target=edge["target"]
+        if target is not None:
+            info=facts[target]
+            attrs=info["attributes"]
+            details.update(field_index=identifiers[target],dimensions=info["dimensions"],
+                           unit=attrs.get("units") or None,standard_name=attrs.get("standard_name") or None,
+                           long_name=attrs.get("long_name") or None,role=roles[target])
+            details.update({key:attrs[key] for key in ("positive","grid_mapping_name","flag_meanings") if attrs.get(key)})
+        return details
+
+    for field in row["fields"]:
+        field["metadata_role"]=roles[field["name"]]
+        relations=[]
+        for edge in graph.get(field["name"],[]):
+            related=witness(edge)
+            if nested:=graph.get(edge["target"]):
+                # Preserve coordinate -> bounds and formula term references
+                # even if DeepSeek receives a batch with only the data field.
+                related["target_references"]=[witness(child) for child in nested]
+            relations.append(related)
+        if relations:
+            field["variable_references"]=relations
+
+
 def original_fields(row, content):
     from ecodata.io.structures import read_structure
     from ecodata.io.structures import GEOMETRY
+    from ecodata.models.scientific_schema import REFERENCE_ATTRIBUTES
+    facts={}
     with read_structure(row["name"],content,record_read_source=False) as dataset:
         for name,variable in dataset.variables.items():
             if name==GEOMETRY:
                 continue
             keys=("standard_name","physical_variable","long_name","var_desc","temporal_semantics")
             metadata={key:str(variable.attrs[key]) for key in keys if variable.attrs.get(key) is not None}
+            attributes={key:str(variable.attrs[key]) for key in (*REFERENCE_ATTRIBUTES,*REFERENCE_METADATA)
+                        if variable.attrs.get(key) is not None}
+            facts[name]=dict(dimensions=list(variable.dims),attributes=attributes)
             row["fields"].append(dict(name=name,type=str(variable.dtype),unit=str(variable.attrs.get("units","")),
                 axis=name in dataset.coords or name.casefold() in AXES,dimensions=list(variable.dims),**metadata))
+    attach_variable_references(row,facts)
     row["original_reader"]=True
     row["basis"].append("原版读取器识别的变量与属性")
 
@@ -397,7 +474,14 @@ def scientific(row, path):
 
             if getattr(ds,"time_coverage_resolution","") in {"PT1H","P1D","P1M"}:
                 row["declared_time_resolution"]=ds.time_coverage_resolution
+            from ecodata.models.scientific_schema import REFERENCE_ATTRIBUTES
+            from .soil_depth import netcdf_depth_axes, netcdf_support as soil_support
+            facts={name:dict(dimensions=list(var.dimensions),attributes={
+                key:str(getattr(var,key,"")) for key in (*REFERENCE_ATTRIBUTES,*REFERENCE_METADATA)})
+                for name,var in ds.variables.items()}
             bounds={str(getattr(v,"bounds","")) for v in ds.variables.values()}
+            depth_axes=netcdf_depth_axes(ds)
+            depth_cache={}
             coords={}
             for k,v in ds.variables.items():
                 coordinate=coordinate_kind(k,{name:getattr(v,name,"") for name in ("axis","standard_name","units")})
@@ -409,6 +493,10 @@ def scientific(row, path):
                     getattr(v,"source_fill_value",None) is not None)
                 row["fields"].append(dict(name=k,type=str(v.dtype),unit=str(getattr(v,"units","")).strip(),
                     standard_name=str(getattr(v,"standard_name","")), physical_variable=str(getattr(v,"physical_variable","")), long_name=str(getattr(v,"long_name","")).strip(), var_desc=str(getattr(v,"var_desc","")).strip(), raw_companion=raw_companion, temporal_semantics=str(getattr(v,"temporal_semantics","")), dimensions=list(v.dimensions), axis=bool(coordinate) or k.casefold() in AXES or (k.casefold()=="tflag" and tuple(d.casefold() for d in v.dimensions)==("tstep","var","date-time")) or k in bounds or k.casefold().endswith(("_bounds","_bnds")) or v.dimensions==(k,)))
+                if k not in depth_axes and k not in bounds and not row["fields"][-1]["axis"]:
+                    support=soil_support(ds,v,depth_axes,depth_cache)
+                    if support:
+                        row["fields"][-1]["soil_depth"]=support
                 if v.ndim==1 and coordinate=="time" and len(v):
                     try:
                         import numpy as np
@@ -447,6 +535,7 @@ def scientific(row, path):
                     row["ioapi_grid_role"]="boundary"
                 elif {"ROW","COL"} <= dimensions:
                     row["ioapi_grid_role"]="interior"
+            attach_variable_references(row,facts)
             row["basis"].append("NetCDF 维度、变量属性、坐标小样本或 IOAPI 时间标记")
     elif fmt=="GeoTIFF":
         import rasterio
@@ -515,24 +604,37 @@ def scientific(row, path):
 
 def scan_hdf(row,source):
     import h5py
+    from ecodata.models.scientific_schema import REFERENCE_ATTRIBUTES
+    facts={}
     with h5py.File(source) as ds:
         def visitor(k,v):
             if isinstance(v,h5py.Dataset):
                 def attrs(name):
                     value=v.attrs.get(name,"")
                     return decode(value) if isinstance(value,bytes) else str(value).strip()
-                row["fields"].append(dict(name=k,type=str(v.dtype),unit=attrs("units"),axis=False,
+                scales=[]
+                dimensions=[v.dims[i].label or "" for i in range(v.ndim)]
+                for i in range(v.ndim):
+                    try:
+                        attached=[scale.name for scale in v.dims[i].values()]
+                    except (RuntimeError,ValueError):
+                        attached=[]
+                    scales.extend(attached)
+                facts[k]=dict(dimensions=dimensions,dimension_scales=scales,
+                              attributes={name:attrs(name) for name in (*REFERENCE_ATTRIBUTES,*REFERENCE_METADATA)})
+                row["fields"].append(dict(name=k,type=str(v.dtype),unit=attrs("units"),axis=bool(v.is_scale),
                     standard_name=attrs("standard_name"),physical_variable=attrs("physical_variable"),
                     long_name=attrs("long_name"),var_desc=attrs("var_desc"),
                     temporal_semantics=attrs("temporal_semantics"),shape=list(v.shape)))
         ds.visititems(visitor)
+    attach_variable_references(row,facts)
     row["basis"].append("HDF5 数据集属性；未读数据数组")
 
 class Scanner:
     def __init__(self):
         self.cached = None
 
-    def scan(self, location):
+    def scan(self, location, progress=None):
         start = time.perf_counter()
         root = Path(location).resolve(strict=True)
         signature = tuple(inventory(root))
@@ -557,7 +659,17 @@ class Scanner:
             if doc:
                 row["engineering_text_status"]="archive_member_not_read" if not reader else "read_error"
                 if reader:
-                    blob=reader(size)
+                    if ext==".txt" and (open_member or local):
+                        with (open_member() if open_member else local.open("rb")) as text:
+                            header=[text.readline() for _ in range(21)]
+                            prefix=b"".join(header)
+                            if swat_result_fields(row,decode(prefix).splitlines()):
+                                count+=len(prefix)
+                                row.pop("engineering_text_status",None)
+                                return row
+                            blob=prefix+text.read()
+                    else:
+                        blob=reader(size)
                     count+=len(blob)
                     if len(blob)==size:
                         content=decode(blob)
@@ -678,6 +790,8 @@ class Scanner:
         def walk_archive(path,archive_kind,label,original,containers=()):
             nonlocal temporary_bytes
             namespace=label+"!/" if containers else ""
+            if progress:
+                progress(f"正在扫描归档 · {PurePosixPath(label).name}")
 
             def member(name,size,offset,open_member=None,local=None):
                 if not safe(name):
@@ -747,6 +861,8 @@ class Scanner:
                         return stream.read(n)
                 attempt(name,size,(path,"",None,None),read,path)
         from .engineering_links import collect
+        if progress:
+            progress("正在关联工程说明与数据字段…")
         collect(rows,docs)
         shapefile_attribute_rows(rows)
         mark_engineering_netcdf(rows,docs)

@@ -102,7 +102,7 @@ class LocalChecks:
         return self.exported[fid]
 
     def inspect(self,pair,check,quantity=None):
-        from .discovery import field_identity, overlap, pair_units, public_unit_report, resolution, spacing_comparison
+        from .discovery import field_identity, field_references, overlap, pair_units, public_unit_report, resolution, spacing_comparison
 
         left,right,_=pair
         rows=[self.scan["rows"][item[0]] for item in (left,right)]
@@ -122,11 +122,14 @@ class LocalChecks:
         if check=="metadata":
             safe=public_unit_report(units)
             metadata=[]
-            for row,field in zip(rows,fields):
+            for row,field,item in zip(rows,fields,(left,right)):
                 keys=("standard_name","physical_variable","long_name","var_desc","temporal_semantics","dimensions","shape")
                 detail={k:field[k] for k in keys if field.get(k)}
+                detail.update(field_references(field,item[1]))
                 detail["variable_name"]=field["name"]
                 detail["unit"]=field["unit"]
+                if field.get("soil_depth"):
+                    detail["soil_depth"]=field["soil_depth"]
                 if row.get("header_only") and row["format"]=="NetCDF":
                     try:
                         with self.dataset(row) as dataset:
@@ -137,7 +140,11 @@ class LocalChecks:
                     except (OSError,ValueError,RuntimeError,ImportError,KeyError):
                         pass
                 metadata.append(detail)
-            return dict(status="checked", unit_status=safe["status"], metadata=metadata,
+            depth={}
+            if any(field.get("soil_depth") for field in fields):
+                from .soil_depth import compare
+                depth["soil_depth_comparison"]=compare(*(field.get("soil_depth") for field in fields))
+            return dict(status="checked", unit_status=safe["status"], metadata=metadata,**depth,
                         field_identity_basis=[field_identity(row,field)[1] for row,field in zip(rows,fields)],
                         mapping_basis=units.get("identity_basis","local_metadata"),
                         grid_spacing=spacing_comparison(*grids),
