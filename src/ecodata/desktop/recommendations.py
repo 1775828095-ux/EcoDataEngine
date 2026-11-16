@@ -1,9 +1,9 @@
 """Build and validate recommendations for the operations released on page one."""
 from copy import deepcopy
-from math import isfinite
-from secrets import randbelow
 
-from .scan import assert_current, read_selected
+from ecodata.core.exceptions import EcoDataError
+
+from .scan import assert_current
 from .service import ALGORITHMS
 from .pair_processing import REGISTERED_SPACE, SPATIAL_SEEDS
 
@@ -49,45 +49,26 @@ def recipe_name(steps):
 
 
 def attach_samples(scan, pairs):
-    from ecodata.recognition import recognise_file
-    datasets={}
-    used_bytes=0
+    from .sample_values import export_sample, field_sample
+
     samples={}
     for pair in pairs:
         for field in pair.get("pair_details",[]):
-            if not isinstance(field,dict):
-                continue
             fid=field.get("id","")
-            field.pop("perturbed_samples",None)
-            if fid in samples:
-                field["perturbed_samples"]=samples[fid]
-                continue
-            try:
-                source,variable=fid.split(".")
-                index=int(source[1:])-1
-                offset=int(variable[1:])-1
-                if min(index,offset)<0 or fid not in pair["fields"]:
-                    raise ValueError("invalid field")
-                row=scan["rows"][index]
-                name=row["fields"][offset]["name"]
-                if index not in datasets:
-                    if used_bytes+row["bytes"]>32*1024**2:
-                        raise ValueError("sample budget")
-                    used_bytes+=row["bytes"]
-                    datasets[index]=recognise_file(row["name"],read_selected(row),record_read_source=False)[0]
-                values=datasets[index][name]
-                if values.dtype.kind not in "iuf":
-                    raise ValueError("not numeric")
-                # Select a bounded slice, then add an independent decimal to each real sample.
-                indexers={dim:0 for dim in values.dims[:-1]}
-                if values.dims:
-                    indexers[values.dims[-1]]=slice(0,8)
-                sample=values.isel(indexers).values.flat
-                field["perturbed_samples"]=[round(float(v)+(randbelow(999)+1)/1000,6)
-                                            for v in list(sample)[:8] if isfinite(float(v))][:4]
-                samples[fid]=field["perturbed_samples"]
-            except (ValueError,AttributeError,KeyError,IndexError,TypeError,OSError):
-                field["perturbed_samples"]=[]
+            if fid not in samples:
+                try:
+                    source,variable=fid.split(".")
+                    index=int(source[1:])-1
+                    offset=int(variable[1:])-1
+                    if min(index,offset)<0 or fid not in pair["fields"]:
+                        raise ValueError("invalid field")
+                    row=scan["rows"][index]
+                    selected=row["fields"][offset]
+                    values=field_sample(row,selected) if not selected.get("axis") else None
+                    samples[fid]=export_sample(values).get("perturbed_samples",[])[:4]
+                except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
+                    samples[fid]=[]
+            field["perturbed_samples"]=samples[fid]
 
 
 def make_request(scan, approved, checked, gated, *, local_checks=()):
@@ -149,6 +130,8 @@ def make_request(scan, approved, checked, gated, *, local_checks=()):
                           advisory_only=advisory))
     if not tasks:
         raise ValueError("没有通过首页核验的任务")
+    # Samples are added only to the candidate-specific recommendation request.
+    attach_samples(scan,[task["context"] for task in tasks])
     request=dict(stage="recommendation",target_model=approved["target_model"],tasks=tasks,
                  engineering_documents=documents,
                  project_context_document_ids=approved.get("project_context_document_ids",[]),

@@ -1,4 +1,4 @@
-"""Bounded local inventory. No extraction, execution or network access."""
+"""Local metadata inventory, with temporary files for compressed scientific members."""
 import bz2
 import csv
 import gzip
@@ -9,18 +9,19 @@ import re
 import tarfile
 import time
 import zipfile
+from contextlib import ExitStack, contextmanager, nullcontext
+from shutil import copyfileobj
+from tempfile import TemporaryDirectory
+
+from ecodata.core.exceptions import EcoDataError
 from pathlib import Path, PurePosixPath
 
 PREFIX = 16384
-ENGINEERING_TEXT_BUDGET = 4 * 1024**2
-MAX_ENTRIES = 20000
-SEQUENTIAL = 64 * 1024**2
-SCIENCE_MEMBER = 8 * 1024**2
-SCIENCE_TOTAL = 40 * 1024**2
 FORMATS = {".csv":"CSV", ".tsv":"TSV", ".xlsx":"Excel", ".parquet":"Parquet",
-           ".nc":"NetCDF", ".nc4":"NetCDF", ".h5":"HDF5", ".hdf5":"HDF5",
+           ".nc":"NetCDF", ".nc4":"NetCDF", ".netcdf":"NetCDF", ".h5":"HDF5", ".hdf5":"HDF5", ".hdf":"HDF5",
            ".tif":"GeoTIFF", ".tiff":"GeoTIFF", ".json":"JSON", ".geojson":"GeoJSON",
-           ".shp":"Shapefile"}
+           ".shp":"Shapefile", ".dbf":"DBF", ".rdb":"RDB", ".isd":"NOAA ISD", ".gz":"NOAA ISD"}
+SCIENTIFIC = {"NetCDF","Excel","GeoTIFF","Parquet","HDF5","GeoJSON","DBF","RDB","NOAA ISD"}
 DOCS = {".md",".txt",".json",".csh",".yaml",".yml",".toml",".ini",".cfg",".nml",".xml",".cio",".sim",".inp",".qgs",".prj",".cli",".rst",".conf",".lst"}
 AXES = {"time","time_utc","date","datetime","timestamp","lat","latitude","lon","longitude","x","y"}
 
@@ -44,16 +45,13 @@ def inventory(path):
         if not p.resolve().is_relative_to(path if path.is_dir() else path.parent): continue
         stat = p.stat()
         result.append((p, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino))
-        if len(result) > MAX_ENTRIES: raise ValueError("目录超过轻扫成员上限，请缩小扫描范围")
     return sorted(result)
 
 class Meter:
-    def __init__(self, stream, limit=None):
-        self.stream, self.limit, self.count = stream, limit, 0
+    def __init__(self, stream):
+        self.stream, self.count = stream, 0
 
     def read(self, size=-1):
-        if self.limit is not None and (size < 0 or self.count + size > self.limit):
-            raise ValueError("顺序解压已到轻扫上限，清单可能不完整")
         data = self.stream.read(size)
         self.count += len(data)
         return data
@@ -61,37 +59,57 @@ class Meter:
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
 
-class MeteredZipMember:
-    """File-like view with an explicit budget for both reads and seek replay."""
-    def __init__(self, source, size, limit):
-        self.source,self.size,self.limit,self.count=source,size,limit,0
+def seven_zip_members(archive, temporary, stack, *, only=None):
+    from py7zr.io import Py7zIO, WriterFactory
 
-    def tell(self):
-        return self.source.tell()
+    class MemberFile(Py7zIO):
+        def __init__(self, path):
+            self.stream=stack.enter_context(path.open("w+b"))
 
-    def charge(self,size):
-        if size<0 or self.count+size>self.limit:
-            raise OSError("读取压缩归档元数据超出顺序解码预算")
-        self.count+=size
+        def write(self, data):
+            return self.stream.write(data)
 
-    def read(self,size=-1):
-        remaining=self.size-self.tell()
-        size=remaining if size<0 else min(size,remaining)
-        self.charge(size)
-        return self.source.read(size)
+        def read(self, size=-1):
+            return self.stream.read(-1 if size is None else size)
 
-    def readinto(self,buffer):
-        data=self.read(len(buffer))
-        buffer[:len(data)]=data
-        return len(data)
+        def seek(self, offset, whence=0):
+            return self.stream.seek(offset,whence)
 
-    def seek(self,offset,whence=0):
-        start=self.tell()
-        target=offset if whence==0 else start+offset if whence==1 else self.size+offset
-        if not 0<=target<=self.size:
-            raise OSError("归档元数据偏移超界")
-        self.charge(target-start if target>=start else target)
-        return self.source.seek(target)
+        def flush(self):
+            self.stream.flush()
+
+        def size(self):
+            return os.fstat(self.stream.fileno()).st_size
+
+        def close(self):
+            self.stream.close()
+
+    class Factory(WriterFactory):
+        def __init__(self):
+            self.paths={}
+
+        def create(self, filename):
+            # Never use an archive member name as the destination on disk.
+            path=temporary/f"member-{len(self.paths)}"
+            self.paths[Path(filename).as_posix()]=path
+            return MemberFile(path)
+
+    entries=[entry for entry in archive.list() if not entry.is_directory]
+    factory=Factory()
+    selected=[]
+    for entry in entries:
+        filename=PurePosixPath(entry.filename)
+        if (safe(entry.filename) and (only is None or entry.filename==only)
+                and not getattr(entry,"is_symlink",False)
+                and (kind(entry.filename) or filename.suffix.lower() in FORMATS.keys() | DOCS
+                     or filename.name.casefold().startswith("readme")
+                     or filename.name.casefold()=="namelist.input")):
+            selected.append(entry.filename)
+    if selected:
+        archive.extract(path=temporary,targets=selected,factory=factory)
+    for entry in entries:
+        member=factory.paths.get((temporary/entry.filename).as_posix()) if safe(entry.filename) else None
+        yield entry,member
 
 
 def decode(blob):
@@ -107,20 +125,58 @@ def spacing(values, temporal=False):
     d = np.diff(a)
     return float(d[0]) if len(d) and np.allclose(d, d[0],rtol=1e-5,atol=1e-9) else None
 
+def table_reader(stream, fmt):
+    return csv.reader(stream, delimiter="\t" if fmt=="TSV" else ",", strict=True)
+
+
+def table_prefix(stream, size, fmt):
+    blob=bytearray()
+    while len(blob)<size:
+        chunk=stream.read(min(PREFIX,size-len(blob)))
+        if not chunk:
+            break
+        blob.extend(chunk)
+        text=decode(blob)
+        source=io.StringIO(text,newline="")
+        parser=table_reader(source,fmt)
+        try:
+            header=next(parser,None)
+        except csv.Error:
+            if len(blob)==size:
+                raise
+            continue
+        if header is not None and (source.tell()<len(text) or text.endswith(("\n","\r")) or len(blob)==size):
+            # A wide table may leave no complete sample row in the same prefix.
+            # Read one more bounded window for coordinate and type inference.
+            if source.tell()>len(text)//2:
+                blob.extend(stream.read(min(len(blob),size-len(blob))))
+            break
+    return bytes(blob)
+
+
 def tabular(row, blob, complete):
-    decoded = decode(blob)
-    lines = decoded.splitlines()
-    if not complete and not decoded.endswith(("\n","\r")):
-        lines = lines[:-1]
-        if not lines:
-            row["pending"].append("CSV / TSV 表头超出前缀读取预算")
-            return
-    if not lines: return
-    reader = csv.reader(lines, delimiter="\t" if row["format"]=="TSV" else ",", strict=True)
-    header = next(reader)
-    import itertools
-    samples = [r for r in itertools.islice(reader, 16) if len(r)==len(header)]
-    for i, title in enumerate(header[:512]):
+    decoded=decode(blob)
+    reader=table_reader(io.StringIO(decoded,newline=""),row["format"])
+    header=next(reader,None)
+    if header is None:
+        return
+    samples=[]
+    line_count=len(decoded.splitlines())
+    ends_at_line=decoded.endswith(("\n","\r"))
+    for _ in range(16):
+        try:
+            values=next(reader,None)
+        except csv.Error:
+            if complete:
+                raise
+            break
+        if values is None:
+            break
+        if not complete and not ends_at_line and reader.line_num>=line_count:
+            break
+        if len(values)==len(header):
+            samples.append(values)
+    for i,title in enumerate(header):
         values = [r[i] for r in samples if r[i].strip()]
         m = re.fullmatch(r"(.+?)\s*[\[(]([^\])]+)[\])]", title)
         name, unit = (m[1].strip(),m[2]) if m else (title,"")
@@ -137,14 +193,12 @@ def tabular(row, blob, complete):
             parsed=pd.to_datetime(values,errors="coerce",format="mixed",utc=True).dropna()
             if len(parsed):
                 row["time_coverage"]=(parsed.min().timestamp(),parsed.max().timestamp(),
-                    "all_table_records" if complete and len(lines)<=17 and len(parsed)==len(samples) else "sampled_table_records")
+                    "all_table_records" if complete and line_count<=17 and len(parsed)==len(samples) else "sampled_table_records")
             step = spacing(values, True)
             if step is not None:
                 typ = "time"
                 row["resolution"]["time_seconds"] = step
-        row["fields"].append(dict(name=name, type=typ, unit=unit, axis=base in AXES))
-    if len(header)>512:
-        row["pending"].append(f"表头共 {len(header)} 列，本次读取前 512 列")
+        row["fields"].append(dict(name=name, original_header=title, column=i, type=typ, unit=unit, axis=base in AXES))
     if row["format"]=="CSV" and {"station_id","time_utc","latitude","longitude","levels"} <= set(header):
         from ecodata.models.task_dispatch import OBSERVATION_COLUMNS
         for field in row["fields"]:
@@ -153,6 +207,20 @@ def tabular(row, blob, complete):
                 quantity, unit = OBSERVATION_COLUMNS[name]
                 field.update(type="number", unit=unit, standard_name=quantity,
                              temporal_semantics="instantaneous", observation_contract=True)
+    if row["format"]=="CSV":
+        from ecodata.io.noaa_global_hourly import COMPONENTS, is_global_hourly
+        if is_global_hourly(header):
+            source_columns={entry[0] for entry in COMPONENTS.values()}
+            for field in row["fields"]:
+                if field["name"] in source_columns:
+                    field["noaa_compound"]=True
+            for name,(source,_,component) in COMPONENTS.items():
+                if source in header and name not in header:
+                    row["fields"].append(dict(name=name,type="number",axis=False,unit=component.unit,
+                        standard_name=component.quantity,source_column=source,column=header.index(source),
+                        noaa_component=True,temporal_semantics="instantaneous",
+                        long_name=f"NOAA Global Hourly {source} decoded observation"))
+            row["basis"].append("NOAA Global Hourly 复合列已登记数值分量；保留原表头与质控码")
     row["basis"].append(f"表头及最多 {len(samples)} 条记录；间隔为样本估计，站点间距不当作网格分辨率")
 
 def netcdf_support(row, dataset, *, read_values=True):
@@ -280,11 +348,40 @@ def curvilinear_support(row, ds, coordinates):
         row["grid_spacing_basis"]="sampled_curvilinear_neighbor_distance"
 
 
-def scientific(row, path, blob=None, *, header_only=False, stream=None):
+def original_fields(row, content):
+    from ecodata.io.structures import read_structure
+    from ecodata.io.structures import GEOMETRY
+    with read_structure(row["name"],content,record_read_source=False) as dataset:
+        for name,variable in dataset.variables.items():
+            if name==GEOMETRY:
+                continue
+            keys=("standard_name","physical_variable","long_name","var_desc","temporal_semantics")
+            metadata={key:str(variable.attrs[key]) for key in keys if variable.attrs.get(key) is not None}
+            row["fields"].append(dict(name=name,type=str(variable.dtype),unit=str(variable.attrs.get("units","")),
+                axis=name in dataset.coords or name.casefold() in AXES,dimensions=list(variable.dims),**metadata))
+    row["original_reader"]=True
+    row["basis"].append("原版读取器识别的变量与属性")
+
+
+def shapefile_attribute_rows(rows):
+    def key(row):
+        path,archive,*_=row["ref"]
+        return path if archive else None,PurePosixPath(row["name"]).with_suffix("").as_posix().casefold()
+
+    tables={key(row):row for row in rows if row["format"]=="DBF" and row["fields"]}
+    for row in rows:
+        if row["format"]=="Shapefile" and (table:=tables.get(key(row))):
+            row["attribute_member"]={name:table[name] for name in ("ref","bytes","name")}
+            row["fields"]=table["fields"]
+            table["fields"]=[]
+            row["basis"].append("读取同名 DBF 属性表，几何保持本地")
+            row["pending"]=[note for note in row["pending"] if "原版读取器" not in note and "仅登记" not in note]
+
+def scientific(row, path):
     fmt = row["format"]
     if fmt == "NetCDF":
         import netCDF4 as nc
-        with (nc.Dataset(str(path)) if blob is None else nc.Dataset("member.nc",memory=blob)) as ds:
+        with nc.Dataset(str(path)) as ds:
             row["dimensions"] = {k:len(v) for k,v in ds.dimensions.items()}
             attrs = {name:ds.getncattr(name) for name in ("TITLE","IOAPI_VERSION","CAMx_NAME",
                 "MAP_PROJ","TRUELAT1","TRUELAT2","STAND_LON","DX","DY") if name in ds.ncattrs()}
@@ -302,9 +399,7 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
                 row["declared_time_resolution"]=ds.time_coverage_resolution
             bounds={str(getattr(v,"bounds","")) for v in ds.variables.values()}
             coords={}
-            if len(ds.variables)>512:
-                row["pending"].append(f"NetCDF 共 {len(ds.variables)} 个变量，本次读取前 512 个")
-            for k,v in list(ds.variables.items())[:512]:
+            for k,v in ds.variables.items():
                 coordinate=coordinate_kind(k,{name:getattr(v,name,"") for name in ("axis","standard_name","units")})
                 if coordinate and v.ndim in (1,2,3):
                     coords.setdefault(coordinate,v)
@@ -313,9 +408,7 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
                     getattr(companion,"source_scale_factor",None) is not None or
                     getattr(v,"source_fill_value",None) is not None)
                 row["fields"].append(dict(name=k,type=str(v.dtype),unit=str(getattr(v,"units","")).strip(),
-                    standard_name=str(getattr(v,"standard_name","")), physical_variable=str(getattr(v,"physical_variable","")), long_name=str(getattr(v,"long_name","")).strip(), var_desc=str(getattr(v,"var_desc","")).strip()[:240], raw_companion=raw_companion, temporal_semantics=str(getattr(v,"temporal_semantics","")), dimensions=list(v.dimensions), axis=bool(coordinate) or k.casefold() in AXES or (k.casefold()=="tflag" and tuple(d.casefold() for d in v.dimensions)==("tstep","var","date-time")) or k in bounds or k.casefold().endswith(("_bounds","_bnds")) or v.dimensions==(k,)))
-                if header_only:
-                    continue
+                    standard_name=str(getattr(v,"standard_name","")), physical_variable=str(getattr(v,"physical_variable","")), long_name=str(getattr(v,"long_name","")).strip(), var_desc=str(getattr(v,"var_desc","")).strip(), raw_companion=raw_companion, temporal_semantics=str(getattr(v,"temporal_semantics","")), dimensions=list(v.dimensions), axis=bool(coordinate) or k.casefold() in AXES or (k.casefold()=="tflag" and tuple(d.casefold() for d in v.dimensions)==("tstep","var","date-time")) or k in bounds or k.casefold().endswith(("_bounds","_bnds")) or v.dimensions==(k,)))
                 if v.ndim==1 and coordinate=="time" and len(v):
                     try:
                         import numpy as np
@@ -346,11 +439,8 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
                     else:
                         delta=spacing(v[:8])
                         if delta is not None: row["resolution"][coordinate]=dict(step=delta, unit=str(getattr(v,"units","")))
-            netcdf_support(row,ds,read_values=not header_only)
-            if not header_only:
-                curvilinear_support(row,ds,coords)
-            else:
-                row["pending"].append("已读 NetCDF 头，坐标数组尚未核验")
+            netcdf_support(row,ds)
+            curvilinear_support(row,ds,coords)
             if "TFLAG" in ds.variables and ds.variables["TFLAG"].dimensions==("TSTEP","VAR","DATE-TIME"):
                 dimensions=set(ds.dimensions)
                 if "PERIM" in dimensions:
@@ -360,18 +450,15 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
             row["basis"].append("NetCDF 维度、变量属性、坐标小样本或 IOAPI 时间标记")
     elif fmt=="GeoTIFF":
         import rasterio
-        from contextlib import ExitStack
-        with ExitStack() as stack:
-            src=stack.enter_context(rasterio.MemoryFile(blob)) if blob is not None else None
-            ds=stack.enter_context(src.open() if src is not None else rasterio.open(path))
+        with rasterio.open(path) as ds:
             row["resolution"]["pixel"]=dict(step=list(ds.res),crs=str(ds.crs))
             row["dimensions"]=dict(width=ds.width,height=ds.height)
             import json
             saved=json.loads(ds.tags().get("ecodata_metadata","{}"))
-            for i in range(min(ds.count,512)):
+            for i in range(ds.count):
                 name=saved.get("export_variable","value") if ds.count==1 else (ds.descriptions[i] or f"band_{i+1}")
                 attrs=saved.get("variables",{}).get(name,{})
-                row["fields"].append(dict(name=name,type=ds.dtypes[i],unit=attrs.get("units") or ds.units[i] or "",
+                row["fields"].append(dict(name=name,band=i+1,type=ds.dtypes[i],unit=attrs.get("units") or ds.units[i] or "",
                     standard_name=attrs.get("standard_name",""), physical_variable=attrs.get("physical_variable",""),
                     long_name=attrs.get("long_name",""),axis=False))
             if ds.count>1:
@@ -379,18 +466,20 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
             row["basis"].append("栅格元数据；未读像元")
     elif fmt=="Excel":
         from openpyxl import load_workbook
-        with (io.BytesIO(blob) if blob is not None else path.open("rb")) as stream:
+        with path.open("rb") as stream:
             workbook=load_workbook(stream,read_only=True,data_only=True)
             try:
                 visible=[sheet for sheet in workbook if sheet.sheet_state=="visible" and sheet.title!="_ecodata_metadata"]
-                if len(visible)!=1:
-                    row["pending"].append("多工作表需要通过原版规则确认数据区")
-                    return
-                sheet=visible[0]
-                buffer=io.StringIO()
-                writer=csv.writer(buffer)
-                writer.writerows(sheet.iter_rows(max_row=17,max_col=min(sheet.max_column or 512,512),values_only=True))
-                tabular(row,buffer.getvalue().encode("utf8"),False)
+                if len(visible)>1:
+                    row["pending"].append("已扫描可见工作表表头；多工作表执行前需通过原版规则确认数据区")
+                for sheet in visible:
+                    buffer=io.StringIO()
+                    writer=csv.writer(buffer)
+                    start=len(row["fields"])
+                    writer.writerows(sheet.iter_rows(max_row=17,values_only=True))
+                    tabular(row,buffer.getvalue().encode("utf8"),False)
+                    for field in row["fields"][start:]:
+                        field["sheet"]=sheet.title
                 if "_ecodata_metadata" in workbook.sheetnames:
                     import json
                     from itertools import islice
@@ -408,10 +497,19 @@ def scientific(row, path, blob=None, *, header_only=False, stream=None):
     elif fmt=="Parquet":
         import pyarrow.parquet as pq
         row["fields"]=[dict(name=f.name,type=str(f.type),unit="",axis=f.name.casefold() in AXES)
-                       for f in list(pq.read_schema(io.BytesIO(blob) if blob is not None else path))[:512]]
+                       for f in pq.read_schema(path)]
         row["basis"].append("Parquet 页脚 schema；未读数据行")
     elif fmt=="HDF5":
-        scan_hdf(row,stream if stream is not None else io.BytesIO(blob) if blob is not None else path)
+        scan_hdf(row,path)
+    elif fmt=="DBF":
+        import shapefile
+        with path.open("rb") as stream, shapefile.Reader(dbf=stream) as dataset:
+            row["fields"]=[dict(name=name,type=("integer" if decimals==0 else "number") if typ in {"N","F"} else "text",
+                                 unit="",axis=name.casefold() in AXES)
+                           for name,typ,_,decimals in dataset.fields[1:]]
+        row["basis"].append("DBF 属性表字段")
+    elif fmt in {"GeoJSON","RDB","NOAA ISD"}:
+        original_fields(row,path.read_bytes())
     else:
         row["pending"].append("需按所选处理目标用原版读取器核验")
 
@@ -420,8 +518,13 @@ def scan_hdf(row,source):
     with h5py.File(source) as ds:
         def visitor(k,v):
             if isinstance(v,h5py.Dataset):
-                row["fields"].append(dict(name=k,type=str(v.dtype),unit=str(v.attrs.get("units","")),axis=False))
-            if len(row["fields"])>=512: return True
+                def attrs(name):
+                    value=v.attrs.get(name,"")
+                    return decode(value) if isinstance(value,bytes) else str(value).strip()
+                row["fields"].append(dict(name=k,type=str(v.dtype),unit=attrs("units"),axis=False,
+                    standard_name=attrs("standard_name"),physical_variable=attrs("physical_variable"),
+                    long_name=attrs("long_name"),var_desc=attrs("var_desc"),
+                    temporal_semantics=attrs("temporal_semantics"),shape=list(v.shape)))
         ds.visititems(visitor)
     row["basis"].append("HDF5 数据集属性；未读数据数组")
 
@@ -438,30 +541,46 @@ class Scanner:
                                        scan_payload_bytes=0, sequential=[], scan_temp_bytes=0)
         rows, docs, warnings, sequential = [], [], [], []
         count = 0
-        scientific_bytes = 0
-        doc_bytes = 0
+        temporary_bytes = 0
 
-        def item(name, size, ref, reader=None, local=None, open_member=None):
-            nonlocal count, scientific_bytes, doc_bytes
+        def item(name,size,ref,reader=None,local=None,open_member=None,containers=()):
+            nonlocal count, temporary_bytes
             if not safe(name): return
-            if len(rows)>=MAX_ENTRIES: raise ValueError("达到成员上限，清单可能不完整")
             p = PurePosixPath(name)
             ext = p.suffix.lower()
             row = dict(name=name, bytes=size, ref=ref, format=FORMATS.get(ext,"其他"),
                        fields=[], resolution={}, basis=[], pending=[], evidence=[], roles=[])
+            if containers:
+                row["containers"]=containers
             rows.append(row)
             doc = ext in DOCS or p.name.lower().startswith("readme") or p.name.casefold()=="namelist.input"
             if doc:
                 row["engineering_text_status"]="archive_member_not_read" if not reader else "read_error"
-                if reader and doc_bytes+size<=ENGINEERING_TEXT_BUDGET:
+                if reader:
                     blob=reader(size)
                     count+=len(blob)
-                    doc_bytes+=len(blob)
                     if len(blob)==size:
                         content=decode(blob)
                         if "\x00" in content or "\ufffd" in content:
                             row["engineering_text_status"]="binary_or_encoding_unreadable"
                         else:
+                            if ext==".json":
+                                from json import loads, JSONDecodeError
+                                try:
+                                    parsed=loads(content)
+                                except JSONDecodeError:
+                                    parsed=None
+                                if (isinstance(parsed,list) and all(isinstance(record,dict) for record in parsed)
+                                        or isinstance(parsed,dict) and parsed.get("type")=="FeatureCollection"):
+                                    original_fields(row,blob)
+                            elif ext==".txt":
+                                from ecodata.io.raw_tables import locate_header
+                                try:
+                                    locate_header(content)
+                                except EcoDataError:
+                                    pass
+                                else:
+                                    original_fields(row,blob)
                             is_local_research=False
                             if ext==".json" and size<=256*1024:
                                 import json
@@ -479,48 +598,37 @@ class Scanner:
                                 row["original_probe_payload"]=blob
                             row["engineering_text_status"]="complete"
                             row["basis"].append("工程说明全文已读取")
-                elif reader:
-                    row["engineering_text_status"]="text_budget_exceeded"
             elif reader and ext in {".csv",".tsv"}:
-                blob=reader(min(size,PREFIX))
-                count+=len(blob)
-                tabular(row,blob,len(blob)==size)
-            elif reader and not local and row["format"] in {"NetCDF","Excel","GeoTIFF","Parquet","HDF5"}:
-                budget=SCIENCE_TOTAL-scientific_bytes
-                if size<=min(SCIENCE_MEMBER,budget):
-                    blob=reader(size)
-                    scientific_bytes+=len(blob)
-                    count+=len(blob)
-                    scientific(row,p,blob)
-                elif row["format"]=="HDF5" and open_member and budget>=65536:
-                    with open_member() as stream:
-                        view=MeteredZipMember(stream,size,min(budget,SCIENCE_MEMBER))
-                        try:
-                            scientific(row,p,stream=view)
-                        finally:
-                            scientific_bytes+=view.count
-                            count+=view.count
-                elif row["format"]=="NetCDF" and ref[1]!="7z" and budget>=65536:
-                    blob=reader(min(size,256*1024,budget))
-                    scientific_bytes+=len(blob)
-                    count+=len(blob)
-                    if blob.startswith(b"CDF"):
-                        scientific(row,p,blob,header_only=True)
-                        row["header_only"]=True
-                    elif open_member and blob.startswith(b"\x89HDF"):
-                        with open_member() as stream:
-                            view=MeteredZipMember(stream,size,min(SCIENCE_TOTAL-scientific_bytes,SCIENCE_MEMBER))
-                            try:
-                                scan_hdf(row,view)
-                                row["header_only"]=True
-                                row["pending"].append("已读取部分 NetCDF4 元数据，时间覆盖及坐标仍需核验")
-                            finally:
-                                scientific_bytes+=view.count
-                                count+=view.count
-                    else:
-                        row["pending"].append("此归档 NetCDF 需定向读取后确认字段")
+                if open_member or local:
+                    with (open_member() if open_member else local.open("rb")) as stream:
+                        blob=table_prefix(stream,size,row["format"])
                 else:
-                    row["pending"].append("该成员超出本次轻扫元数据预算")
+                    # A materialized member can be read directly.
+                    blob=reader(size)
+                count+=len(blob)
+                if ext==".csv" and (b"LEGEND FOR FIELD NAMES" in blob[:200] or
+                        blob.lstrip(b"\xef\xbb\xbf").startswith(b"Latitude:") and b"Daymet" in blob[:2000]):
+                    if open_member and not local and ref[1]=="tar":
+                        with local_member(row) as source:
+                            original_fields(row,source.read_bytes())
+                    else:
+                        original_fields(row,reader(size))
+                else:
+                    tabular(row,blob,len(blob)==size)
+            elif open_member and not local and row["format"] in SCIENTIFIC:
+                # Random access to the member is needed by the scientific
+                # readers. Stream to disk in fixed-size buffers, then scan
+                # metadata and coordinate samples using the regular reader.
+                with TemporaryDirectory(prefix="ecodata-scan-member-") as directory:
+                    temporary=Path(directory)/("member"+ext)
+                    with open_member() as source, temporary.open("wb") as destination:
+                        copyfileobj(source,destination,length=1024*1024)
+                    copied=temporary.stat().st_size
+                    temporary_bytes+=copied
+                    count+=copied
+                    if copied!=size:
+                        raise ValueError("压缩成员实际大小与清单不一致")
+                    scientific(row,temporary)
             elif reader and ext in {".sqlite",".sqlite3",".db"}:
                 prefix=reader(16)
                 count+=len(prefix)
@@ -530,100 +638,128 @@ class Scanner:
                 scientific(row,local)
             elif ext in FORMATS:
                 row["pending"].append("压缩成员仅登记，待定向核验内部结构")
-            if kind(name) and not local:
-                row["pending"].append("嵌套压缩包：轻扫不展开")
             if row["fields"] and not row["resolution"].get("time_seconds"):
                 row["pending"].append("时间间隔未知或不适用")
+            return row
+
+        def attempt(name,size,ref,reader=None,local=None,open_member=None,containers=()):
+            nonlocal count,temporary_bytes
+            row=None
+            try:
+                row=item(name,size,ref,reader,local,open_member,containers)
+                archive_kind=kind(name)
+                if not row or not archive_kind or not ref[1]:
+                    return
+                if local is not None:
+                    walk_archive(local,archive_kind,name,ref[0],(*containers,(ref,size)))
+                elif open_member is not None:
+                    with TemporaryDirectory(prefix="ecodata-nested-") as directory:
+                        temporary=Path(directory)/"archive"
+                        with open_member() as source, temporary.open("wb") as destination:
+                            copyfileobj(source,destination,length=1024*1024)
+                        copied=temporary.stat().st_size
+                        count+=copied
+                        temporary_bytes+=copied
+                        if copied!=size:
+                            raise ValueError("内层归档实际大小与清单不一致")
+                        walk_archive(temporary,archive_kind,name,ref[0],(*containers,(ref,size)))
+                else:
+                    raise ValueError("内层归档没有可读取的成员入口")
+                row["nested_members_read"]=True
+            except (EcoDataError,ValueError,OSError,RuntimeError,ImportError,csv.Error,tarfile.TarError,
+                    zipfile.BadZipFile,EOFError) as exc:
+                warnings.append(f"{name}: {exc}")
+                if row is None and rows and rows[-1]["name"]==name:
+                    row=rows[-1]
+                if row is not None:
+                    row["pending"].append("内层归档扫描失败，详见扫描警告" if kind(name)
+                                          else "字段或坐标读取未完成，详见扫描警告")
+
+        def walk_archive(path,archive_kind,label,original,containers=()):
+            nonlocal temporary_bytes
+            namespace=label+"!/" if containers else ""
+
+            def member(name,size,offset,open_member=None,local=None):
+                if not safe(name):
+                    return
+
+                def prefix(n):
+                    with open_member() as stream:
+                        return stream.read(n)
+
+                attempt(namespace+name,size,(original,archive_kind,name,offset),
+                        prefix if open_member else None,local,open_member,containers)
+
+            if archive_kind=="zip":
+                with path.open("rb") as raw:
+                    meter=Meter(raw)
+                    with zipfile.ZipFile(meter) as archive:
+                        for entry in archive.infolist():
+                            if not entry.is_dir():
+                                member(entry.filename,entry.file_size,entry.header_offset,
+                                       lambda entry=entry:archive.open(entry))
+                    sequential.append(dict(name=label,raw_read_bytes=meter.count))
+            elif archive_kind=="tar":
+                with path.open("rb") as raw:
+                    physical=Meter(raw)
+                    header=physical.read(6)
+                    raw.seek(0)
+                    op=next((fn for magic,fn in [(b"\x1f\x8b",gzip.GzipFile),(b"BZh",bz2.BZ2File),
+                                                (b"\xfd7zXZ",lzma.LZMAFile)] if header.startswith(magic)),None)
+                    with (op(fileobj=physical) if op is gzip.GzipFile else op(physical) if op else nullcontext(physical)) as stream:
+                        decoded=Meter(stream)
+                        try:
+                            with tarfile.open(fileobj=decoded,mode="r|") as archive:
+                                for entry in archive:
+                                    if entry.isfile():
+                                        member(entry.name,entry.size,entry.offset_data,
+                                               lambda entry=entry:archive.extractfile(entry))
+                        finally:
+                            sequential.append(dict(name=label,raw_read_bytes=physical.count,decoded_stream_bytes=decoded.count))
+            elif archive_kind=="7z":
+                import py7zr
+                with TemporaryDirectory(prefix="ecodata-scan-7z-") as directory, ExitStack() as stack:
+                    try:
+                        archive=stack.enter_context(py7zr.SevenZipFile(path))
+                        written=0
+                        for entry,temporary in seven_zip_members(archive,Path(directory),stack):
+                            if temporary is not None:
+                                written+=temporary.stat().st_size
+                            member(entry.filename,entry.uncompressed,None,
+                                   (lambda temporary=temporary:temporary.open("rb")) if temporary is not None else None,
+                                   temporary)
+                        temporary_bytes+=written
+                        sequential.append(dict(name=label,archive_bytes=path.stat().st_size,decoded_payload_bytes=written))
+                    except py7zr.exceptions.ArchiveError as exc:
+                        raise ValueError(str(exc)) from exc
 
         for path,size,*_ in signature:
             name=path.name if root.is_file() else path.relative_to(root).as_posix()
-            k=kind(path)
-            def attempt(*args):
-                try: item(*args)
-                except (ValueError,OSError,RuntimeError,ImportError,csv.Error) as exc:
-                    warnings.append(f"{args[0]}: {exc}")
-                    if rows and rows[-1]["name"]==args[0]:
-                        rows[-1]["pending"].append("字段或坐标读取未完成，详见扫描警告")
-            def read(n):
-                with path.open("rb") as f: return f.read(n)
-            try:
-                if k=="zip":
-                    with path.open("rb") as raw:
-                        meter=Meter(raw)
-                        with zipfile.ZipFile(meter) as z:
-                            for entry in z.infolist()[:MAX_ENTRIES]:
-                                if not entry.is_dir():
-                                    def prefix(n):
-                                        with z.open(entry) as f: return f.read(n)
-                                    attempt(entry.filename,entry.file_size,(path,k,entry.filename,entry.header_offset),prefix,None,
-                                            lambda entry=entry:z.open(entry))
-                            if len(z.infolist())>MAX_ENTRIES: warnings.append(f"{name} ZIP 成员列表已截断")
-                        sequential.append(dict(name=name,raw_read_bytes=meter.count))
-                elif k=="tar":
-                    with path.open("rb") as raw:
-                        physical=Meter(raw)
-                        header=raw.read(6); raw.seek(0); physical.count+=len(header)
-                        op=next((fn for magic,fn in [(b"\x1f\x8b",gzip.GzipFile),(b"BZh",bz2.BZ2File),(b"\xfd7zXZ",lzma.LZMAFile)] if header.startswith(magic)),None)
-                        from contextlib import nullcontext
-                        with (op(fileobj=physical) if op is gzip.GzipFile else op(physical) if op else nullcontext(physical)) as stream:
-                            decoded=Meter(stream,SEQUENTIAL)
-                            try:
-                                with tarfile.open(fileobj=decoded,mode="r|") as tar:
-                                    for i,entry in enumerate(tar):
-                                        if i>=MAX_ENTRIES: raise ValueError("达到 TAR 成员上限")
-                                        if entry.isfile():
-                                            def prefix(n):
-                                                with tar.extractfile(entry) as f: return f.read(n)
-                                            attempt(entry.name,entry.size,(path,k,entry.name,entry.offset_data),prefix)
-                            finally:
-                                sequential.append(dict(name=name, raw_read_bytes=physical.count, decoded_stream_bytes=decoded.count))
-                elif k=="7z":
-                    import py7zr
-                    with path.open("rb") as raw:
-                        meter=Meter(raw)
-                        from py7zr.io import BytesIOFactory
-                        with py7zr.SevenZipFile(meter) as z:
-                            entries=[entry for entry in z.list()[:MAX_ENTRIES] if not entry.is_directory]
-                            selected={}
-                            if len(z.list())<=MAX_ENTRIES and sum(entry.uncompressed or 0 for entry in entries)<=SEQUENTIAL:
-                                selected={e.filename:e.uncompressed for e in entries
-                                          if safe(e.filename) and isinstance(e.uncompressed,int) and e.uncompressed<=SCIENCE_MEMBER and
-                                          (PurePosixPath(e.filename).suffix.lower() in (FORMATS.keys()|DOCS)
-                                           or PurePosixPath(e.filename).name.casefold()=="namelist.input")}
-                                factory=BytesIOFactory(SCIENCE_MEMBER+1)
-                                if selected:
-                                    z.extract(targets=list(selected),factory=factory)
-                            else:
-                                warnings.append(f"{name}: 7z 声明解压量超过轻扫预算，已登记成员")
-                            for e in entries:
-                                reader=None
-                                if e.filename in selected:
-                                    def reader(n):
-                                        item=factory.get(e.filename)
-                                        item.seek(0)
-                                        return item.read(n)
-                                attempt(e.filename,e.uncompressed,(path,k,e.filename,None),reader)
-                        sequential.append(dict(name=name,raw_read_bytes=meter.count,decoded_payload_bytes=sum(selected.values())))
-                else: attempt(name,size,(path,"",None,None),read,path)
-            except (ValueError,OSError,RuntimeError,tarfile.TarError,zipfile.BadZipFile,ImportError) as exc:
-                warnings.append(f"{name}: {exc}")
+            archive_kind=kind(path)
+            if archive_kind:
+                try:
+                    walk_archive(path,archive_kind,name,path)
+                except (ValueError,OSError,RuntimeError,tarfile.TarError,zipfile.BadZipFile,ImportError,EOFError) as exc:
+                    warnings.append(f"{name}: {exc}")
+            else:
+                def read(n,path=path):
+                    with path.open("rb") as stream:
+                        return stream.read(n)
+                attempt(name,size,(path,"",None,None),read,path)
         from .engineering_links import collect
         collect(rows,docs)
-        payload, reads=inspect_engineering_netcdf(rows,docs)
-        count+=payload
-        sequential.extend(reads)
+        shapefile_attribute_rows(rows)
+        mark_engineering_netcdf(rows,docs)
         from .cmaq_grid_audit import audit_scan
         cmaq_grid_checks=audit_scan(rows)
         if tuple(inventory(root))!=signature: raise ValueError("扫描期间原始文件已变化，请重新扫描")
         result=dict(path=root, signature=signature, rows=rows, warnings=warnings, engineering_docs=docs,cmaq_grid_checks=cmaq_grid_checks)
         self.cached=root,signature,result
         return result,dict(seconds=time.perf_counter()-start,cached=False,scan_payload_bytes=count,
-                           sequential=sequential, scan_temp_bytes=0)
+                           sequential=sequential, scan_temp_bytes=temporary_bytes)
 
-def inspect_engineering_netcdf(rows, docs):
-    """Open bounded ZIP members referenced by engineering text, with no extraction."""
-    member_limit=48*1024**2
-    remaining=80*1024**2
+def mark_engineering_netcdf(rows, docs):
+    """Record engineering references for NetCDF metadata already read by the scanner."""
     purpose=re.compile(r"用途|输入|驱动|对照|配对|融合|分辨率|网格|单位|观测|验证|"
                        r"comparison|fusion|resolution|model_input|forcing|observation|units",re.I)
     note_suffixes={".md",".rst",".txt"}
@@ -635,64 +771,99 @@ def inspect_engineering_netcdf(rows, docs):
     structured_purpose=re.compile(r'"(?:purpose|description|model_input_candidate|用途|说明|变量说明)"\s*:',re.I)
     for name,text in docs:
         suffix=PurePosixPath(name).suffix.casefold()
-        if not purpose.search(text) or len(text)>128*1024:
+        if not purpose.search(text):
             continue
         if suffix in note_suffixes or suffix==".json" and structured_purpose.search(text):
             document=classify(name,text)
             if document.mode in {"full","mixed"}:
                 descriptive.add(name)
-    targets=[]
-    for index,row in enumerate(rows):
-        if row["format"]!="NetCDF" or (row["fields"] and not row.get("header_only")) or row["ref"][1]!="zip":
+    for row in rows:
+        if row["format"]!="NetCDF" or not row["fields"]:
             continue
         exact=any(item["document"] in descriptive for item in row["evidence"])
         folder=any(row["name"].casefold().startswith(prefix) for prefix in referenced_dirs)
         if exact or folder:
-            targets.append((not exact,row["bytes"],index))
-    raw_reads=[]
-    total=0
-    for _,size,index in sorted(targets):
-        row=rows[index]
-        if size>member_limit or size>remaining:
-            row["pending"].append("工程关联 NetCDF 超出定向读取预算")
-            continue
-        path,_,name,offset=row["ref"]
-        remaining-=size
-        try:
-            with path.open("rb") as stream:
-                meter=Meter(stream)
-                with zipfile.ZipFile(meter) as archive:
-                    member=next(item for item in archive.infolist()
-                                if item.header_offset==offset and item.filename==name)
-                    with archive.open(member) as source:
-                        blob=source.read(size+1)
-                raw_reads.append(dict(name=path.name,member=name,raw_read_bytes=meter.count))
-            total+=len(blob)
-            if len(blob)!=size:
-                raise ValueError("成员大小变化")
-            scanned=dict(row,fields=[],pending=list(row["pending"]),basis=list(row["basis"]))
-            scientific(scanned,PurePosixPath(name),blob)
-            row.update(scanned)
-            row.pop("header_only",None)
             row["engineering_probe"]=True
-            row["basis"].append("工程说明关联后定向读取此成员")
-            row["pending"]=[note for note in row["pending"]
-                            if note not in {"压缩成员仅登记，待定向核验内部结构",
-                                            "已读 NetCDF 头，坐标数组尚未核验",
-                                            "此归档 NetCDF 含 HDF5，需定向读取后确认字段",
-                                            *({"时间间隔未知或不适用"} if row["resolution"].get("time_seconds") else set())}]
-        except (OSError,ValueError,RuntimeError,ImportError,StopIteration,zipfile.BadZipFile):
-            row["pending"].append("工程关联 NetCDF 定向读取失败")
-    return total,raw_reads
 
 
 def assert_current(scan):
     if tuple(inventory(scan["path"]))!=scan["signature"]:
         raise ValueError("原文件已变化，旧预览与授权已失效。请重新扫描。")
 
+@contextmanager
+def local_member(row):
+    """Expose one scanned member as a seekable file for format-specific sampling."""
+    path,*reference=row["ref"]
+    with ExitStack() as stack:
+        for parent,size in row.get("containers",()):
+            path=stack.enter_context(materialize_member((path,*parent[1:]),size))
+        yield stack.enter_context(materialize_member((path,*reference),row["bytes"]))
+
+
+@contextmanager
+def materialize_member(ref, size):
+    path,kind,name,offset=ref
+    if not kind:
+        yield path
+        return
+    with TemporaryDirectory(prefix="ecodata-probe-") as directory, ExitStack() as stack:
+        root=Path(directory)
+        if kind=="7z":
+            import py7zr
+            archive=stack.enter_context(py7zr.SevenZipFile(path))
+            member=next((member for entry,member in seven_zip_members(archive,root,stack,only=name)
+                         if entry.filename==name and member is not None),None)
+            if member is None or member.stat().st_size!=size:
+                raise ValueError("归档成员已变化")
+            yield member
+            return
+        destination=root/("member"+PurePosixPath(name).suffix)
+        with archive_stream(path,kind,name,offset) as stream, destination.open("wb") as output:
+            copyfileobj(stream,output,length=1024*1024)
+        if destination.stat().st_size!=size:
+            raise ValueError("归档成员已变化")
+        yield destination
+
+
+@contextmanager
+def archive_stream(path,kind,name,offset):
+    with ExitStack() as stack:
+        if kind=="zip":
+            archive=stack.enter_context(zipfile.ZipFile(path))
+            item=next((item for item in archive.infolist()
+                       if item.header_offset==offset and item.filename==name),None)
+            stream=stack.enter_context(archive.open(item)) if item is not None else None
+        elif kind=="tar":
+            archive=stack.enter_context(tarfile.open(path,"r|*"))
+            item=next((item for item in archive if item.isfile() and item.offset_data==offset and item.name==name),None)
+            stream=stack.enter_context(archive.extractfile(item)) if item is not None else None
+        else:
+            raise ValueError("不支持此归档格式")
+        if stream is None:
+            raise ValueError("归档成员已变化")
+        yield stream
+
+
+@contextmanager
+def open_tabular_member(row):
+    """Sample archive tables without materializing the potentially large leaf."""
+    path,kind,name,offset=row["ref"]
+    with ExitStack() as stack:
+        for parent,size in row.get("containers",()):
+            path=stack.enter_context(materialize_member((path,*parent[1:]),size))
+        if kind in {"zip","tar"}:
+            yield stack.enter_context(archive_stream(path,kind,name,offset))
+        else:
+            local=stack.enter_context(materialize_member((path,kind,name,offset),row["bytes"]))
+            yield stack.enter_context(local.open("rb"))
+
+
 def read_selected(row, limit=256*1024**2):
     path,k,name,offset=row["ref"]
     if row["bytes"]>limit: raise ValueError(f"单成员深读超过 {limit//1024**2} MiB；请先准备所需字段或数据块")
+    if row.get("containers"):
+        with local_member(row) as member, member.open("rb") as stream:
+            return stream.read(limit+1)
     if k=="zip":
         with zipfile.ZipFile(path) as z:
             with z.open(next(x for x in z.infolist() if x.header_offset==offset and x.filename==name)) as f:
@@ -704,7 +875,6 @@ def read_selected(row, limit=256*1024**2):
                     with t.extractfile(member) as f: return f.read(limit+1)
         raise ValueError("成员已变化")
     if k=="7z":
-        from tempfile import TemporaryDirectory
         from ecodata.models.archive_inputs import normalize_archives
         from ecodata.interface.engineering_upload import LocalUpload
         with TemporaryDirectory(prefix="ecodata-selected-") as d:

@@ -1,12 +1,13 @@
 """Bounded local evidence for the DeepSeek decision dialogue."""
 from contextlib import contextmanager
-from io import BytesIO
-from pathlib import Path
+from ecodata.core.exceptions import EcoDataError
 
-from .scan import assert_current, read_selected
+from .scan import assert_current, local_member
+from . import sample_values
 
 
 CHECKS = {
+    "numeric_samples": "指定字段的随机小数扰动数值样本",
     "metadata": "物理量、单位换算、网格角色与分辨率",
     "time_coverage": "时间支持、间隔和覆盖重叠关系",
     "data_quality": "抽样有效率和质量标记登记",
@@ -15,8 +16,6 @@ CHECKS = {
 }
 MAX_ROUNDS = 2
 MAX_QUESTIONS = 12
-MAX_MEMBER = 48 * 1024**2
-MAX_READ = 160 * 1024**2
 MAX_SAMPLES = 4096
 MAX_GRID_PROBE = 16384
 MIN_SAMPLES = 10
@@ -25,8 +24,8 @@ CATEGORICAL = {"dominant_land_use_category", "land_water_mask"}
 
 def consent():
     return dict(checks=CHECKS, max_rounds=MAX_ROUNDS, max_questions=MAX_QUESTIONS,
-                scope="仅使用已审核候选的两份本地数据。只回传状态、核验口径、计数和粗粒度统计。"
-                      "单个来源的原始数值、位置、准确时段、文件路径和配置内容不得回传。")
+                scope="可以按已审核字段 ID 请求数值样本。平台在读取的真值上加随机小数，再仅回传样本和核验结果。"
+                      "不发送原始数值、位置、精确时刻、文件路径或完整观测序列。")
 
 
 def parse_reply(raw):
@@ -46,9 +45,10 @@ class LocalChecks:
     def __init__(self, scan, candidates):
         self.scan = scan
         self.candidates = candidates
-        self.remaining = MAX_READ
         self.cache = {}
         self.fields = {}
+        self.values = {}
+        self.exported = {}
 
     def __call__(self, candidate, check, approved):
         pair = self.candidates.get(candidate)
@@ -59,7 +59,7 @@ class LocalChecks:
             assert_current(self.scan)
             try:
                 result = self.inspect(pair,check)
-            except (OSError, ValueError, TypeError, KeyError, IndexError, OverflowError, RuntimeError, ImportError):
+            except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
                 result = {"status":"unavailable","basis":"local_reader_or_metadata_unavailable"}
             assert_current(self.scan)
             self.cache[key] = result
@@ -69,21 +69,35 @@ class LocalChecks:
     def dataset(self, row):
         from netCDF4 import Dataset
 
-        if row["format"] != "NetCDF" or row["ref"][1] not in {"", "zip"}:
-            raise ValueError("unsupported for bounded NetCDF probing")
-        if row["ref"][1] == "":
-            with Dataset(str(row["ref"][0])) as ds:
-                yield ds
-            return
-        size = row["bytes"]
-        if size > min(MAX_MEMBER,self.remaining):
-            raise ValueError("local read budget")
-        self.remaining -= size
-        blob=read_selected(row,limit=size)
-        if len(blob)!=size:
-            raise ValueError("changed size")
-        with Dataset("probe.nc",memory=blob) as ds:
+        with local_member(row) as path, Dataset(str(path)) as ds:
             yield ds
+
+    def numbers(self, item):
+        index,fid,field=item
+        if fid not in self.values:
+            self.values[fid]=sample_values.field_sample(self.scan["rows"][index],field)
+        return self.values[fid]
+
+    def field_question(self, item):
+        fid=item[1]
+        if item[2].get("axis"):
+            return dict(field=fid,status="outside_scope",basis="coordinate_or_time_axis")
+        if fid not in self.exported:
+            if item[2].get("noaa_compound"):
+                source=self.scan["rows"][item[0]]["fields"]
+                parts=[self.field_question((item[0],f"{fid.split('.')[0]}.F{index}",field))
+                       for index,field in enumerate(source,1) if field.get("noaa_component")
+                       and field.get("column")==item[2].get("column")]
+                return dict(field=fid,status="checked" if any(part["status"]=="checked" for part in parts) else "unavailable",
+                            basis="noaa_decoded_components",sample_fields=parts)
+            assert_current(self.scan)
+            try:
+                result=sample_values.export_sample(self.numbers(item))
+            except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
+                result=dict(status="unavailable",basis="local_reader_or_metadata_unavailable")
+            assert_current(self.scan)
+            self.exported[fid]=dict(field=fid,**result)
+        return self.exported[fid]
 
     def inspect(self,pair,check):
         from .discovery import field_identity, overlap, pair_units, public_unit_report, resolution, spacing_comparison
@@ -91,6 +105,10 @@ class LocalChecks:
         left,right,_=pair
         rows=[self.scan["rows"][item[0]] for item in (left,right)]
         fields=[left[2],right[2]]
+        if check=="numeric_samples":
+            sources=[self.field_question(item) for item in (left,right)]
+            return dict(status="checked" if any(source["status"]=="checked" for source in sources) else "unavailable",
+                        basis="random_decimal_perturbation",sample_fields=sources)
         durations=[resolution(row)[0] for row in rows]
         if check=="time_coverage":
             relationship=overlap(*rows)
@@ -101,24 +119,47 @@ class LocalChecks:
         grids=[resolution(row)[1] for row in rows]
         if check=="metadata":
             safe=public_unit_report(units)
-            # Conversion constants describe units, not values, but only the relation is needed here.
-            return dict(status="checked", unit_status=safe["status"],
+            metadata=[]
+            for row,field in zip(rows,fields):
+                keys=("standard_name","physical_variable","long_name","var_desc","temporal_semantics","dimensions","shape")
+                detail={k:field[k] for k in keys if field.get(k)}
+                detail["variable_name"]=field["name"]
+                detail["unit"]=field["unit"]
+                if row.get("header_only") and row["format"]=="NetCDF":
+                    try:
+                        with self.dataset(row) as dataset:
+                            variable=dataset.variables[field["name"]]
+                            detail.update((k,getattr(variable,k)) for k in keys if isinstance(getattr(variable,k,None),str))
+                            detail["unit"]=str(getattr(variable,"units",detail["unit"]))
+                            detail["dimensions"]=list(variable.dimensions)
+                    except (OSError,ValueError,RuntimeError,ImportError,KeyError):
+                        pass
+                metadata.append(detail)
+            return dict(status="checked", unit_status=safe["status"], metadata=metadata,
                         field_identity_basis=[field_identity(row,field)[1] for row,field in zip(rows,fields)],
                         grid_spacing=spacing_comparison(*grids),
                         grid_roles=[row.get("ioapi_grid_role") for row in rows])
+        if check=="data_quality" and any(row["format"]!="NetCDF" for row in rows):
+            stats=[]
+            for item in (left,right):
+                values=self.numbers(item)
+                quality=dict(sampled=len(values or []),quality_flag_metadata_present=False)
+                if values and len(values)>=MIN_SAMPLES:
+                    quality["finite_percent"]=int(round(100*sum(value is not None for value in values)/len(values)/5)*5)
+                stats.append(quality)
+            return dict(status="checked" if any(row["sampled"]>=MIN_SAMPLES for row in stats) else "unavailable",
+                        basis="numeric_field_sample",sources=stats)
+        if any(row["format"]!="NetCDF" for row in rows):
+            return dict(status="unavailable",basis="position_verification_needs_supported_coordinates")
         for item,row in zip((left,right),rows):
             if item[1] not in self.fields:
-                if row["format"]!="NetCDF" or row["ref"][1] not in {"","zip"} or (
-                    row["ref"][1]=="zip" and row["bytes"]>min(MAX_MEMBER,self.remaining)
-                ):
-                    return dict(status="unavailable",basis="unsupported_format_or_read_budget")
                 with self.dataset(row) as dataset:
                     self.fields[item[1]]=sample(dataset,item[2]["name"])
         a,b=(self.fields[item[1]] for item in (left,right))
         if check=="data_quality":
             stats=[v["quality"] for v in (a,b)]
             available=any(row["sampled"]>=MIN_SAMPLES for row in stats)
-            return dict(status="checked" if available else "unavailable",basis="bounded_strided_netcdf_sample",
+            return dict(status="checked" if available else "unavailable",basis="strided_netcdf_sample",
                         sources=stats)
         if check=="spatial_coverage":
             return spatial_coverage(a,b)

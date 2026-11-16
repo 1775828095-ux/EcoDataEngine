@@ -51,11 +51,17 @@ def render_local_check(record, labels):
     if record["status"]=="outside_scope":
         text="超出授权范围"
     elif record["status"]!="checked":
-        reasons={"unsupported_format_or_read_budget":"格式或定向读取预算暂不支持",
+        reasons={"sample_format_unavailable":"此文件格式尚未识别到可读取的数值字段",
+                 "no_numeric_samples":"抽样未取得有限的数值",
+                 "position_verification_needs_supported_coordinates":"此组合缺少当前同位置核验支持的坐标结构",
                  "sampled_time_records_not_verified_equal":"未证实抽样记录的时间与口径一致",
                  "too_few_matching_sample_locations":"本次抽样可对应位置少于 10 个，无法直接核对同位置的值",
                  "verified_geographic_coordinates_missing":"缺少可核验的地理坐标"}
         text=reasons.get(record.get("basis"),"有效证据不足")
+    elif "sample_fields" in record:
+        text="；".join(f"{item['field']} 返回 {len(item.get('perturbed_samples',[]))} 个扰动数值" for item in record["sample_fields"])
+    elif "perturbed_samples" in record:
+        text=f"返回 {len(record['perturbed_samples'])} 个扰动数值"
     elif "sampled_pairs" in record:
         text=f"{record['sampled_pairs']} 对抽样位置"
         if "agreement_percent" in record:
@@ -484,9 +490,15 @@ class Window(QMainWindow):
 
     def show_batch_reply(self, selector, event):
         index=event["batch"]-1
+        _,entries=self.batch_state[selector]
+        batch=event.get("request_batch")
+        if batch is not None and index==len(entries):
+            title=f"第 {index+1} 批 · {', '.join(batch.ids) or '工程上下文'}"
+            entries.append((title,batch))
+            selector.addItem(title)
         feedback,replies=self.batch_response[selector]
         failure=event["failure"]
-        text=s.dump(dict(失败原因=failure["reason"] if failure else None,线上响应=event.get("api_receipts",[]),
+        text=s.dump(dict(提示=event.get("notice"),失败原因=failure["reason"] if failure else None,线上响应=event.get("api_receipts",[]),
                          复用本地结果=event.get("local_cache",False),
                          自动回传核验=event.get("local_checks",[]),最终结果=event["rows"]))
         replies[index]=text
@@ -526,7 +538,7 @@ class Window(QMainWindow):
         def prepare(_):
             try:
                 draft=json.loads(text)
-                if isinstance(draft,dict) and draft.get("stage")=="decision" and isinstance(draft.get("candidates"),list):
+                if isinstance(draft,dict) and draft.get("stage")=="decision" and draft.get("catalog_first") is True and isinstance(draft.get("sources"),list):
                     return request_batches.prepare(draft),""
             except (ValueError, KeyError, TypeError, AttributeError) as error:
                 return [],str(error)
@@ -540,17 +552,17 @@ class Window(QMainWindow):
         self.api_status.setText("模拟 · 不联网" if mock else ("密钥已填写 · 点击确认发送联网" if has_key else "请填写密钥"))
         try:
             draft=json.loads(self.decision_json.toPlainText())
-            valid=isinstance(draft,dict) and draft.get("stage")=="decision" and isinstance(draft.get("candidates"),list)
+            valid=isinstance(draft,dict) and draft.get("stage")=="decision" and draft.get("catalog_first") is True and isinstance(draft.get("sources"),list)
         except ValueError:
             draft={}
             valid=False
         self.decision_send.setEnabled(self.scan is not None and valid and any(not batch.blocked for batch in self.decision_batches)
                                       and self.decision_model is not None and (has_key or mock))
         lines=["发送你在「查看 / 编辑 JSON」中确认的内容，供 DeepSeek 判断是否需要融合或统一分辨率。",
-               "将发送目标模型、公开表头或匿名字段、单位、采样间隔、网格间距和时间覆盖对照，以及关联工程说明的脱敏全文与清单。",
+               "将发送扫描到的全部原表头、变量元数据、时空分辨率和工程说明。DeepSeek 先从这些数据中提出组合。",
                "平台只改待发送副本。正文保留段落和表格。文件引用用编号代替，匹配到的敏感信息用占位符替换，普通数值加随机小数。精确时间戳、坐标和完整观测序列留在本机。请在 JSON 中复核工程说明里的项目名、地名等敏感文字。"]
-        lines.append("确认发送也授权本轮自动核验。DeepSeek 可追问已审核候选的单位、时间覆盖、空间重叠、"
-                     "数据质量和对应位置一致性。平台最多自动回复两轮，只回传状态、计数和粗粒度统计。"
+        lines.append("确认发送也授权本轮自动核验。DeepSeek 可追问其提出组合的单位、时间覆盖、空间重叠、"
+                     "数据质量和对应位置一致性，也可以按字段请求数值样本。平台给样本加随机小数后回传。"
                      "本地拦截融合时，同一次确认也授权 DeepSeek 复核预览范围内的候选及脱敏拦截原因。")
         if self.decision_model is None:
             lines.append("请先选择目标模型，再确认发送。")
@@ -559,9 +571,9 @@ class Window(QMainWindow):
         if valid:
             if self.decision_batches:
                 lines.append(f"已整理为 {len(self.decision_batches)} 批融合判断。在「融合判断 · 实际分批」查看请求。"
-                             "平台优先把候选和已读取的脱敏工程全文一次发送。"
-                             "单批请求体上限 20 MiB，同时检查模型上下文容量。"
-                             "需要拆批时，确认一次后依次发送，收到回复时自动切换批次。")
+                             "平台优先把完整字段目录和已读取的脱敏工程全文一次发送。"
+                             "先一次发送完整 JSON。若 DeepSeek 明确拒绝请求大小或上下文长度，平台自动分批重试。"
+                             "只需确认一次，收到回复时自动切换批次。")
                 for batch in self.decision_batches:
                     if batch.blocked:
                         lines.append(f"待处理 · {'、'.join(batch.ids)} · {batch.blocked}")
@@ -573,7 +585,9 @@ class Window(QMainWindow):
             if isinstance(documents,list):
                 readable=[doc for doc in documents if isinstance(doc,dict)]
                 complete=sum(doc.get("sharing")=="full" for doc in readable)
-                lines.append(f"当前草稿包含 {len(draft['candidates'])} 组候选和 {complete} 份工程说明全文。")
+                sources=draft.get("sources",[])
+                count=sum(len(source.get("fields",[])) for source in sources)
+                lines.append(f"当前草稿包含 {len(sources)} 个数据来源、{count} 个字段和 {complete} 份工程说明全文。")
                 for doc in readable:
                     portions=[row.get("path","") for row in doc.get("replaced_sections",[]) if isinstance(row,dict)]
                     hint=(" · 替换位置 " + "、".join(portions[:12])) if portions else ""
@@ -583,7 +597,7 @@ class Window(QMainWindow):
                                  f"{doc.get('classification_reason','')}{hint}")
             comparisons={"same":"相同","different":"不同","unknown":"待核验","not_comparable":"基准或单位不可直接比较",
                          "ranges_overlap":"范围重叠","ranges_disjoint":"范围不重叠","sampled_ranges_overlap":"抽样范围重叠"}
-            for pair in draft["candidates"][:40]:
+            for pair in draft.get("candidates",[])[:40]:
                 if not isinstance(pair,dict) or not isinstance(pair.get("resolution_comparison"),dict):
                     continue
                 facts=pair["resolution_comparison"]
@@ -602,7 +616,8 @@ class Window(QMainWindow):
         count=sum(bool(row["fields"]) for row in self.scan["rows"])
         model_name=discovery.MODELS.get(self.decision_model,"尚未选择")
         lines=[f"目标模型：{model_name}。",f"已登记 {len(self.scan['rows'])} 个成员，读取到 {count} 份数据的字段信息。",
-               f"发现 {len(self.candidates)} 组待评估候选。字段同名或含义相近只用于筛选。"]
+               (f"DeepSeek 提出 {len(self.candidates)} 组候选。" if reply is not None
+                else "确认发送后，DeepSeek 将从完整字段目录中选择候选。")]
         deferred=[row for row in self.scan["rows"] if not row["fields"] and
                   any("预算" in reason or "定向" in reason for reason in row["pending"])]
         if deferred:
@@ -625,7 +640,7 @@ class Window(QMainWindow):
                 row=self.scan["rows"][index]
                 roles="、".join(discovery.ROLE_LABELS[r] for r in row["roles"] if r in discovery.ROLE_LABELS) or "用途待核验"
                 sources.append(f"{PurePosixPath(row['name']).name} · {field['name']}（{roles}）")
-            lines.append(f"{cid}  {' 与 '.join(sources)}\n  待判断：{'、'.join(labels[a] for a in actions)}")
+            lines.append(f"{cid}  {' 与 '.join(sources)}\n  可核验操作：{'、'.join(labels[a] for a in actions)}")
         if reply is None:
             lines.append("确认发送后，DeepSeek 给出处理建议，平台再检查单位、语义、时空覆盖和算法输入条件。工程资料只提供来源背景。")
         else:
@@ -746,35 +761,32 @@ class Window(QMainWindow):
             raise ValueError("请先选择目标模型")
         edited=self.decision_json.toPlainText()
         summary=json.loads(edited)
-        if not isinstance(summary,dict) or summary.get("stage")!="decision" or not isinstance(summary.get("candidates"),list):
-            raise ValueError("请保留 stage=decision 和 candidates 数组")
+        if not isinstance(summary,dict) or summary.get("stage")!="decision" or summary.get("catalog_first") is not True or not isinstance(summary.get("sources"),list):
+            raise ValueError("请保留 stage=decision、catalog_first 和 sources 字段目录")
         if summary.get("target_model")!=dict(id=self.decision_model,name=discovery.MODELS[self.decision_model]):
             raise ValueError("JSON 中的目标模型需与首页选择一致")
         batches=self.decision_batches
         if not any(not batch.blocked for batch in batches):
             raise ValueError(self.batch_error or "未生成待发批次")
-        scan,candidates,mock=self.scan,self.candidates,self.mock.isChecked()
+        scan,mock=self.scan,self.mock.isChecked()
         self.gated={}
         key=self.api_key.text().strip()
         self.reset_target()
         def decide(log,feedback):
             assert_current(scan)
-            from .decision_checks import LocalChecks
-            reply=request_batches.send(batches,self.batch_replies,mock,key,log,lambda:assert_current(scan),
-                                       feedback=feedback,checker=LocalChecks(scan,candidates))
-            log("正在核验 DeepSeek 的处理决策…")
-            checked,gated=discovery.check(scan,candidates,reply,summary)
-            from .fusion_review import review
-            review(scan,batches,checked,reply,mock,key,log)
+            from .catalog_decision import decide as decide_catalog
+            reply,checked,gated,candidates,approved=decide_catalog(
+                scan,summary,batches,self.batch_replies,mock,key,log,feedback)
             eligible=any(row["status"]=="通过" or row.get("next_step") in {"original_workbench","recommendation_only","alignment_then_fusion"}
                          for row in checked)
             if eligible:
                 log("正在准备算法推荐请求…")
             request=(request_batches.prepare(recommendations.make_request(
-                scan,summary,checked,gated,local_checks=reply.get("local_checks",[]))) if eligible else None)
-            return reply,checked,gated,request
+                scan,approved,checked,gated,local_checks=reply.get("local_checks",[]))) if eligible else None)
+            return reply,checked,gated,request,candidates
         def finish(value):
-            reply,checked,gated,request=value
+            reply,checked,gated,request,candidates=value
+            self.candidates=candidates
             self.gated=gated
             self.show_local_explanation(reply,checked)
             self.detail.setPlainText(s.dump(dict(

@@ -1,6 +1,5 @@
 """Automatic first-stage discovery and a local gate for model suggestions."""
 from collections import defaultdict
-from itertools import combinations
 import json
 import re
 
@@ -44,7 +43,6 @@ MODEL_USES={
     "camx":{"no2":"化学浓度候选，核对机制及初始或边界输入"},
     "calpuff":{"air_temperature":"气象预处理候选，需核对 CALMET 输入"},
 }
-PUBLIC_HEADERS={"lai","lai_500m","leaf_area_index","cmorph","prectotcorr","precipitation","precip","rainfall","temperature","air_temperature","t2m","no2","pm25"}
 PUBLIC_UNITS={"1","m2 m-2","m^2/m^2","mm/day","mm","mm d-1","kg m-2 s-1","K","degC","°C","ppb","ppm","ug/m3","µg/m³"}
 # Public I/O API field descriptions verified against the variable's own header.
 IOAPI_DESCRIPTIONS={
@@ -81,6 +79,8 @@ def pair_units(ar, a, br, b):
     trusted={"standard_name","physical_variable","long_name","verified_ioapi_var_desc","declared_observation_schema"}
     if qa==qb and qa and {ba,bb}<=(trusted|{"variable_name"}) and {ba,bb}&trusted:
         return compare_units(qa,a["unit"],qb,b["unit"])
+    if qa and qb and qa!=qb and {ba,bb}<=trusted:
+        return dict(compare_units(qa,a["unit"],qb,b["unit"]),status="quantity_conflict")
     # An explicitly trusted product audit may independently establish identity later.
     return compare_units(None,a["unit"],None,b["unit"])
 
@@ -198,15 +198,21 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
     family=physical(field)
     roles=[ROLE_LABELS[r] for r in row["roles"] if r in ROLE_LABELS]
     t,g=resolution(row)
-    grid={"x":g[0],"y":g[1]} if isinstance(g,tuple) else ({"step":g["step"]} if g else None)
+    grid={"x":g[0],"y":g[1]} if isinstance(g,tuple) else g
     metadata=IOAPI_DESCRIPTIONS.get((field["name"],field.get("var_desc","").casefold())) if row.get("ioapi_grid_role") else None
     role=GRID_ROLES.get(row.get("ioapi_grid_role"))
     native_labels={"engineering_dependency":"原版识别为工程依赖","reference_output":"原版识别为模型参考输出",
                    "engineering_configuration":"原版识别为工程配置"}
     native_use=native_labels.get(native_role)
-    return dict(id=fid, header=field["name"] if field["name"].casefold() in PUBLIC_HEADERS or metadata else fid,
-                type=field_type(field["type"]), unit=public_unit(field["unit"]),
-                physical_family=family or (metadata[0] if metadata else None),
+    return dict(id=fid, header=field.get("original_header",field["name"]), variable_name=field["name"],
+                type=field_type(field["type"]), unit=field["unit"] or None,
+                physical_family=field_identity(row,field)[0] or family or None,
+                standard_name=field.get("standard_name") or None, physical_variable=field.get("physical_variable") or None,
+                long_name=field.get("long_name") or None, var_desc=field.get("var_desc") or None,
+                temporal_semantics=field.get("temporal_semantics") or None,
+                source_column=field.get("source_column"),
+                dimensions=field.get("dimensions"), shape=field.get("shape"), sheet=field.get("sheet"), axis=field["axis"],
+                raw_companion=field.get("raw_companion",False),
                 physical_meaning=metadata[1] if metadata else ("叶面积与地面积之比" if family=="leaf_area_index" else None),
                 description_source="I/O API var_desc" if metadata else None,
                 grid_role=role,
@@ -246,118 +252,76 @@ def discover(scan, model_id=None, task_goal="auto"):
     if model_id in MODELS:
         from ecodata.algorithms.profile_matching import model_table
         model_roles=[role for role in model_table(model_id)["roles"] if not role["record_only"]]
-    matches_cache={}
-    def details(index,fid,field):
-        row=scan["rows"][index]
-        if index not in matches_cache:
-            matches_cache[index]=model_field_matches(row,model_id,model_roles) if model_roles else {}
-        return describe_field(row,fid,field,model_id,native_role=native_roles.get(row["name"]),
-                              model_matches=matches_cache[index].get(field["name"],[]))
     from .research_dispatch import discover as research_tasks
     scan.setdefault("research_tasks",{})[model_id]=research_tasks(scan,model_id)
-    groups=defaultdict(list)
+    scan["candidate_native_roles"]=native_roles
+    scan["candidate_field_context"]={}
     sources=[]
-    numeric={"number","integer"}
-    for i,row in enumerate(scan["rows"]):
-        if not row["fields"]: continue
-        source=f"D{i+1}"
-        t,g=resolution(row)
-        entries=[]
-        for j,f in enumerate(row["fields"]):
-            typ=field_type(f["type"])
-            fid=f"{source}.F{j+1}"
-            family=physical(f)
-            entries.append(dict(id=fid,type=typ,axis=f["axis"],unit_known=bool(f["unit"]),
-                                physical_family=family or None))
-            quantity,_=field_identity(row,f)
-            key=quantity or family or norm(f["name"])
-            if family=="precipitation": key=family
-            if not f["axis"] and not f.get("raw_companion") and typ in numeric and key:
-                groups[key].append((i,fid,f))
-        sources.append(dict(id=source,format=row["format"],fields=entries,
-            roles=row["roles"], engineering_reference=bool(row["evidence"]),
-            time_spacing="known" if t else "unknown", grid_spacing="known" if g else "unknown"))
-
+    for index,row in enumerate(scan["rows"],1):
+        if not row["fields"]:
+            continue
+        source=f"D{index}"
+        matches=model_field_matches(row,model_id,model_roles) if model_roles else {}
+        scan["candidate_field_context"][index-1]=matches
+        fields=[describe_field(
+            row,f"{source}.F{offset}",field,model_id,native_role=native_roles.get(row["name"]),
+            model_matches=matches.get(field["name"],[]))
+            for offset,field in enumerate(row["fields"],1)]
+        sources.append(dict(id=source,format=row["format"],fields=fields,
+                            dimensions=row.get("dimensions"),roles=row["roles"],
+                            engineering_reference=bool(row["evidence"]),
+                            time_coverage=coarse_time_coverage(row)))
     docs,document_refs=associate_documents(scan,{int(source["id"][1:]):source["id"] for source in sources})
     for source in sources:
         source["engineering_documents"]=document_refs.get(source["id"],[])
-
-    def series_name(row):
-        from pathlib import PurePosixPath
-        name=PurePosixPath(row["name"]).stem.casefold()
-        return re.sub(r"(?<!\d)(?:19|20)\d{6}(?!\d)", "{date}", name)
-
-    def layered_cmaq_lai(row, field):
-        return ("LAY" in field.get("dimensions",[])
-                and row.get("dimensions",{}).get("LAY",0)>1)
-
-    candidates={}
-    summary=[]
-    ordered_groups=sorted(groups.values(),key=lambda group: (
-        not any(scan["rows"][entry[0]].get("engineering_probe") and physical(entry[2]) for entry in group),
-        not any(field_identity(scan["rows"][i],f)[0] for i,_,f in group)))
-    candidate_limit=80
-    pair_budget=20000
-    evaluated_pairs=0
-    for group in ordered_groups:
-        for left,right in combinations(group,2):
-            if evaluated_pairs>=pair_budget:
-                break
-            evaluated_pairs+=1
-            ai,af,a=left
-            bi,bf,b=right
-            if ai==bi: continue
-            ar,br=scan["rows"][ai],scan["rows"][bi]
-            if series_name(ar)==series_name(br) and a["name"]==b["name"] and ar["format"]==br["format"]:
-                continue
-            if model_id=="cmaq":
-                if physical(a)==physical(b)=="leaf_area_index":
-                    # The original composite adapter uses the surface LAI port.
-                    # Static EPIC layers and the meteorological surface field are
-                    # distinct model inputs, even though they share a name.
-                    if layered_cmaq_lai(ar,a) or layered_cmaq_lai(br,b):
-                        continue
-                from .cmaq_grid_audit import FIELDS, is_companion
-                if a["name"]==b["name"] and a["name"] in FIELDS and is_companion(ar,br):
-                    continue
-            t1,g1=resolution(ar)
-            t2,g2=resolution(br)
-            actions=["fusion"]
-            time_spacing=spacing_comparison(t1,t2)
-            grid_spacing=spacing_comparison(g1,g2)
-            if time_spacing=="different": actions.append("align_time")
-            if grid_spacing=="different" or (g1 and g2 and grid_spacing in {"unknown","not_comparable"}):
-                actions.append("align_space")
-            cid=f"C{len(candidates)+1}"
-            candidates[cid]=(left,right,actions)
-            unit_check=pair_units(ar,a,br,b)
-            summary.append(dict(id=cid,fields=[af,bf],possible_actions=actions,
-                target_model=MODELS.get(model_id),
-                pair_details=[dict(source="A", engineering_documents=document_refs.get(af.split(".")[0],[]), **details(ai,af,a)),
-                              dict(source="B", engineering_documents=document_refs.get(bf.split(".")[0],[]), **details(bi,bf,b))],
-                resolution_comparison=dict(time_spacing=time_spacing,grid_spacing=grid_spacing,
-                                           time_coverage=overlap(ar,br)),
-                relative_spacing=dict(time=relative_spacing(t1,t2),grid=relative_spacing(g1,g2)),
-                match_basis="known_physical_family" if physical(a) and physical(a)==physical(b) else "normalized_header",
-                roles=[ar["roles"],br["roles"]],
-                engineering_reference=bool(ar["evidence"] or br["evidence"]),
-                unit_check=public_unit_report(unit_check),
-                units_equal=unit_check["status"]=="equivalent"))
-            if len(candidates)>=candidate_limit or evaluated_pairs>=pair_budget: break
-        if len(candidates)>=candidate_limit or evaluated_pairs>=pair_budget: break
-    scan["candidate_scan_limit"]=len(candidates)>=candidate_limit or evaluated_pairs>=pair_budget
-    scan["candidate_field_context"]=matches_cache
-    scan["candidate_native_roles"]=native_roles
-    from .recommendations import attach_samples
-    attach_samples(scan,summary)
     assert_current(scan)
-    return dict(stage="decision", **({"task_goal":task_goal} if task_goal in TASK_GOALS else {}), target_model=dict(id=model_id,name=MODELS[model_id]) if model_id in MODELS else None,
-                sources=sources,candidates=summary,engineering_documents=docs,
-                project_context_document_ids=[d["id"] for d in docs if d["scope"]=="project_context"],
-                engineering_inventory=[dict(id=f"M{i}",kind=row["format"],nested_archive=bool(kind(row["name"])),
-                                            nested_members_read=False)
-                                       for i,row in enumerate(scan["rows"],1)
-                                       if kind(row["name"]) or row["format"]=="其他"]),candidates
+    return dict(
+        stage="decision", catalog_first=True,
+        **({"task_goal":task_goal} if task_goal in TASK_GOALS else {}),
+        target_model=dict(id=model_id,name=MODELS[model_id]) if model_id in MODELS else None,
+        sources=sources,candidates=[],engineering_documents=docs,
+        project_context_document_ids=[d["id"] for d in docs if d["scope"]=="project_context"],
+        engineering_inventory=[dict(id=f"M{i}",kind=row["format"],nested_archive=bool(kind(row["name"])),
+                                    nested_members_read=row.get("nested_members_read",False))
+                               for i,row in enumerate(scan["rows"],1)
+                               if kind(row["name"]) or not row["fields"]]), {}
+
+
+def coarse_time_coverage(row):
+    from datetime import datetime,timezone
+    span=row.get("time_coverage")
+    if not span:
+        return None
+    try:
+        months=[datetime.fromtimestamp(value,timezone.utc).strftime("%Y-%m") for value in span[:2]]
+    except (ValueError,OverflowError,OSError):
+        return dict(basis=span[2])
+    return dict(start_month=months[0],end_month=months[1],basis=span[2])
+
+
+def describe_pair(scan,cid,left,right,model_id,details):
+    ai,af,a=left
+    bi,bf,b=right
+    ar,br=scan["rows"][ai],scan["rows"][bi]
+    t1,g1=resolution(ar)
+    t2,g2=resolution(br)
+    time_spacing=spacing_comparison(t1,t2)
+    grid_spacing=spacing_comparison(g1,g2)
+    actions=["fusion"]
+    if time_spacing=="different":
+        actions.append("align_time")
+    if grid_spacing=="different" or (g1 and g2 and grid_spacing in {"unknown","not_comparable"}):
+        actions.append("align_space")
+    unit_check=pair_units(ar,a,br,b)
+    pair=dict(id=cid,fields=[af,bf],possible_actions=actions,target_model=MODELS.get(model_id),
+              pair_details=[dict(details[af],source="A"),dict(details[bf],source="B")],
+              resolution_comparison=dict(time_spacing=time_spacing,grid_spacing=grid_spacing,
+                                         time_coverage=overlap(ar,br)),
+              relative_spacing=dict(time=relative_spacing(t1,t2),grid=relative_spacing(g1,g2)),
+              match_basis="deepseek_catalog",roles=[ar["roles"],br["roles"]],
+              engineering_reference=bool(ar["evidence"] or br["evidence"]),
+              unit_check=public_unit_report(unit_check),units_equal=unit_check["status"]=="equivalent")
+    return pair,(left,right,actions)
 
 def local_overview(scan,candidates):
     return dict(members=len(scan["rows"]), warnings=scan["warnings"],
@@ -368,7 +332,7 @@ def local_overview(scan,candidates):
                 candidate_scan_limit=scan.get("candidate_scan_limit",False),
                 local_field_inventory=[dict(file=r["name"],format=r["format"],total_fields=len(r["fields"]),
                     resolution=r["resolution"],pending=r["pending"],roles=r["roles"],
-                    fields=[dict(name=f["name"],type=f["type"],unit=f["unit"]) for f in r["fields"]])
+                    fields=[dict(name=f.get("original_header",f["name"]),type=f["type"],unit=f["unit"]) for f in r["fields"]])
                     for r in scan["rows"] if r["fields"] or r["pending"]],
                 candidates=[dict(id=k,actions=actions,fields=[
                     dict(file=scan["rows"][i]["name"],field=f["name"],unit=f["unit"],
@@ -494,6 +458,9 @@ def check(scan,candidates,reply,approved_summary):
         bi,_,b=right
         ar,br=scan["rows"][ai],scan["rows"][bi]
         row["block_code"]="verification_pending"
+        if a["axis"] or b["axis"]:
+            row.update(block_code="coordinate_field",reason="坐标轴可用于对齐，不能作为待融合的观测变量")
+            continue
         unit_check=pair_units(ar,a,br,b)
         _,basis_a=field_identity(ar,a)
         _,basis_b=field_identity(br,b)
@@ -501,8 +468,10 @@ def check(scan,candidates,reply,approved_summary):
         row["unit_check"]=unit_check
         row["physical_identity"]=dict(left_basis=basis_a,right_basis=basis_b,match=same_quantity)
         if unit_check["status"] not in {"equivalent","convertible","physical_identity_unconfirmed"}:
-            row["block_code"]="unit_conflict" if unit_check["status"]=="unit_not_convertible" else "unit_unknown"
-            row["reason"]="物理量已核对，但单位缺失或无法换算"
+            row["block_code"]={"quantity_conflict":"quantity_conflict","unit_not_convertible":"unit_conflict"}.get(
+                unit_check["status"],"unit_unknown")
+            row["reason"]=("两份元数据明确声明了不同物理量" if row["block_code"]=="quantity_conflict"
+                           else "物理量已核对，但单位缺失或无法换算")
             continue
         if action=="fusion" and {ar.get("ioapi_grid_role"),br.get("ioapi_grid_role")}=={"boundary","interior"}:
             row["block_code"]="different_grid_roles"
@@ -584,8 +553,6 @@ def check(scan,candidates,reply,approved_summary):
                 selection=[(i,"observations" if "observations" in scan["rows"][i]["roles"] else "primary") for i in (ai,bi)]
                 if loaded_bytes+ar["bytes"]+br["bytes"]>64*1024**2:
                     raise ValueError("已达自动深读字节上限")
-                if len(prepared)>=2:
-                    raise ValueError("自动准备最多保留两个融合任务")
                 loaded_bytes+=ar["bytes"]+br["bytes"]
                 primary=a if selection[0][1]=="primary" else b
                 state,_=prepare(scan,selection,"fusion",None,"","NetCDF",primary["name"],
@@ -616,10 +583,10 @@ def parse_decisions(raw):
     rows=raw.get("decisions")
     if not isinstance(rows,list): raise ValueError("DeepSeek 未返回 decisions 数组")
     out=[]
-    for item in rows[:200]:
+    for item in rows:
         if not isinstance(item,dict): continue
         candidate,action=item.get("candidate"),item.get("action")
-        if not isinstance(candidate,str) or not re.fullmatch(r"C[1-9]\d{0,2}",candidate): continue
+        if not isinstance(candidate,str) or not re.fullmatch(r"C[1-9]\d*",candidate): continue
         if action not in ("fusion","align_time","align_space","direct","insufficient","reject","pending_goal"): continue
         goal=item.get("goal")
         if not isinstance(goal,str) or goal not in TASK_GOALS or goal=="auto":
