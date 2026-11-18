@@ -7,6 +7,7 @@ import re
 import pandas as pd
 
 from ecodata.core.exceptions import SchemaError
+from ecodata.io.record_layout import RecordLayoutError,split_declared_record
 
 DATE = re.compile(r"(?:date|time|采样时间|日期|时间)", re.I)
 DATA_DATE = re.compile(r"^\s*\d{1,4}[/-]\d{1,2}[/-]\d{1,4}")
@@ -70,10 +71,29 @@ def read_monitoring_text(content, fixed_layout=None):
         repeated={x for x in names if names.count(x)>1}
         names=[f'{x}__column_{i+1}' if x in repeated else x for i,x in enumerate(names)]
         evidence['source_field_names']=dict(zip(names,original_names))
-        data=[x for x in lines[start:] if DATA_DATE.search(x)]
-        frame = pd.read_csv(io.StringIO('\n'.join(data)), sep=sep, names=names, dtype=str, keep_default_na=False)
         if evidence['unit_row'] is not None:
             units = dict(zip(names, [x.strip() for x in next(csv.reader([lines[evidence['unit_row']]], delimiter=sep))]))
+        numeric_columns=[index for index,name in enumerate(names) if units.get(name) and not DATE.search(name)]
+        records=[]
+        annotations=[]
+        for number,line in enumerate(lines[start:],start+1):
+            if not DATA_DATE.search(line):
+                continue
+            cells=next(csv.reader([line],delimiter=sep))
+            if len(cells)>len(names):
+                if not numeric_columns:
+                    raise SchemaError(f'第{number}行有额外列，但缺少字段类型或单位依据，无法识别尾部附注')
+                try:
+                    cells,extra=split_declared_record(cells,len(names),numeric_columns=numeric_columns)
+                except RecordLayoutError as error:
+                    raise SchemaError(f'第{number}行无法确认尾部附注：{error.code}') from error
+                annotations.append(dict(line=number,extra_tokens=len(extra),basis='trailing_text_annotation'))
+            if len(cells)<len(names):
+                cells.extend(['']*(len(names)-len(cells)))
+            records.append(cells)
+        frame=pd.DataFrame(records,columns=names)
+        if annotations:
+            evidence['trailing_annotations']=annotations
     else:
         if not fixed_layout:
             raise SchemaError('固定宽度表头粘连，需要已核实的仪器 Adapter；不猜测字段')

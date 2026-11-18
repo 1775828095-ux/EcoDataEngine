@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import math
 from pathlib import Path
 import re
+from ecodata.io.record_layout import RecordLayoutError, split_declared_record
 
 LABELS = {
     'precip': '降水', 'et': '蒸散发', 'surq_gen': '地表径流',
@@ -94,15 +95,21 @@ def read_output(path,selected_identity=None):
         lines,line_numbers,_=_select_output_lines(path,selected_identity)
     header_index, columns, units, no_unit_tail = output_header(lines)
     rows = []
+    annotations=[]
+    numeric_columns=[columns.index(column) for column in units]
     for lineno, line in enumerate(lines[header_index + 2:], header_index + 3):
         lineno=line_numbers[lineno-1]
         if not line.strip():
             continue
         values = line.split()
         # Basin rows omit the two trailing HRU-only diagnostic strings in 62.
-        omitted_tail = no_unit_tail and path.name.startswith('basin_') and len(values) == len(columns)-2
-        if len(values) != len(columns) and not omitted_tail:
-            raise ValueError(f'第{lineno}行字段数错误或数值溢出。')
+        try:
+            values,extra=split_declared_record(values,len(columns),numeric_columns=numeric_columns,
+                integer_columns=range(6),optional_tail=2 if no_unit_tail and path.name.startswith('basin_') else 0)
+        except RecordLayoutError as error:
+            raise ValueError(f'第{lineno}行字段结构无效：{error.code}') from error
+        if extra:
+            annotations.append(dict(line=lineno,extra_tokens=len(extra),basis='trailing_text_annotation'))
         row = dict(zip(columns, values))
         try:
             for key in columns[:6]:
@@ -140,7 +147,7 @@ def read_output(path,selected_identity=None):
             raise ValueError('逐日结果存在缺日期；未填值或连接缺口。')
     return {'path': str(path), 'columns': columns, 'units': units,
             'validation_scope':'selected_object' if selected_identity is not None else 'all_objects',
-            'rows': rows, 'objects': list(identities)}
+            'rows': rows, 'objects': list(identities), 'trailing_annotations':annotations}
 
 def discover(directory):
     valid, rejected = [], []

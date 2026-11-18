@@ -61,12 +61,24 @@ def render_local_check(record, labels):
                  "same_scenario_and_output_variable_unconfirmed":"未证实两表属于同一工程和同一输出变量",
                  "annual_unit_not_confirmed":"两表单位缺失或未统一",
                  "average_annual_window_unconfirmed":"未证实平均年度输出覆盖哪段年份",
-                 "native_yearly_output_unreadable":"原生输出存在缺测、重复年份或记录结构无法读取"}
+                 "native_yearly_output_unreadable":"原生输出读取未完成"}
         text=reasons.get(record.get("basis"),"有效证据不足")
+        if record.get("basis")=="native_yearly_output_unreadable":
+            source={"average_annual":"平均年度表","yearly":"逐年表"}.get(record.get("failed_output"),"输出表")
+            errors={"record_column_count_mismatch":"记录列数与表头不符",
+                    "unrecognized_trailing_columns":"尾部额外列缺少可识别的文本标记",
+                    "invalid_numeric_value":"声明的数值列有缺测或无效值",
+                    "invalid_identity_or_numeric_prefix":"对象编号、年份或声明的数值列无法解析",
+                    "duplicate_year_or_invalid_value":"同一对象年份重复或数值无效",
+                    "no_output_records":"没有数据记录"}
+            location=f"第 {record['line']} 行" if record.get("line") else ""
+            text=f"{source}{location} · {errors.get(record.get('read_error'),'本地读取器未完成解析')}"
     elif record["check"]=="annual_mean_comparison":
         period=record["year_window"]
         text=(f"{period['start_year']}–{period['end_year']} 年，共 {record['matched_objects']} 个对应对象，"
               f"{record['compared_objects']} 个覆盖完整年份，其中 {record['matching_means']} 个均值相符")
+        if record.get("trailing_annotations"):
+            text+=f"；已识别 {len(record['trailing_annotations'])} 行尾部附注"
     elif "sample_fields" in record:
         text="；".join(f"{item['field']} 返回 {len(item.get('perturbed_samples',[]))} 个扰动数值" for item in record["sample_fields"])
     elif "perturbed_samples" in record:

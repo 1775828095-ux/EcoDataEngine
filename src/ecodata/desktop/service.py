@@ -232,6 +232,7 @@ def preview(summary, file=None, *, local_evidence=None):
             "比较同一 SWAT+ 项目的平均年度输出与逐年输出时，如果未证实可比，必须请求 annual_mean_comparison。"
             "例如：两份降水输出是否来自同一工程和同一对象？按平均年度输出的配置年份，逐年降水取均值后是否在原表精度内一致？"
             "这个核验只回传匹配对象数、核验年份和相符数；同一次模拟的两种输出可做一致性检查，不当作独立融合来源。"
+            "trailing_annotations 表示已单独识别的行尾附注，未参与数值比较；读取失败时 failed_output、line、read_error 指明实际失败的表、行号和原因。"
             "单字段可以请求 field_context、metadata 或 numeric_samples。字段同名、编号相同或几何坐标单位相同，均不能据此认定字段定义相同。"
             "local_check_results 里的随机小数扰动样本只用于理解量级，不能用于评分。两字段的问题必须给出两个字段 id。"
             "不能请求原始数据、位置或任意代码。"
