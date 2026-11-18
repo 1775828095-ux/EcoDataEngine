@@ -1071,7 +1071,7 @@ class Window(QMainWindow):
             elif approved.stage=="review": self.review_reply=reply
             self.advice.setPlainText(s.dump(reply))
         key=self.api_key.text().strip()
-        self.work(lambda _:s.send(approved,approved.digest,mock,api_key=key),finish)
+        self.work(lambda log:s.send(approved,approved.digest,mock,api_key=key,on_progress=log),finish)
 
     def execute_now(self):
         if not self.selected_recommendations and self.scan and self.scan.get("research_tasks",{}).get(self.decision_model):
@@ -1156,12 +1156,12 @@ class Window(QMainWindow):
         request=output_review.review_request(check,items)
         summary_file=Path(self.task.name)/"output-review-request.json"
 
-        def review(_):
+        def review(log):
             try:
                 approved=s.preview(request,summary_file)
-                return s.send(approved,approved.digest,mock,api_key=key),None
-            except (ValueError, OSError, TypeError, KeyError, IndexError):
-                return None,"线上复核未完成。当前显示本地检查结果。"
+                return s.send(approved,approved.digest,mock,api_key=key,on_progress=log),None
+            except (ValueError, OSError, TypeError, KeyError, IndexError) as error:
+                return None,f"线上复核未完成：{error}"
 
         def finish(value):
             reply,notice=value

@@ -155,14 +155,14 @@ def decision_dialogue(draft, reply, checker, mock, key, progress, check_current,
         check_current()
         receipt=receipts.append if receipts is not None else None
         try:
-            reply=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=receipt)
+            reply=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=receipt,on_progress=progress)
         except service.RequestCapacityError:
             lean=dict(approved,engineering_documents=[
                 {k:v for k,v in doc.items() if k!="text"} for doc in approved.get("engineering_documents",[])])
             if lean["engineering_documents"]==approved.get("engineering_documents",[]):
                 raise
             continuation=service.preview(lean,local_evidence=local_evidence)
-            reply=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=receipt)
+            reply=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=receipt,on_progress=progress)
         check_current()
 
     rows=[]
@@ -208,7 +208,7 @@ def send(batches, cache, mock, key, progress, check_current, *, feedback=None, c
                 reused += 1
                 cached = True
             else:
-                reply = service.send(draft, draft.digest, mock, api_key=key, on_receipt=batch_receipts.append)
+                reply = service.send(draft, draft.digest, mock, api_key=key, on_receipt=batch_receipts.append,on_progress=progress)
                 if stage=="decision" and checker is not None:
                     reply=decision_dialogue(draft,reply,checker,mock,key,progress,check_current,receipts=batch_receipts)
                 accepted = [row for row in reply[result_key] if row[identity] in batch.ids]

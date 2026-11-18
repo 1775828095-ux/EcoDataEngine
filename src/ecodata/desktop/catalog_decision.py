@@ -160,7 +160,7 @@ def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply,*,samp
                 reply["reused_batches"]+=1
                 cached=True
             else:
-                answer=service.send(draft,draft.digest,mock,api_key=key,on_receipt=markers.append)
+                answer=service.send(draft,draft.digest,mock,api_key=key,on_receipt=markers.append,on_progress=progress)
                 if sample_field is not None:
                     answer=answer_single_field_questions(sent,allowed,answer,sample_field,
                                                         mock,key,progress,current,markers.append)
@@ -211,14 +211,14 @@ def answer_single_field_questions(sent,allowed,answer,sample_field,mock,key,prog
                      previous_decisions=answer.get("decisions",[]))
         continuation=service.preview(sent,local_evidence=context)
         try:
-            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt)
+            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt,on_progress=progress)
         except service.RequestCapacityError:
             lean=dict(sent,engineering_documents=[
                 {k:v for k,v in doc.items() if k!="text"} for doc in sent.get("engineering_documents",[])])
             if lean["engineering_documents"]==sent.get("engineering_documents",[]):
                 raise
             continuation=service.preview(lean,local_evidence=context)
-            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt)
+            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt,on_progress=progress)
         previous=[row for row in answer.get("questions",[]) if isinstance(row,dict)
                   and isinstance(row.get("fields"),list) and len(row["fields"])==2]
         answer=dict(followup,decisions=followup.get("decisions") or answer.get("decisions",[]),

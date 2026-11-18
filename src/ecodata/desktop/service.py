@@ -259,6 +259,7 @@ def preview(summary, file=None, *, local_evidence=None):
     content = compact({k:v for k,v in loaded.items() if k!="final_evidence"})
     body=compact(dict(model="deepseek-flash",messages=[dict(role="system",content=prompt),dict(role="user",content=content)],
                    response_format={"type":"json_object"},thinking={"type":"enabled"},reasoning_effort=effort,
+                   stream=True,stream_options={"include_usage":True},
                    max_tokens=min(384*1024,output_tokens+reasoning_tokens))).encode("utf8")
     return Preview(stage,body,hashlib.sha256(body).hexdigest(),brief)
 
@@ -301,7 +302,7 @@ def capacity_rejection(error):
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs): return None
 
-def send(approved, approved_digest, mock=False, *, api_key=None, on_receipt=None):
+def send(approved, approved_digest, mock=False, *, api_key=None, on_receipt=None, on_progress=None):
     if hashlib.sha256(approved.body).hexdigest()!=approved_digest or approved.digest!=approved_digest:
         raise ValueError("待发送内容已改变，须重新审核")
     if mock and approved.stage=="file_classification":
@@ -361,19 +362,18 @@ def send(approved, approved_digest, mock=False, *, api_key=None, on_receipt=None
     headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"}
     req=urllib.request.Request("https://api.deepseek.com/chat/completions",data=approved.body,headers=headers)
     import certifi
-    handler=urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=certifi.where()))
+    from .deepseek_transport import APIHTTPSHandler,fetch
+    handler=APIHTTPSHandler(context=ssl.create_default_context(cafile=certifi.where()))
     try:
-        with urllib.request.build_opener(NoRedirect(),handler).open(req,timeout=300 if len(approved.body)>1024**2 else 180) as response:
-            reply=json.loads(response.read(4*1024**2))
+        reply=fetch(req,urllib.request.build_opener(NoRedirect(),handler),approved.stage,approved.digest,on_progress or (lambda _:None))
     except urllib.error.HTTPError as exc:
         with exc:
             reason=capacity_rejection(exc)
         if reason:
             raise RequestCapacityError(reason) from None
         message={401:"密钥无效",402:"账户余额不足",429:"请求过于频繁"}.get(exc.code,"服务返回错误")
-        raise ValueError(f"DeepSeek HTTP {exc.code}：{message}") from None
-    except (urllib.error.URLError, TimeoutError):
-        raise ValueError("无法连接 DeepSeek，请检查网络后重试") from None
+        raise ValueError(f"DeepSeek HTTP {exc.code}：{message}；共尝试 {getattr(exc,'attempt_count',1)} 次，"
+                         f"耗时 {getattr(exc,'elapsed_seconds',0):.1f} 秒。") from None
     if on_receipt is not None:
         usage=reply.get("usage")
         counts={name:value for name,value in (usage.items() if isinstance(usage,dict) else ())

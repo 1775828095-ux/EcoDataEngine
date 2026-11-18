@@ -64,7 +64,7 @@ def classify(scan,summary,cache,mock,key,progress,feedback,reply):
                 answer=cache[draft.digest]
                 reply["reused_batches"]+=1
             else:
-                answer=service.send(draft,draft.digest,mock,api_key=key,on_receipt=receipts.append)
+                answer=service.send(draft,draft.digest,mock,api_key=key,on_receipt=receipts.append,on_progress=progress)
                 cache[draft.digest]=answer
             approved={item["id"] for item in group}
             for item in answer["classifications"]:
