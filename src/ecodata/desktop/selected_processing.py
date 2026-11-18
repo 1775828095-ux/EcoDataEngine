@@ -21,6 +21,9 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
                 result = station_grid.run(scan,task_id,task,stage,model_id,progress)
             elif route == "structure_conversion":
                 result = pair_processing.run_conversion(scan,task_id,task,stage,model_id,progress)
+            elif route == "statistical_preprocessing":
+                from .statistical_preprocessing import run as run_statistics
+                result=run_statistics(scan,task_id,task,stage,model_id,progress)
             elif route == "pair_processing":
                 result = pair_processing.run(scan,task_id,task,stage,model_id,progress)
             elif route == "observation_gap_search":
