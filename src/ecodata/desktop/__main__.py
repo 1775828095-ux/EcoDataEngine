@@ -58,6 +58,8 @@ def render_local_check(record, labels):
     elif record["status"]!="checked":
         reasons={"sample_format_unavailable":"此文件格式尚未识别到可读取的数值字段",
                  "no_numeric_samples":"抽样未取得有限的数值",
+                 "preprocessing_plan_missing":"尚未提供完整的统计窗口和换算方案",
+                 "preprocessing_evidence_missing":"前处理依据尚未核实",
                  "position_verification_needs_supported_coordinates":"此组合缺少当前同位置核验支持的坐标结构",
                  "sampled_time_records_not_verified_equal":"未证实抽样记录的时间与口径一致",
                  "too_few_matching_sample_locations":"本次抽样可对应位置少于 10 个，无法直接核对同位置的值",
@@ -68,6 +70,8 @@ def render_local_check(record, labels):
                  "average_annual_window_unconfirmed":"未证实平均年度输出覆盖哪段年份",
                  "native_yearly_output_unreadable":"原生输出读取未完成"}
         text=reasons.get(record.get("basis"),"有效证据不足")
+        if record.get("basis")=="preprocessing_evidence_missing":
+            text=record["reason"]
         if record.get("basis")=="native_yearly_output_unreadable":
             source={"average_annual":"平均年度表","yearly":"逐年表"}.get(record.get("failed_output"),"输出表")
             errors={"record_column_count_mismatch":"记录列数与表头不符",
@@ -78,6 +82,9 @@ def render_local_check(record, labels):
                     "no_output_records":"没有数据记录"}
             location=f"第 {record['line']} 行" if record.get("line") else ""
             text=f"{source}{location} · {errors.get(record.get('read_error'),'本地读取器未完成解析')}"
+    elif record["check"]=="preprocessing_plan":
+        plan=record["plan"]
+        text=f"{plan['start_year']}–{plan['end_year']} 年，目标单位 {plan['target_unit']}，已试算两来源各 {record['output_records']} 条记录"
     elif record["check"]=="annual_mean_comparison":
         period=record["year_window"]
         text=(f"{period['start_year']}–{period['end_year']} 年，共 {record['matched_objects']} 个对应对象，"
@@ -877,7 +884,7 @@ class Window(QMainWindow):
     def show_local_explanation(self, reply=None, checked=()):
         labels={"fusion":"融合","align_time":"统一时间分辨率","align_space":"统一空间分辨率",
                 "compare_station_grid":"站点与网格配对","convert_units":"单位换算","convert_format":"格式转换",
-                "direct":"分别使用","insufficient":"依据不足","reject":"明确反对处理","pending_goal":"处理目标待确认"}
+                "preprocess":"统一统计窗口及换算","direct":"分别使用","insufficient":"依据不足","reject":"明确反对处理","pending_goal":"处理目标待确认"}
         self.operation_labels=labels
         count=sum(bool(row["fields"]) for row in self.scan["rows"])
         model_name=discovery.MODELS.get(self.decision_model,"尚未选择")

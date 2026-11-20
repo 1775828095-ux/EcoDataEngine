@@ -4,6 +4,7 @@ import json
 import re
 
 from ecodata.models.scientific_schema import compare_units, identity
+from ecodata.core.exceptions import EcoDataError
 from .scan import assert_current, kind
 from .engineering_excerpt import associate_documents
 from .service import field_type, prepare
@@ -351,7 +352,7 @@ def describe_pair(scan,cid,left,right,model_id,details):
     time_spacing=spacing_comparison(t1,t2)
     grid_spacing=spacing_comparison(g1,g2)
     from .station_grid import eligible
-    actions=["fusion","convert_units","convert_format"]
+    actions=["fusion","convert_units","convert_format","preprocess"]
     if eligible(ar,a,br) or eligible(br,b,ar):
         actions.extend(("compare_station_grid","align_time","align_space"))
     if time_spacing=="different" and "align_time" not in actions:
@@ -469,9 +470,34 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         if quantity:=proposal.get("physical_quantity"):
             proposed_quantities.setdefault(proposal["candidate"],set()).add(quantity)
     blocked={p["candidate"] for p in proposals if p["action"]=="reject"}
+    proposed_plans={proposal["candidate"]:proposal["preprocessing_plan"] for proposal in proposals
+                    if proposal.get("preprocessing_plan") and proposal["candidate"] not in blocked}
+    if proposed_plans:
+        from .statistical_preprocessing import prepare as prepare_statistics,references
+        approved_fields={field["id"] for source in approved_summary.get("sources",[]) for field in source["fields"]}
+        for cid,plan in proposed_plans.items():
+            if cid not in candidates or cid not in allowed:
+                continue
+            result=dict(candidate=cid,action="preprocess",status="条件不足",block_code="preprocessing_evidence_pending",
+                        next_step="recommendation_only")
+            results.append(result)
+            try:
+                if not references(plan)<=approved_fields:
+                    raise ValueError("换算依据引用了未审核的字段")
+                task=prepare_statistics(scan,plan,allowed[cid]["fields"],approved_summary.get("engineering_documents",[]))
+                prepared[(cid,"preprocess")]=task
+                result.update(status="通过",reason="已核实对象、完整统计窗口和换算依据，可执行时间聚合与单位换算组合。")
+                result.pop("next_step")
+            except (EcoDataError,ValueError,OSError,KeyError,TypeError,RuntimeError) as error:
+                result["reason"]=str(error)
     work=[]
     for proposal in proposals:
         cid,action=proposal["candidate"],proposal["action"]
+        if action=="preprocess":
+            if cid not in proposed_plans:
+                results.append(dict(candidate=cid,action=action,status="条件不足",block_code="preprocessing_plan_missing",
+                                    next_step="recommendation_only",reason="需补齐具体的统计窗口、面积引用和换算步骤"))
+            continue
         if action=="reject":
             results.append(dict(candidate=cid,action=action,status="未核验",
                                 reason="DeepSeek 明确反对融合"))
@@ -522,8 +548,14 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         if (cid,action) in seen:
             continue
         seen.add((cid,action))
+        if (cid,"preprocess") in prepared and action in {"align_time","convert_units"}:
+            continue
         row=dict(candidate=cid,action=action,online_action=online_action,status="条件不足",block_code="scope")
         results.append(row)
+        if (cid,"preprocess") in prepared and action=="fusion":
+            row.update(block_code="preprocessing_first",next_step="recommendation_only",status="先执行已核实前处理",
+                       reason="可先执行统计窗口统一和换算，再依据对象空间支持与可用留出样本评估融合。")
+            continue
         approved=allowed.get(cid,{})
         actions=approved.get("possible_actions",[])
         delegated=(isinstance(actions,list) and action in {'fusion','align_space','align_time'} and task_goal in TASK_GOALS and
@@ -713,7 +745,7 @@ def parse_decisions(raw):
         if not isinstance(item,dict): continue
         candidate,action=item.get("candidate"),item.get("action")
         if not isinstance(candidate,str) or not re.fullmatch(r"C[1-9]\d*",candidate): continue
-        if action not in ("fusion","align_time","align_space","compare_station_grid","convert_units","convert_format","quality_screen","direct","insufficient","reject","pending_goal"): continue
+        if action not in ("fusion","align_time","align_space","compare_station_grid","convert_units","convert_format","preprocess","quality_screen","direct","insufficient","reject","pending_goal"): continue
         goal=item.get("goal")
         if not isinstance(goal,str) or goal not in TASK_GOALS or goal=="auto":
             goal="unknown"
@@ -723,9 +755,11 @@ def parse_decisions(raw):
         steps=item.get("algorithm_steps",[])
         steps=[list(group) for group in steps if isinstance(group,list) and group and
                all(isinstance(step,str) and len(step)<=100 for step in group)] if isinstance(steps,list) else []
+        from .statistical_preprocessing import parse_plan
+        plan=parse_plan(item.get("preprocessing_plan"))
         out.append(dict(candidate=candidate,action=action,goal=goal,physical_quantity=quantity,
                         algorithm_steps=steps,algorithm_name=str(item.get("algorithm_name",""))[:100],
-                        reason=str(item.get("reason",""))[:1000]))
+                        reason=str(item.get("reason",""))[:1000],**({"preprocessing_plan":plan} if plan else {})))
     return out
 
 

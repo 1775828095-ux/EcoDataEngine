@@ -12,6 +12,7 @@ CHECKS = {
     "field_context": "字段说明、工程引用、坐标参考及标识或类别声明",
     "time_coverage": "时间支持、间隔和覆盖重叠关系",
     "annual_mean_comparison": "核对同一工程对象的平均年度输出与同年段逐年值的均值",
+    "preprocessing_plan": "核验指定统计窗口、对象和面积依据，试算时间聚合与单位换算方案",
     "data_quality": "抽样有效率和质量标记登记",
     "spatial_coverage": "地理坐标样本的外包范围重叠",
     "position_agreement": "可对应位置的数值差异或类别一致率",
@@ -55,6 +56,7 @@ class LocalChecks:
         self.station_matches = {}
         self.documents = [doc for doc in documents if doc.get("text")]
         self.contexts = {}
+        self.preprocessing_plans={}
 
     def __call__(self, candidate, check, approved):
         pair = self.candidates.get(candidate)
@@ -144,6 +146,20 @@ class LocalChecks:
         left,right,_=pair
         rows=[self.scan["rows"][item[0]] for item in (left,right)]
         fields=[left[2],right[2]]
+        if check=="preprocessing_plan":
+            from .statistical_preprocessing import prepare,PlanError
+            plan=self.preprocessing_plans.get(tuple(sorted([left[1],right[1]])))
+            if not plan:
+                return dict(status="unavailable",basis="preprocessing_plan_missing")
+            try:
+                task=prepare(self.scan,plan,[left[1],right[1]],self.documents)
+            except PlanError as error:
+                return dict(status="unavailable",basis="preprocessing_evidence_missing",reason=str(error))
+            except EcoDataError:
+                return dict(status="unavailable",basis="preprocessing_evidence_missing",
+                            reason="原版单位或时间引擎未认可换算条件，请核实单位维度、完整区间及统计方法")
+            return dict(status="checked",basis="statistical_preprocessing_verified",plan=task["plan"],
+                        methods=task["recipe_steps"][0],output_records=[len(frame) for frame in task["frames"]])
         if check=="annual_mean_comparison":
             from .annual_output_check import compare
             return compare(rows,fields)

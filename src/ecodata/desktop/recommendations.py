@@ -26,6 +26,7 @@ ALIGNMENT = {
 }
 
 from .station_grid import NAMES as STATION_METHODS
+from .statistical_preprocessing import METHODS as STATISTICAL_METHODS
 
 PREPARATION = {
     "units.harmonize":"原版物理单位换算",
@@ -36,6 +37,7 @@ PREPARATION = {
     "format.excel":"原版结构转换后导出 Excel",
     "format.geojson":"原版矢量及坐标系转换后导出 GeoJSON",
     **STATION_METHODS,
+    **STATISTICAL_METHODS,
 }
 
 ALGORITHM_NAMES = {

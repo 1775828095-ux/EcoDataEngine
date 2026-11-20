@@ -8693,3 +8693,10 @@ tests06.xml为73项定向通过；随后任务范围/组件页修复tests08.xml�
 官方/成熟成果核对并复用：SWAT+ Editor官方GitHub文档 https://swat-model.github.io/swatplus-editor-documentation/edit-inputs/weather/、官方程序化入口说明 https://swat-model.github.io/swatplus-editor-documentation/developers/ 与源仓库 https://github.com/swat-model/swatplus-editor，降水格式 https://docs.swat.tamu.edu/62.0.0/input-reference/pcp/。其气象索引与完整工程引用分离的定义支撑组件输出；本轮优先复用本库已有官方格式写出器，未新下载依赖、抄入优化器或给特定数据包设条件分支。
 
 本轮验收：独立数据处理公共入口PASS；SWAT最低降水组件与安全补齐PASS；具体推荐实际评分及作为变异父图PASS；完整原包写回/短时试读/导出PASS；任意五模型缺项自动补齐未验证、完整期水文运行未运行、独立精度提高未证明。用户不需要完整工程也能做相应数据处理，但不能让DS把未知流域拓扑当成真实工程。未推送GitHub；旧协议、用户原数据与历史结果未覆盖。
+
+
+## GitHub同步与队友更新合并
+
+本轮将当前本地实际平台更新整理为代码提交，未上传用户原始数据、运行环境、密钥、大型结果包或本机验证工具安装目录。发现队友PR4最新c347426尚未进本地运行版，因此保留该提交并合并其统计窗口、对象面积换算与确定性校验，未以本地旧文件覆盖。两处冲突分别保留主页面preprocess说明与operation_labels、three_phase的质量建议传递与preprocess处理，未修改科学算法或重跑数值研究实验。
+
+合并后的48项定向测试通过，0失败/错误，覆盖最小组件、线上推荐协议、质量/确认按钮、真实小型执行及队友统计前处理；不是全库回归或新原包完整运行。证据output/github_sync_20261120/tests.xml与teammate_merge.json。保留原运行源码到live_before_teammate_merge，合并代码同步回本地平台；已有两个脏Git工作区未覆盖。远端主分支推送结果以本轮sync_receipt.json为准；旧实验与数据不变。

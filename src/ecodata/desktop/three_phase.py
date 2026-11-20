@@ -158,6 +158,15 @@ def questions(scan,responses,catalogue,originals,details):
     by_pair={tuple(sorted(pair["fields"])):pair for pair in approved["candidates"]}
     for refs,pair in by_pair.items():
         decisions=dialogue[pair["id"]]["decisions"]
+        plans=[row["preprocessing_plan"] for row in decisions if row.get("preprocessing_plan")]
+        if plans:
+            from .statistical_preprocessing import references
+            plan=plans[-1]
+            if not references(plan)<=originals.keys():
+                continue
+            checker.preprocessing_plans[refs]=plan
+            pending.setdefault((refs,"preprocessing_plan"),"核对统计年份、对象关联和面积字段，试算换算步骤。")
+            wanted.update(references(plan))
         if any(row["action"] in {"insufficient","pending_goal"} for row in decisions):
             pending.setdefault((refs,"field_context"),"")
         periods={scan["rows"][originals[fid][0]].get("declared_output_period") for fid in refs}
@@ -180,7 +189,7 @@ def questions(scan,responses,catalogue,originals,details):
             result=checker(cid,check,pair)
             evidence.append(dict(candidate=cid,fields=list(refs),check=check,**explanation,**result))
         wanted.update(refs)
-    sampled={fid for item in evidence if item["check"] in {"numeric_samples","annual_mean_comparison"} for fid in item["fields"]}
+    sampled={fid for item in evidence if item["check"] in {"numeric_samples","annual_mean_comparison","preprocessing_plan"} for fid in item["fields"]}
     for fid in sorted(wanted-sampled):
         evidence.append(dict(candidate=fid,fields=[fid],check="numeric_samples",**checker.field_question(originals[fid])))
     return checker,evidence,wanted
@@ -247,10 +256,24 @@ def run(scan,summary,cache,mock,key,progress,feedback):
             wanted.update(item["fields"])
         subset=[dict(source,fields=[field for field in source["fields"] if field["id"] in wanted])
                 for source in catalogue["sources"] if any(field["id"] in wanted for field in source["fields"])]
-        final=dict(catalogue,sources=subset,engineering_documents=[],engineering_inventory=[],
+        cited_documents={doc for plan in checker.preprocessing_plans.values() for source in plan["sources"]
+                         for doc in source["evidence_documents"]}
+        documents=[doc for doc in catalogue["engineering_documents"] if doc["id"] in cited_documents]
+        final=dict(catalogue,sources=subset,engineering_documents=documents,engineering_inventory=[],
                    final_evidence=dict(final_round=True,results=evidence,previous_decisions=prior))
         updates=catalog_decision.read_catalogue(catalog_decision.prepare(final),cache,mock,key,progress,
                                                lambda event:show(dict(event,phase=3)),current,reply)
+        verified_plans={tuple(sorted(item["fields"])):item["plan"] for item in evidence
+                        if item["check"]=="preprocessing_plan" and item["status"]=="checked"}
+        for allowed,answer in updates:
+            for decision in answer.get("decisions",[]):
+                if not isinstance(decision,dict):
+                    continue
+                refs=decision.get("fields",[])
+                if (isinstance(refs,list) and len(refs)==2 and all(isinstance(fid,str) and fid in allowed for fid in refs)
+                        and decision.get("action") not in {"reject","direct"} and not decision.get("preprocessing_plan")):
+                    if plan:=verified_plans.get(tuple(sorted(refs))):
+                        decision["preprocessing_plan"]=plan
         reply["field_uses"].update(field_uses(updates,originals))
         replaced={tuple(sorted(row["fields"])) for allowed,answer in updates for row in answer.get("decisions",[])
                   if isinstance(row,dict) and isinstance(row.get("fields"),list) and len(row["fields"])==2
@@ -278,7 +301,7 @@ def run(scan,summary,cache,mock,key,progress,feedback):
         rows=[row for row in dialogue[cid]["decisions"] if row["action"]!="convert_format"]
         reply["decisions"].extend(rows)
         gate.extend(rows)
-        if rows and not any(row["action"] in {"reject","direct","fusion","quality_screen"} for row in rows):
+        if rows and not any(row["action"] in {"reject","direct","fusion","quality_screen","preprocess"} for row in rows):
             gate.append(dict(candidate=cid,action="fusion",goal="evaluate_gain",
                              physical_quantity=next((row["physical_quantity"] for row in rows if row.get("physical_quantity")),None),
                              reason="条件允许时保留融合试跑"))
