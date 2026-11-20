@@ -98,6 +98,11 @@ def _netcdf(raw):
 
 def inspect_project(payload,converted_zip=None,namelist_path=None):
     files=read_archive(payload)
+    return inspect_project_files(files,converted_zip,namelist_path,hashlib.sha256(payload).hexdigest())
+
+
+def inspect_project_files(files,converted_zip=None,namelist_path=None,archive_sha256=None):
+    """Same native validator for an already bound, input-only resource mapping."""
     candidates=[n for n in files if PurePosixPath(n).name=='namelist.input']
     if namelist_path is not None:
         if namelist_path not in candidates:raise ValueError('指定的namelist.input不在工程内')
@@ -108,7 +113,7 @@ def inspect_project(payload,converted_zip=None,namelist_path=None):
     parent=PurePosixPath(main).parent
     def sibling(name):return str(parent/name)
     report=dict(schema='wrf-external-inspection-v1',native_model_executed=False,
-                uploaded_project_sha256=hashlib.sha256(payload).hexdigest(),namelist=main,
+                uploaded_project_sha256=archive_sha256,namelist=main,
                 file_count=len(files),errors=[],warnings=[],native_inputs={},wps_companions={},
                 replacement_checked=False,scientific_settings_changed=False,
                 scope='Read-only structure and pressure assembly compatibility; no engine/physics-table compatibility or native run validation')

@@ -3,6 +3,7 @@
 No local candidate list, uncertainty requirement, evaluator or mutation driver.
 """
 from pathlib import Path
+from hashlib import sha256
 import json
 import numpy as np
 import pandas as pd
@@ -56,6 +57,16 @@ def search_port(port,arrays,sources,folder,*,budget=None,seed=11,progress=None,r
             evidence='Actual native port binding '+port.resource+' '+str(port.binding.get('sha256',''))+'; model soft preferences and unprovided physical bounds remain unknown')
     if request_builder is not None:
         request=request_builder(request)
+    request['completed_preparation']=[r for source in sources for r in source.get('recommendation_preparation',[])]
+    request['completed_preparation'].append(dict(operation='engineering.port_binding',status='PASS',
+        resource=port.resource,variable=port.quantity,evidence='Sources actually aligned to the native port; source quality gates passed',
+        input_sha256=[sha256(item.content).hexdigest() for item in inputs]))
+    if all(s.get('product') for s in sources):
+        request['completed_preparation'].append(dict(operation='engineering.precipitation_adaptation',status='PASS',
+            evidence='Inspected precipitation products adapted and sampled on actual native port',
+            input_sha256=[sha256(item.content).hexdigest() for item in inputs]))
+    input_folder=folder/'inputs';input_folder.mkdir()
+    for item in inputs:(input_folder/item.filename).write_bytes(item.content)
     try:result=process_current_input(inputs,request,folder/'search',budget=budget,seed=seed,progress=progress)
     except ValueError as exc:
         message=str(exc)

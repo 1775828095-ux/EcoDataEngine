@@ -35,7 +35,7 @@ def resolution(row):
     return interval,(x,y) if x and y else axes.get("pixel")
 
 # Public model input roles, from the teammate's preparation profiles.
-MODELS={"swat_plus":"SWAT+","wrf":"WRF","cmaq":"CMAQ","camx":"CAMx","calpuff":"CALPUFF"}
+MODELS={"data_only":"仅数据处理（融合/对齐，不生成模型工程）","swat_plus":"SWAT+","wrf":"WRF","cmaq":"CMAQ","camx":"CAMx","calpuff":"CALPUFF"}
 MODEL_USES={
     "swat_plus":{"precipitation":"气象驱动：降水","air_temperature":"气象驱动：气温"},
     "wrf":{"air_temperature":"气象分析或初始及边界资料：气温，具体类别待核验"},
@@ -272,12 +272,15 @@ def discover(scan, model_id=None, task_goal="auto"):
     if scan.get("shallow"):
         return dict(stage="decision",catalog_first=True,
                     target_model=dict(id=model_id,name=MODELS[model_id]) if model_id in MODELS else None,
-                    sources=[],candidates=[],engineering_documents=[],engineering_inventory=[]), {}
+                    sources=[],candidates=[],engineering_documents=[],engineering_inventory=[],
+                    inspection_mode='on_demand_tools' if scan.get('on_demand') else 'legacy_shallow',
+                    initial_directory=scan.get('initial_directory'),
+                    **({'task_goal':task_goal} if task_goal in TASK_GOALS else {})), {}
     from .native_dispatch import inspect
     native=inspect(scan,model_id)
     native_roles={claim["file"]:claim["role"] for claim in native.get("claims",[])}
     model_roles=[]
-    if model_id in MODELS:
+    if model_id in MODELS and model_id!='data_only':
         from ecodata.algorithms.profile_matching import model_table
         model_roles=[role for role in model_table(model_id)["roles"] if not role["record_only"]]
     from .research_dispatch import discover as research_tasks
@@ -312,6 +315,7 @@ def discover(scan, model_id=None, task_goal="auto"):
         stage="decision", catalog_first=True,
         **({"task_goal":task_goal} if task_goal in TASK_GOALS else {}),
         target_model=dict(id=model_id,name=MODELS[model_id]) if model_id in MODELS else None,
+        saved_input_context=scan.get('saved_input_context'),
         sources=sources,candidates=[],engineering_documents=docs,
         project_context_document_ids=[d["id"] for d in docs if d["scope"]=="project_context"],
         engineering_inventory=[dict(id=f"M{i}",kind=row["format"],nested_archive=bool(kind(row["name"])),
@@ -450,7 +454,16 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
     model_id=target.get("id") if isinstance(target,dict) else None
     task_goal=approved_summary.get("task_goal","auto")
     from .reference_search import plan as reference_plan
-    proposals=reply.get("decisions",[])
+    proposals=list(reply.get("decisions",[]))
+    if task_goal=='evaluate_gain':
+        # A QA suggestion is a prerequisite, not a replacement for the explicit
+        # user task. No algorithm, score or winner is introduced here.
+        for cid in sorted(allowed.keys() & candidates.keys()):
+            related=[row for row in proposals if row.get('candidate')==cid]
+            if related and any(row.get('action')=='quality_screen' for row in related) and not any(
+                row.get('action') in {'fusion','insufficient','pending_goal','reject','direct'} for row in related):
+                proposals.append(dict(candidate=cid,action='insufficient',goal=task_goal,
+                    reason='显式用户目标仍需比较处理价值；质量筛查建议交给公共质量门，不能替代工程任务核验。'))
     proposed_quantities={}
     for proposal in proposals:
         if quantity:=proposal.get("physical_quantity"):
@@ -467,9 +480,17 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
             continue
         if cid not in allowed or cid not in candidates:
             continue
+        if action=='quality_screen':
+            results.append(dict(candidate=cid,action=action,status='待执行质量核验',next_step='runtime_quality_gate',
+                reason='质量筛查建议不是融合目标。若同一候选进入公共工程处理，将由原始输入和输出质量门实际检查；额外QA规则缺少实现或证据时仍拒绝执行。'))
+            continue
         goal=task_goal if isinstance(task_goal,str) and task_goal in TASK_GOALS else proposal.get("goal","unknown")
         ready_reference = reference_plan(scan,candidates[cid],model_id)
 
+        if action=="pending_goal" and task_goal in TASK_GOALS:
+            # A declared user goal is separate from missing validation evidence.
+            # Continue the same unit/time/support checks as an insufficient proposal.
+            action="insufficient"
         if action=="pending_goal" and not ready_reference:
             results.append(dict(candidate=cid,action=action,status="待确认用途",
                                 reason="暂缺融合用途依据，继续本地核验候选的时间和空间对齐条件。"))
@@ -505,11 +526,13 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         results.append(row)
         approved=allowed.get(cid,{})
         actions=approved.get("possible_actions",[])
-        if cid not in candidates or not isinstance(actions,list) or action not in actions:
+        delegated=(isinstance(actions,list) and action in {'fusion','align_space','align_time'} and task_goal in TASK_GOALS and
+            scan.get('native_model_probes',{}).get(model_id,{}).get('status')=='project' and 'fusion' in actions)
+        if cid not in candidates or not isinstance(actions,list) or (action not in actions and not delegated):
             row["reason"]="建议不在本地扫描且经审核的候选范围内"
             continue
         left,right,detected=candidates[cid]
-        if approved.get("fields")!=[left[1],right[1]] or action not in detected:
+        if approved.get("fields")!=[left[1],right[1]] or (action not in detected and not delegated):
             row["reason"]="建议的字段或操作与本地候选不符"
             continue
         ai,_,a=left
@@ -539,6 +562,10 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
             row["reason"]="I/O API 边界和内部字段承担不同模型角色。只有经工程确认来源及角色后才能拿来比较或融合。"
             continue
         try:
+            if delegated:
+                prepared[(cid,action)]=dict(action=action,route='original_engineering',fields=[(ai,a['name']),(bi,b['name'])])
+                row.update(status='待工程核验',next_step='original_workbench',reason='已识别实际工程控制与同物理量候选；交由公共工程输入端口服务核验日界、依赖、拟合隔离及真实数值效果。此状态不是融合或质量PASS。')
+                continue
             if action in {"convert_units","convert_format"}:
                 from .pair_processing import conversion_task
                 if action=="convert_units" and unit_check["status"] not in {"convertible","equivalent"}:
@@ -666,6 +693,17 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
             row["reason"]=str(exc)
     assert_current(scan)
     return results,prepared
+
+
+def deferred_quality_check(row,rows):
+    """A pending QA obligation is safe to defer only to a bound checked route."""
+    return (row.get('action')=='quality_screen' and row.get('next_step')=='runtime_quality_gate'
+        and any(other.get('candidate')==row.get('candidate') and other.get('next_step')=='original_workbench' for other in rows))
+
+
+def blocking_checks(rows):
+    return [row for row in rows if row.get('status')!='通过' and row.get('next_step')!='original_workbench'
+        and not deferred_quality_check(row,rows)]
 
 def parse_decisions(raw):
     rows=raw.get("decisions")

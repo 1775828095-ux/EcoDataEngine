@@ -73,6 +73,7 @@ def waiting(progress, stage, attempt):
 def read_reply(response, update):
     started = time.monotonic()
     content = []
+    tool_calls = {}
     result = {"choices":[]}
     finish = None
     first = True
@@ -97,7 +98,10 @@ def read_reply(response, update):
         if data == b"[DONE]":
             if finish is None:
                 raise StreamInterrupted("stream_missing_finish_status")
-            result["choices"] = [{"finish_reason":finish,"message":{"content":"".join(content)}}]
+            message = {"role":"assistant", "content":"".join(content) or None}
+            if tool_calls:
+                message['tool_calls'] = [tool_calls[i] for i in sorted(tool_calls)]
+            result["choices"] = [{"finish_reason":finish,"message":message}]
             return result
         chunk = json.loads(data)
         if chunk.get("error"):
@@ -109,6 +113,13 @@ def read_reply(response, update):
             if choice.get("index",0) != 0:
                 continue
             delta = choice.get("delta",{})
+            for part in delta.get('tool_calls', []):
+                call = tool_calls.setdefault(part['index'], dict(id='', type='function', function=dict(name='', arguments='')))
+                if part.get('id'):
+                    call['id'] = part['id']
+                function = part.get('function', {})
+                call['function']['name'] += function.get('name', '')
+                call['function']['arguments'] += function.get('arguments', '')
             if delta.get("content"):
                 update("正在生成结果")
                 content.append(delta["content"])

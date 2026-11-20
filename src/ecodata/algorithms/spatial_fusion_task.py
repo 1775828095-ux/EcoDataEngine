@@ -25,7 +25,7 @@ from ecodata.evaluation.quality_gates import RawInputQualityGate,ResultQualityGa
 from ecodata.io.structures import table_frame
 from ecodata.algorithms.spatial_selection_protocol import split_locations, fixed_support, xskillscore_assessment
 
-VERSION = 'spatial_relationship_fusion_v1_2_selection_assessment'
+VERSION = 'spatial_relationship_fusion_v1_3_verified_recommendations'
 COMPONENTS = {
     'spatial.source': dict(kind='source',backend='xarray / SciPy cKDTree sampling'),
     'spatial.observations': dict(kind='source',backend='Explicit retained-observation matrix; held labels absent'),
@@ -368,7 +368,8 @@ class SpatialTask:
 
 
 class SpatialSearch:
-    def __init__(self,task,folder,budget,seed,model=None):
+    def __init__(self,task,folder,budget,seed,model=None,progress=None):
+        self.progress=progress
         self.task=task; self.folder=Path(folder); self.request=task.request; self.rng=np.random.default_rng(seed)
         self.budget=budget
         self.account=SearchAccount(budget['objective_limit'],budget['wall_seconds'],total_calls=budget.get('total_call_limit'))
@@ -381,6 +382,7 @@ class SpatialSearch:
             declaration=dict(enabled=False,evidence='Existing stopping thresholds not calibrated for this spatial task; numerical/time budget applies')
         self.stopper=SearchStopper(declaration,np.finfo(float).eps)
         self.records={};self.rows=[];self.transitions=[];self.attempts=0;self.novel_executions=0;self.numerical_rounds=0
+        self.recommendation_receipts=[];self.recommended_parents=[]
         self.promotion_baseline=None;self.promotion_support=False;self.folds=[];self.executors=[];self.state_seen={}
         meta=task.observations.drop_duplicates('station_id').sort_values(['longitude','latitude','station_id'])
         explicit=task.evaluation_observations is not None and not task.evaluation_observations.empty
@@ -439,6 +441,64 @@ class SpatialSearch:
         for left,right in zip(sources,sources[1:]):
             seeds.append(self.intern('spatial.blend',[left,right],dict(weight=.5)))
         return list(dict.fromkeys(seeds))
+
+    def validate_recommendations(self):
+        """Compile ordered recipes into real typed parent edges, then score them."""
+        for recipe in self.request.get('recommended_recipes',[]):
+            receipt=dict(recipe=recipe,status='REJECTED',keys=[])
+            try:
+                current=None
+                for operation in recipe['steps']:
+                    if operation in {'engineering.port_binding','engineering.precipitation_adaptation'}:
+                        if current is not None:raise ValueError('Engineering preparation must precede numerical nodes')
+                        evidence=[e for e in self.request.get('completed_preparation',[])
+                                  if e.get('operation')==operation and e.get('status')=='PASS']
+                        if not evidence:raise ValueError('Engineering preparation has not actually passed: '+operation)
+                        receipt.setdefault('preparation',[]).extend(evidence)
+                        continue
+                    if operation=='spatial.regrid.conservative':
+                        if current is not None:raise ValueError('Grid preparation must precede spatial estimation')
+                        evidence=self.request.get('completed_preparation',[])
+                        if not any(e.get('operation')==operation and e.get('status')=='PASS' for e in evidence):
+                            raise ValueError('Recommended conservative regrid has not actually been executed')
+                        receipt['preparation']=evidence
+                        continue
+                    if operation=='spatial.blend':
+                        if len(self.task.fields)!=2:raise ValueError('Recommended blend requires exactly two bound same-variable fields')
+                        left=current or self.leaves[0]
+                        current=self.intern(operation,[left,self.leaves[1]],dict(weight=.5))
+                    elif operation=='spatial.idw':
+                        if current is not None:raise ValueError('IDW does not consume an upstream estimated field')
+                        current=self.intern(operation,[],dict(power=2.))
+                    elif operation in {'spatial.residual_idw','spatial.affine','spatial.ratio'}:
+                        if operation!='spatial.residual_idw' and not self.request.get('allow_training'):
+                            raise ValueError('Recommended fitted operation requires explicit training permission')
+                        if current is None:
+                            if not self.task.fields:raise ValueError('Recommended correction needs an actual background parent')
+                            current=self.leaves[0]
+                        current=self.intern(operation,[current],dict(power=2.) if operation=='spatial.residual_idw' else {})
+                    else:raise ValueError('Unsupported recommended operation for spatial ports: '+operation)
+                if current is None:
+                    receipt['status']='PREPARATION_ONLY'
+                else:
+                    for node in self.nodes(current):
+                        if len(node.inputs)!=len(self.input_names(node.operation)):
+                            raise ValueError('Recommended graph has missing required parent ports')
+                    cached=any(r['key']==current for r in self.rows)
+                    self.execute(current,'recommended_initial')
+                    row=next((r for r in self.rows if r['key']==current),None)
+                    receipt.update(keys=[current],cache_hit=cached,status=row['status'] if row else 'NOT_EXECUTED_BUDGET',
+                        metrics=row.get('metrics') if row else None,error=row.get('error') if row else None)
+                    if row and row['status']=='PASS':
+                        self.recommended_parents.append(current)
+            except (ValueError,KeyError,IndexError) as exc:receipt['error']=str(exc)
+            self.recommendation_receipts.append(receipt)
+
+    def recommendation_parent(self):
+        while self.recommended_parents:
+            key=self.recommended_parents.pop(0)
+            if self.records[key]['operation'] in {'spatial.blend','spatial.idw','spatial.residual_idw'}:return key
+        return None
 
     def comparison_report(self,best):
         families={}
@@ -643,6 +703,14 @@ class SpatialSearch:
             if getattr(exc,'details',{}).get('budget_exhausted'):return
             row.update(status='FAILED',error=str(exc))
         self.rows.append(row);self.novel_executions+=1
+        if self.progress:
+            best=self.best()
+            stage={'initial':'初始候选','family_baseline':'单源/融合对照','mutation':'变异候选','confirmed_initial':'推荐初始图'}.get(phase,phase)
+            route=' → '.join(n.operation for n in nodes)
+            result=(f"RMSE {row['metrics']['RMSE']:.5g}，MAE {row['metrics']['MAE']:.5g}，样本 {row['metrics']['count']}"
+                    if row['status']=='PASS' else '失败：'+row['error'])
+            current=f"；当前最佳 RMSE {best['metrics']['RMSE']:.5g}" if best else '；暂无通过候选'
+            self.progress(f"{stage} #{len(self.rows)} · {key} · {route} · {result}{current}")
 
     def best(self):
         rows=[r for r in self.rows if r['status']=='PASS']
@@ -658,6 +726,11 @@ class SpatialSearch:
 
     def candidate(self,current,family,rng,destruction=None):
         self.attempts+=1;row=self.records[current]
+        if family=='recommendation_parameters':
+            parameter='weight' if row['operation']=='spatial.blend' else 'power'
+            domain=[.25,.5,.75] if parameter=='weight' else [1.,2.,3.]
+            values=[v for v in domain if v!=row['parameters'][parameter]]
+            return self.intern(row['operation'],row['parents'],dict(row['parameters'],**{parameter:float(rng.choice(values))}))
         if family in {'algorithm','source'} or (destruction and destruction['reset']):
             child=str(rng.choice(self.leaves))
         elif family=='parameters' and row['operation'] in {'spatial.idw','spatial.residual_idw','spatial.blend'}:
@@ -750,7 +823,12 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
         raise ValueError('Custom multiobjective preference scoring is not yet supported for the new spatial ports')
     task=SpatialTask.build(parsed,request,audit)
     save(folder/'request.json',dict(request=request,inputs=audit,budget=budget,seed=seed,version=VERSION))
-    search=SpatialSearch(task,folder,budget,seed,model=model);search.budget=budget
+    if progress:progress('搜索准备：按固定评价队列比较真实候选；评分不等于独立实测精度，搜索不保证全局最优')
+    search=SpatialSearch(task,folder,budget,seed,model=model,progress=progress);search.budget=budget
+    search.validate_recommendations()
+    if progress:
+        for receipt in search.recommendation_receipts:
+            progress('推荐契约核验：'+json.dumps(receipt,ensure_ascii=False))
     leaves=sorted(search.leaves,key=lambda k:(search.portraits.order_key(k),k)) if search.portraits else search.leaves
     seed_receipt=[]
     requested=request.get('initial_algorithms',[])
@@ -778,8 +856,10 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     initial_key=initial['key'];search.stopper.start(initial)
     backend=request.get('mutation_control','random')
     if backend not in {'random','none'}:raise ValueError('Spatial task supports random mutation or explicit no-mutation control')
+    if progress:progress('开始变异搜索；缓存复用不重复记为新候选评价' if backend=='random' else '本请求关闭变异，仅比较实际候选')
     optimizer=random_graph_search(search,request,dict(portraits_enabled=search.portraits is not None)) if backend=='random' else dict(backend='none')
     best=search.best()
+    if progress:progress(f"搜索停止 · 已评价 {len(search.rows)} 图，提议 {search.attempts} 次，真实节点调用 {search.account.receipt()['used']}；预算内最佳 {best['key']}，RMSE {best['metrics']['RMSE']:.5g}。正在生成产品及回读。")
     comparison=search.comparison_report(best)
     out,trace=search.product(best['key']);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
     with xr.open_dataset(path,engine='h5netcdf') as readback:xr.testing.assert_equal(out,readback.load())
@@ -807,6 +887,7 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     else:confirm=dict(status='NO_SEPARATE_DATE_BLOCK',used_for_selection=False)
     groups=[dict(held_station_ids=f['held'],training_station_ids=f['train'],reference_sha256=sha256(f['reference'].tobytes()).hexdigest()) for f in search.folds]
     result=dict(status='PASS',version=VERSION,product=str(path),best=best,initial_key=initial_key,
+        recommendation_validation=search.recommendation_receipts,
         confirmed_initial=seed_receipt,optimizer=optimizer,counts=dict(evaluated=len(search.rows),proposals=search.attempts),
         stop_reason=search.stopper.reason or ('BUDGET_OR_PROPOSAL_LIMIT' if backend=='random' else 'NO_MUTATION_CONTROL'),
         selected_graph=dict(key=best['key'],records={n.id:search.records[n.id] for n in search.nodes(best['key'])}),

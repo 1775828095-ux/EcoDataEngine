@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def model_request(request, model_id, *, daily_amount=False):
-    if not model_id:
+    if not model_id or model_id=='data_only':
         return request
     from ecodata.algorithms.field_mutation import resolve_registered_policy
     from ecodata.algorithms.profile_matching import model_table

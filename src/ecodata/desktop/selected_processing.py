@@ -33,7 +33,8 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
             else:
                 raise ValueError("该任务未绑定可执行入口")
         except Exception as exc:
-            failures.append(dict(task=task_id,reason=str(exc)))
+            from .issues import exception
+            failures.append(dict(task=task_id,reason=str(exc),issues=exception(exc)))
             continue
         formats.extend(result["source_formats"])
         outputs.append(result["target_format"])

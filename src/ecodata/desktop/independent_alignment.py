@@ -101,10 +101,16 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
             request=dict(task="multisource",variable="precipitation",unit="mm",
                 physical_variable="precipitation",semantic_type="continuous",temporal_semantics="accumulation",
                 nonnegative=True,processing_goal="spatial_fusion",initial_algorithms=task["seeds"])
+            from ecodata.algorithms.platform_search import with_recommendations
+            request=with_recommendations(request,[dict(id=str(i),task=task_id,steps=recipe,scope=dict(variable='precipitation'))
+                for i,recipe in enumerate(task['recipes'])])
+            request['completed_preparation']=[dict(operation='spatial.regrid.conservative',status='PASS',record=transformed.record.as_dict())]
             search_folder=folder/f"search-{number}"
             search=submit(inputs,request,search_folder,model_id=model_id,daily_amount=True,progress=progress)
             rankings=ranked_candidates(search_folder,search)
             searches[task_id]=dict(evidence=fusion_evidence(search),best=search["best"],
+                search_folder=str(search_folder),
+                recommendation_validation=search.get('recommendation_validation',[]),
                 confirmed_initial=search["confirmed_initial"],selected_graph=search["selected_graph"],
                 rankings=rankings,pareto_comparison=pareto_comparison(rankings),
                 portrait_strategy=search.get("portrait_strategy"),soft_guidance=search["soft_guidance"])

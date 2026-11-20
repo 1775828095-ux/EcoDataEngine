@@ -19,6 +19,7 @@ from ecodata.core.exceptions import SchemaError
 
 MAX_BYTES = 100 * 1024 * 1024
 MAX_FILES = 3000
+FORBIDDEN_INPUT_SUFFIXES={".exe", ".dll", ".bat", ".cmd", ".ps1", ".py", ".sh", ".com", ".scr", ".lnk"}
 ENGINE_SHA256 = "e757daf64a597ca2da80f12ff6a0075c4e8260c6fcf871f8da979aef21a37db3"
 ROOT = Path(__file__).resolve().parents[3]
 _LOCK = threading.Lock()
@@ -46,7 +47,7 @@ def read_project(payload: bytes) -> dict[str, bytes]:
                     raise SchemaError(f"ZIP含不安全路径：{name}")
                 if info.is_dir():
                     continue
-                if path.suffix.lower() in {".exe", ".dll", ".bat", ".cmd", ".ps1", ".py", ".sh", ".com", ".scr", ".lnk"}:
+                if path.suffix.lower() in FORBIDDEN_INPUT_SUFFIXES:
                     raise SchemaError(f"工程仅接收数据；请移除程序或脚本：{name}")
                 if name.casefold() in {n.casefold() for n in files}:
                     raise SchemaError(f"ZIP有重名文件：{name}")

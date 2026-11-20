@@ -204,6 +204,9 @@ def field_uses(responses,originals):
 
 
 def run(scan,summary,cache,mock,key,progress,feedback):
+    if scan.get('on_demand'):
+        from .file_agent import run as inspect_files
+        return inspect_files(scan,summary,cache,mock,key,progress,feedback)
     reply=dict(mode="模拟；真实 API 未调用" if mock else "DeepSeek API",failures=[],batch_count=0,
                local_checks=[],api_receipts=[],reused_batches=0,decisions=[])
     display_index=0
@@ -274,16 +277,13 @@ def run(scan,summary,cache,mock,key,progress,feedback):
         candidates[cid]=(left,right,[action for action in actions if action!="convert_format"])
         rows=[row for row in dialogue[cid]["decisions"] if row["action"]!="convert_format"]
         reply["decisions"].extend(rows)
-        gate.extend(row for row in rows if row["action"]!="quality_screen")
+        gate.extend(rows)
         if rows and not any(row["action"] in {"reject","direct","fusion","quality_screen"} for row in rows):
             gate.append(dict(candidate=cid,action="fusion",goal="evaluate_gain",
                              physical_quantity=next((row["physical_quantity"] for row in rows if row.get("physical_quantity")),None),
                              reason="条件允许时保留融合试跑"))
     progress("正在核对本地执行入口并整理算法组合…")
     checked,gated=discovery.check(scan,candidates,dict(decisions=gate),approved,station_matches=checker.station_matches)
-    checked.extend(dict(candidate=row["candidate"],action="quality_screen",status="质量筛查建议",
-                        next_step="recommendation_only",block_code="quality_screen_recipe_unavailable",
-                        reason=row["reason"]) for row in reply["decisions"] if row["action"]=="quality_screen")
     from .fusion_review import HARD_STOPS
     for row in checked:
         if row["action"]=="fusion" and row["status"]!="通过" and row.get("block_code") and row["block_code"] not in HARD_STOPS:

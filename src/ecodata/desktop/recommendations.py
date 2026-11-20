@@ -131,6 +131,12 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
                 recipes=[["engineering.precipitation_adaptation","engineering.port_binding","engineering.port_search"]] if action=="fusion" else [["engineering.precipitation_adaptation","engineering.port_binding"]]
             else:
                 recipes=[["engineering.port_binding"]]
+            if action=='fusion':
+                # Concrete existing estimators, not workflow verbs pretending
+                # to be numerical nodes. Applicability is checked after binding.
+                from ecodata.algorithms.spatial_fusion_task import COMPONENTS
+                prefix=recipes[0][:-1] if recipes[0][-1]=='engineering.port_search' else recipes[0]
+                recipes=[[*prefix,op] for op in ('spatial.blend','spatial.residual_idw','spatial.idw') if op in COMPONENTS]
         elif action=="fusion":
             recipes=[[algorithm] for algorithm in task["state"]["eligible"]]
         elif action=="align_time":
@@ -168,6 +174,30 @@ def algorithm_registry():
             {**ALGORITHMS,**ENGINEERING,**ALIGNMENT,**PREPARATION}.items()}
 
 
+def recommend_plan(plan, decisions, *, mock=False, api_key=None, progress=None):
+    """One shared online recommendation protocol over the checked recipe catalog."""
+    from . import service
+    receipts=[]
+    try:
+        if progress:progress('DeepSeek正在从已核验的具体算法组合中推荐；推荐仍须真实数值验证')
+        approved=service.preview(plan)
+        reply=service.send(approved,approved.digest,mock,api_key=api_key,
+            on_progress=progress,on_receipt=receipts.append)
+        if not reply.get('recommendations'):raise ValueError('线上未返回目录内的可执行组合')
+        rows=reply['recommendations']
+        for row in rows:row['recommendation_origin']='deepseek' if not mock else 'simulated'
+        return rows,dict(status='SIMULATED' if mock else 'COMPLETED',api_receipts=receipts,request_sha256=approved.digest)
+    except (ValueError,OSError,TimeoutError) as exc:
+        # Recommendation is advisory: existing checked fallback is allowed,
+        # but must never be presented as an online algorithm choice.
+        rows=from_decisions(plan,decisions)
+        for row in rows:
+            row['recommendation_origin']='platform_fallback'
+            row['reason']='线上具体算法推荐未完成，以下为平台已有候选补充，不是DS已验证方案。'+row['reason']
+        if progress:progress('线上算法推荐未完成；保留平台可核验候选：'+str(exc))
+        return rows,dict(status='PLATFORM_FALLBACK',error=str(exc),api_receipts=receipts)
+
+
 def from_decisions(summary,decisions):
     from collections import defaultdict
 
@@ -185,7 +215,7 @@ def from_decisions(summary,decisions):
             groups=[group for item in preferred for group in item.get("algorithm_steps",[])]
             matches=[option for option in options if any(option["steps"]==group for group in groups)]
             if not matches and groups:
-                proposed={step for group in groups for step in group}
+                proposed={step for group in groups for step in group if not step.startswith('engineering.')}
                 matches=[option for option in options if proposed.intersection(option["steps"])]
             chosen=matches[:4] or options[:1]
             for option in chosen:
@@ -204,6 +234,38 @@ def from_decisions(summary,decisions):
     return validate({"recommendations":entries},summary)
 
 
+def explanation(task,reason):
+    """Display inspectable input facts separately from the model's suggestion."""
+    facts=[];unknown=[]
+    for field in task.get('context',{}).get('pair_details',[]):
+        source=field.get('id') or field.get('source') or '未绑定来源'
+        variable=field.get('variable_name') or field.get('header') or '未知变量'
+        facts.append(f"{source} · {variable} · 单位 {field.get('unit') or 'UNKNOWN'}")
+        timing=field.get('temporal_semantics')
+        if not timing and field.get('time_cell_methods'):
+            timing='原始 cell_methods='+','.join(field['time_cell_methods'])
+        facts.append(f"  时间：{timing or 'UNKNOWN'}；采样：{field.get('time_resolution_class') or 'UNKNOWN'}")
+        if field.get('grid_interval'):
+            grid=[]
+            for axis,spacing in field['grid_interval'].items():
+                if isinstance(spacing,dict):
+                    unit={'degrees_east':'度（经度）','degrees_north':'度（纬度）'}.get(spacing.get('unit'),spacing.get('unit') or '单位未知')
+                    grid.append(f"{ {'x':'横向','y':'纵向'}.get(axis,axis)}间距 {spacing.get('step','UNKNOWN')} {unit}")
+            facts.append('  网格：'+'；'.join(grid))
+        if not field.get('unit'):unknown.append(source+' 的单位未确认')
+        if not timing:unknown.append(source+' 的时间统计含义需核实')
+    return dict(facts=facts,reason=reason,checks=task.get('engineering_note') or '执行前仍需通过公共契约与质量检查',
+        unknowns=unknown,boundary='这是适用性建议，不是效果保证；是否保留由同一评价队列上的真实执行决定。')
+
+
+def explanation_text(row):
+    detail=row.get('explanation') or {}
+    return '\n'.join(['数据依据',*(detail.get('facts') or ['尚无结构化数据依据，不能由推荐文字推断已核实。']),
+        '', '推荐理由',row.get('reason') or '未提供', '', '平台检查与前提',detail.get('checks') or '等待契约核验',
+        '', '仍需核实',*(detail.get('unknowns') or ['未列出的信息不代表全部已确认；以执行检查记录为准。']),
+        '',detail.get('boundary') or '推荐不代表精度提升，必须经过真实评价。'])
+
+
 def validate(raw, summary):
     entries=raw.get("recommendations")
     if not isinstance(entries,list):
@@ -220,7 +282,11 @@ def validate(raw, summary):
             continue
         if key in options:
             seen.add(key)
-            recommendations.append(dict(task=key[0],**options[key],reason=str(entry.get("reason",""))[:600]))
+            task=next(t for t in summary['tasks'] if t['id']==key[0])
+            quantities={f.get('physical_family') for f in task['context'].get('pair_details',[])}-{None,'UNKNOWN'}
+            scope=dict(variable=next(iter(quantities))) if len(quantities)==1 else {}
+            reason=str(entry.get('reason',''))[:600]
+            recommendations.append(dict(task=key[0],**options[key],scope=scope,reason=reason,explanation=explanation(task,reason)))
         elif key[0] in advisory_tasks and key[1]=="advisory":
             name=str(entry.get("name","")).strip()[:100]
             if not name:

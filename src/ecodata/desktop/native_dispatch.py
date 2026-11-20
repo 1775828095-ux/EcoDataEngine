@@ -38,6 +38,24 @@ def inspect(scan, model):
             if document.get("model_id",model)==model and (document["schema"]!="ecodata.cmaq.local-project.v1" or model=="cmaq"):
                 declared.append(dict(file=name,schema=document["schema"],operation=document.get("operation")))
     converter = load_converter(model)
+    # A registered, byte-exact scientific declaration uses the same admission
+    # path as an uploaded engineering-semantics document. It is not a claim
+    # that the agent opened the control this round, or a native-model PASS.
+    if scan.get('saved_input_context'):
+        from ecodata.models.input_context import find
+        context=find(scan['path'],model)
+        if context:
+            for filename,doc in context.get('documents',{}).items():
+                if doc.get('schema')=='ecodata.engineering-semantics.v1' and doc.get('model_id')==model and any(
+                    entry.get('role')=='model_input' and entry.get('confirmed') is True for entry in doc.get('resources',[])):
+                    declared.append(dict(file=filename,schema=doc['schema'],operation=None,
+                        origin='hash_bound_saved_input_context',source_sha256=context['source_sha256'],
+                        evidence_status=context['status'],scope='已登记声明；实际工程与科学约定仍须处理时验证'))
+    present={name for name,_ in members}
+    if scan.get('on_demand'):facts.append(dict(file='',partial_inventory=True))
+    for name,evidence in scan.get('directory_members',{}).items():
+        if name not in present:
+            members.append((name,b''));facts.append(dict(file=name,payload_read=False,present_in_directory=True))
     hook = getattr(converter,"inspect_sources",None)
     prefix_hook = getattr(converter,"probe_sources",None)
     try:
@@ -60,19 +78,21 @@ def inspect(scan, model):
     registered = capabilities(model)
     allowed = {r["task"] for r in registered}
     single = False
-    if not (declared or controls) and len(scan["rows"])==1:
+    scientific=[r for r in scan['rows'] if any(f.get('unit') and not f.get('axis') for f in r.get('fields',[]))]
+    if not (declared or controls) and len(scientific)==1:
         from ecodata.algorithms.profile_matching import model_table
         from ecodata.models.scientific_schema import identity
         target_names = {f["name"] for role in model_table(model)["roles"] if not role["record_only"]
                         for f in role["fields"]}
-        single = any(identity(f["name"],f)[0] in target_names and f.get("unit") and not f["axis"]
-                     for f in scan["rows"][0]["fields"])
+        single = any((identity(f["name"],f)[0] or f['name']) in target_names and f.get("unit") and not f["axis"]
+                     for f in scientific[0]["fields"])
     status = ("declared" if len(component_tasks)==1 and component_tasks[0]["operation"] in allowed
               else "project" if not component_tasks and (declared or controls or single) else "unavailable")
     issues = [*report.get("issues",[]),*prefix.get("issues",[])]
     if component_tasks and status=="unavailable":
         issues.append(dict(message="需唯一且受原版支持的组件任务声明。"))
     result = dict(status=status, declarations=declared, claims=claims,
+                  component_candidate=single or status=='declared',
                   issues=issues, component_count=len(registered), controls=list(dict.fromkeys(controls)))
     assert_current(scan)
     cache[model] = result
