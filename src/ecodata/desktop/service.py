@@ -98,7 +98,10 @@ def fusion_evidence(search):
     return dict(status=assessment.get("status","NOT_ASSESSED"),
                 selection_scores=families,selected_family=comparison.get("selected_family"),
                 holdout_scores=schemes,holdout_rmse_reduction=delta,
-                reference_basis=assessment.get("reference_basis") or comparison.get("reference_basis"),
+                reference_basis=comparison.get("selection_reference_basis") or assessment.get("reference_basis") or comparison.get("reference_basis"),
+                evaluation_protocol=search.get('evaluation_protocol'),source_ablations=comparison.get('source_ablations',[]),
+                coarse_diagnostics={name:row.get('coarse_reference_diagnostic') for name,row in comparison.get('families',{}).items()},
+                paired_selection=comparison.get('paired_selection'),
                 independence_verified=assessment.get("statistical_independence_verified") is True,
                 metric_backend=assessment.get("metric_backend"),
                 meaning="正差值表示多源的留出 RMSE 较小；参考独立性未核实则仅报告本次对比。")

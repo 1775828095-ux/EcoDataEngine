@@ -25,7 +25,7 @@ from ecodata.evaluation.quality_gates import RawInputQualityGate,ResultQualityGa
 from ecodata.io.structures import table_frame
 from ecodata.algorithms.spatial_selection_protocol import split_locations, fixed_support, xskillscore_assessment
 
-VERSION = 'spatial_relationship_fusion_v1_3_verified_recommendations'
+VERSION = 'spatial_relationship_fusion_v1_4_evidence_adaptive'
 COMPONENTS = {
     'spatial.source': dict(kind='source',backend='xarray / SciPy cKDTree sampling'),
     'spatial.observations': dict(kind='source',backend='Explicit retained-observation matrix; held labels absent'),
@@ -169,6 +169,10 @@ class SpatialTask:
     self_reference: bool = False
     relationships: list = None
     evaluation_observations: pd.DataFrame = None
+    reference_grid: xr.Dataset = None
+    reference_operator: object = None
+    target_alignment: list = None
+    native_fields: list = None
 
     @classmethod
     def build(cls, parsed, request, audit):
@@ -278,10 +282,43 @@ class SpatialTask:
                 b=ds.time_bounds.sel(time=times).values
                 if not np.array_equal(b[:,0],times.values) or not np.all(b[:,1]-b[:,0]==np.timedelta64(1,'D')):
                     raise ValueError('Reviewed accumulation path requires matching daily intervals')
+        native_fields=sorted(fields,key=lambda ds:0 if ds is primary else 1)
+        reference_grid=None;reference_operator=None;target_alignment=[]
+        if request.get('target_grid'):
+            if observations or auxiliary or primary is None or any(d[variable].attrs.get('spatial_semantics')!='cell_mean' for d in fields):
+                raise ValueError('Explicit cell-grid reconstruction currently requires same-variable cell-mean fields; station/auxiliary target operators must be declared separately')
+            from ecodata.spatial.regridding import resolve_target_grid,GridRegridder,RegridConfig,require_target_grid,contained_cell_grid
+            from ecodata.core.schemas import EcoDataBundle
+            from ecodata.algorithms.raster_reconstruction_task import edges,overlap_weights
+            from scipy import sparse
+            target=resolve_target_grid(fields,request['target_grid'])
+            if targets or request.get('target_lat') is not None:
+                for axis in ('lat','lon'):
+                    if not np.array_equal(template[axis],target[axis]):raise ValueError('Conflicting target grid declarations')
+            template=target
+            reference_grid=contained_cell_grid(primary,target)
+            ay=overlap_weights(edges(target.lat),edges(reference_grid.lat),True)
+            ax=overlap_weights(edges(target.lon),edges(reference_grid.lon))
+            reference_operator=sparse.kron(ay,ax,format='csr')
+            aligned=[];primary_index=fields.index(primary) if len(fields)==1 else next(i for i,d in enumerate(fields) if d is primary)
+            for ds in fields:
+                clipped=ds
+                for axis in ('lat','lon'):
+                    halo=abs(float(ds[axis][1]-ds[axis][0]))*2
+                    clipped=clipped.sel({axis:slice(float(target[axis][0])-halo,float(target[axis][-1])+halo)})
+                result=GridRegridder(RegridConfig('conservative',tuple(target.lat.values),tuple(target.lon.values),variable)).apply(EcoDataBundle(clipped))
+                out=result.data.dataset
+                if 'time_bounds' in ds:out['time_bounds']=ds.time_bounds
+                require_target_grid(out,target,variable)
+                aligned.append(out);target_alignment.append(dict(operation='spatial.regrid.conservative',status='PASS',source_id=ds.attrs['source_id'],record=result.record.as_dict()))
+            fields=aligned;primary=fields[primary_index]
+            request=dict(request,target_lat=target.lat.values.tolist(),target_lon=target.lon.values.tolist(),
+                completed_preparation=[*request.get('completed_preparation',[]),*target_alignment])
         self_reference=not observations
         if self_reference:
             if primary is None: raise ValueError('No visible validation anchors')
-            pxy,_,_=positions(primary); values=_values(primary,variable,times)
+            reference=reference_grid if reference_grid is not None else primary
+            pxy,_,_=positions(reference); values=_values(reference,variable,times)
             observations=[pd.DataFrame(dict(time=np.repeat(times,len(pxy)),station_id=np.tile(np.arange(len(pxy)).astype(str),len(times)),
                 longitude=np.tile(pxy[:,0],len(times)),latitude=np.tile(pxy[:,1],len(times)),value=values.ravel(),
                 unit=request['unit'],variable=physical,split='train',temporal_semantics=primary[variable].attrs.get('temporal_semantics')))]
@@ -347,7 +384,19 @@ class SpatialTask:
                     raise ValueError('Derived reference alias requires replay after masking; cannot leak held anchors')
         request=dict(request,physical_variable=physical)
         fields,relationships=mosaic_fields(fields,variable,times)
-        return cls(fields,auxiliary,obs,template,times,request,audit,self_reference,relationships,evaluation)
+        return cls(fields,auxiliary,obs,template,times,request,audit,self_reference,relationships,evaluation,
+                   reference_grid,reference_operator,target_alignment,native_fields)
+
+    def query_grid(self,query):
+        return positions(self.template)[0] if self.reference_grid is not None else query
+
+    def observe_grid(self,values,query):
+        if self.reference_grid is None:return values
+        xy,_,_=positions(self.reference_grid)
+        index=cKDTree(xy).query(query)[1]
+        if not np.allclose(xy[index],query,rtol=0,atol=1e-9):raise ValueError('Evaluation locations must be original reference cells')
+        if values.shape[1]!=self.reference_operator.shape[1]:raise ValueError('Candidate did not execute the complete target grid')
+        return (self.reference_operator@values.T).T[:,index]
 
     def cohort(self, train_ids, query, times):
         stations=self.observations.drop_duplicates('station_id').set_index('station_id').loc[train_ids]
@@ -357,9 +406,15 @@ class SpatialTask:
         for ds in self.fields:
             if self.self_reference and ds is self.fields[0]:
                 # Replay the primary after removing held locations, including all dates.
-                xy,_,_=positions(ds); visible=np.isclose(xy[:,None,:],sxy[None,:,:],atol=1e-9,rtol=0).all(axis=2).any(axis=1)
-                vals=_values(ds,self.request['variable'],times)[:,visible]
+                original=self.reference_grid if self.reference_grid is not None else ds
+                xy,_,_=positions(original); visible=np.isclose(xy[:,None,:],sxy[None,:,:],atol=1e-9,rtol=0).all(axis=2).any(axis=1)
+                vals=_values(original,self.request['variable'],times)[:,visible]
                 sources.append(weighted_values(vals,distance_weights(xy[visible],allxy)))
+            elif self.reference_grid is not None:
+                targetxy=positions(self.template)[0]
+                if not np.array_equal(query,targetxy):raise ValueError('Candidate query is not the declared target grid')
+                fine=_values(ds,self.request['variable'],times)
+                sources.append(np.concatenate([fine,self.observe_grid(fine,sxy)],axis=1))
             else: sources.append(sample(ds,self.request['variable'],times,allxy))
         for ds in self.auxiliary:
             for name in ds.data_vars:
@@ -400,11 +455,26 @@ class SpatialSearch:
         for retained,held in self.location_protocol['folds']:
             query=meta[meta.station_id.isin(held)][['longitude','latitude']].to_numpy(float)
             reference=task.observations.pivot(index='time',columns='station_id',values='value').reindex(index=self.search_times,columns=held).to_numpy(float)
-            cohort=task.cohort(retained,query,self.search_times)
+            cohort=task.cohort(retained,task.query_grid(query),self.search_times)
             if not np.isfinite(reference).any(): raise ValueError('Spatial holdout has no finite labels')
             self.folds.append(dict(held=list(held),train=retained,query=query,reference=reference,cohort=cohort,
                 support_sha256=fixed_support(reference,held,self.search_times)))
             self.executors.append(self.executor(cohort,'search'))
+        self.reconstruction=None;self.reconstruction_predictions={}
+        from ecodata.evaluation.fusion_protocol import prepare
+        reviewed_native=bool(task.native_fields) and all(d[self.request['variable']].attrs.get('spatial_semantics')=='cell_mean' for d in task.native_fields)
+        evaluation_policy=self.request.get('evaluation_policy','evidence_adaptive_v1' if task.reference_grid is not None or not task.self_reference or reviewed_native else 'legacy_primary_grid_v1')
+        if evaluation_policy not in {'evidence_adaptive_v1','legacy_primary_grid_v1'}:
+            raise ValueError('Unknown spatial evaluation policy')
+        self.evaluation_plan,self.reconstruction=prepare(task,self.search_times,seed) if evaluation_policy=='evidence_adaptive_v1' else (
+            dict(version='legacy_primary_grid_v1',mode='PRIMARY_GRID_RECONSTRUCTION_PROXY' if task.self_reference else 'OBSERVATION_HOLDOUT',
+                 accuracy_established=False,selection_meaning='Legacy held-location proxy; not fine-scale accuracy',source_bonus=0),None)
+        if self.reconstruction is not None:
+            self.reconstruction_executor=self.executor(self.reconstruction['cohort'],'search')
+            self.resolution=np.finfo(float).eps
+        if self.progress:
+            self.progress('评价依据：'+self.evaluation_plan['mode']+'；'+self.evaluation_plan['selection_meaning'])
+        save(self.folder/'evaluation_protocol.json',self.evaluation_plan)
         self.leaves=[self.intern('spatial.source',[],dict(index=i)) for i in range(len(task.fields))]
         self.leaves += [self.intern('spatial.idw',[],dict(power=p)) for p in (1.,2.,3.)]
         if self.request.get('allow_training'):
@@ -509,18 +579,44 @@ class SpatialSearch:
             winner=min((r for r in passed if r['metrics']['objective']<=value+self.resolution),
                        key=lambda r:(r['algorithm_nodes'],r['key'])) if passed else None
             families[name]=dict(evaluated=len(rows),passed=len(passed),
-                best_key=winner['key'] if winner else None,metrics=winner['metrics'] if winner else None)
-        return dict(protocol='spatial_selection_assessment_v1',
+                best_key=winner['key'] if winner else None,metrics=winner['metrics'] if winner else None,
+                coarse_reference_diagnostic=winner.get('coarse_reference_diagnostic') if winner else None)
+        ablations=[]
+        for source in ['field:'+d.attrs['source_id'] for d in self.task.fields]:
+            rows=[r for r in self.rows if r['status']=='PASS' and source not in r['source_identities']]
+            winner=min(rows,key=lambda r:(r['metrics']['objective'],r['algorithm_nodes'],r['key'])) if rows else None
+            ablations.append(dict(omitted_source=source,status='PASS' if winner else 'NOT_EVALUATED',
+                best_key=winner['key'] if winner else None,metrics=winner['metrics'] if winner else None,
+                scope='Best among actually evaluated graphs excluding this source; not exhaustive'))
+        paired=None
+        if self.reconstruction is not None and all(f['best_key'] for f in families.values()):
+            from ecodata.evaluation.fusion_protocol import paired_report
+            r=self.reconstruction
+            paired=paired_report(self.reconstruction_predictions[families['SINGLE_SOURCE']['best_key']],
+                self.reconstruction_predictions[families['MULTISOURCE']['best_key']],r['reference'],r['selected'],r['split'])
+        return dict(protocol='spatial_selection_assessment_v2',evaluation_protocol=self.evaluation_plan,
             decision_after_scoring=True,selection_metric='RMSE',
             fixed_support_sha256=[f['support_sha256'] for f in self.folds],
             families=families,selected_key=best['key'],selected_family=best['source_family'],
             comparison_status='BOTH_FAMILIES_SCORED' if all(f['passed'] for f in families.values()) else 'COMPARISON_INCOMPLETE_OR_SINGLE_SOURCE_ONLY',
             reference_basis='PRIMARY_GRID_RECONSTRUCTION_PROXY' if self.task.self_reference else 'HELD_STATION_OBSERVATIONS',
+            selection_reference_basis=self.evaluation_plan['mode'],source_ablations=ablations,paired_selection=paired,
             accuracy_improvement='NOT_ESTABLISHED',
             source_identity_scope='Declared source identities, not proof of statistical independence')
 
     def post_selection_assessment(self,keys):
         """Evaluate frozen winners only. Results never feed best()/stopper."""
+        if self.reconstruction is not None:
+            from ecodata.algorithms.spatial_selection_protocol import error_metrics
+            r=self.reconstruction;index=r['test'];schemes={}
+            for name,key in keys.items():
+                if key is not None and len(index):
+                    schemes[name]=dict(status='PASS',key=key,metrics=error_metrics(self.reconstruction_predictions[key][:,index],r['reference'][:,index]))
+            return dict(status='PASS' if schemes else 'NO_SEPARATE_LOCATION_TEST',used_for_selection=False,
+                source='FROZEN_REDUCED_SCALE_OUTER_BLOCKS',reference_basis=self.evaluation_plan['mode'],
+                statistical_independence_verified=False,accuracy_improvement='NOT_ESTABLISHED',schemes=schemes,
+                metric_backend='Shared error_metrics; cached genuine numerical predictions, no new fitted graphs',
+                test_ids=index.tolist(),conditioning='Degraded primary only; fine test labels never used in fitting')
         task=self.task;explicit=task.evaluation_observations
         if explicit is not None and not explicit.empty:
             frame=explicit;origin='EXPLICIT_TEST_LOCATIONS'
@@ -535,7 +631,7 @@ class SpatialSearch:
         ids=meta.station_id.tolist();query=meta[['longitude','latitude']].to_numpy(float)
         times=pd.DatetimeIndex(sorted(frame.time.unique()))
         reference=frame.pivot(index='time',columns='station_id',values='value').reindex(index=times,columns=ids).to_numpy(float)
-        cohort=task.cohort(self.location_protocol['selection_ids'],query,times)
+        cohort=task.cohort(self.location_protocol['selection_ids'],task.query_grid(query),times)
         report.update(test_station_ids=ids,conditioning_station_ids=self.location_protocol['selection_ids'],
             reference_sha256=sha256(reference.tobytes()).hexdigest(),support_sha256=fixed_support(reference,ids,times),
             schemes={},times=[str(t) for t in times])
@@ -548,8 +644,9 @@ class SpatialSearch:
                 continue
             try:
                 executed=executor.run(self.nodes(key),key)
-                prediction=executed['outputs']['field'].value[:,:len(ids)]
+                prediction=executed['outputs']['field'].value[:,:cohort['query_count']]
                 if self.request.get('nonnegative'):prediction=np.maximum(prediction,0.)
+                prediction=task.observe_grid(prediction,query)
                 bounds=self.request.get('parameters',{}).get('target_valid_range')
                 mask=np.isfinite(reference)
                 if bounds is not None and ((prediction[mask]<bounds[0])|(prediction[mask]>bounds[1])).any():
@@ -674,17 +771,29 @@ class SpatialSearch:
         if any(r['key']==key for r in self.rows): return
         nodes=self.nodes(key)
         if len(nodes)>32:return
-        if not self.account.can_search(len(nodes)*len(self.folds),self.account.reserve):return
+        if not self.account.can_search(len(nodes)*(len(self.folds)+(self.reconstruction is not None)),self.account.reserve):return
         identities=self.candidate_sources(key)
         row=dict(key=key,phase=phase,algorithm_nodes=len(nodes),source_identities=identities,
             source_family='MULTISOURCE' if len(identities)>1 else 'SINGLE_SOURCE',
-            fixed_support_sha256=[f['support_sha256'] for f in self.folds])
+            fixed_support_sha256=[f['support_sha256'] for f in self.folds]+(
+                [self.evaluation_plan['fixed_support_sha256']] if self.reconstruction is not None else []))
         if self.portraits is not None:row['candidate_prior']=self.portraits.score(key)
         predictions=[];labels=[];traces=[]
         try:
             for fold,executor in zip(self.folds,self.executors):
-                executed=executor.run(nodes,key);trace=executed['trace'];a=executed['outputs']['field'].value[:,:fold['cohort']['query_count']]
+                executed=executor.run(nodes,key);trace=executed['trace'];raw=executed['outputs']['field'].value
+                if self.task.reference_grid is not None:
+                    expected=(len(self.search_times),fold['cohort']['query_count']+len(fold['train']))
+                    if raw.shape!=expected:raise ValueError('Candidate violates complete target-grid output shape')
+                a=raw[:,:fold['cohort']['query_count']]
                 if self.request.get('nonnegative'):a=np.maximum(a,0.)
+                if self.task.reference_grid is not None:
+                    if not np.isfinite(a).all():raise ValueError('Candidate has incomplete target-grid coverage')
+                    bounds=self.request.get('parameters',{}).get('target_valid_range')
+                    if bounds is not None and ((a<bounds[0])|(a>bounds[1])).any():raise ValueError('Candidate target grid violates declared physical bounds')
+                    row['target_grid_check']=dict(status='PASS',shape=[len(self.search_times),self.task.template.sizes['lat'],self.task.template.sizes['lon']],
+                        scoring='Area aggregation to original held reference cells; no upsampled truth')
+                a=self.task.observe_grid(a,fold['query'])
                 mask=np.isfinite(fold['reference'])
                 if not np.isfinite(a[mask]).all():raise ValueError('Incomplete predictions on fixed held-location cohort')
                 bounds=self.request.get('parameters',{}).get('target_valid_range')
@@ -692,12 +801,36 @@ class SpatialSearch:
                     raise ValueError('Candidate outside declared application range')
                 predictions.append(a[mask]);labels.append(fold['reference'][mask]);traces.append(trace)
             values=np.concatenate(predictions);truth=np.concatenate(labels)
+            coarse_error=values-truth
+            row['coarse_reference_diagnostic']=dict(RMSE=float(np.sqrt(np.mean(coarse_error**2))),MAE=float(np.mean(abs(coarse_error))),
+                Bias=float(coarse_error.mean()),count=len(coarse_error),used_for_selection=self.reconstruction is None,
+                meaning='Held primary coarse product reconstruction, not independent truth')
+            if self.reconstruction is not None:
+                r=self.reconstruction;cohort=r['cohort']
+                executed=self.reconstruction_executor.run(nodes,key)
+                raw=executed['outputs']['field'].value
+                if raw.shape!=(len(self.search_times),cohort['query_count']+len(cohort['sxy'])):
+                    raise ValueError('Reduced-scale candidate output shape mismatch')
+                predicted=raw[:,:cohort['query_count']]
+                if self.request.get('nonnegative'):predicted=np.maximum(predicted,0.)
+                mask=np.isfinite(r['reference'])
+                if not np.isfinite(predicted[mask]).all():raise ValueError('Incomplete common reduced-scale evaluation support')
+                row['reconstruction_trace']=executed['trace']
+                self.reconstruction_predictions[key]=predicted
+                values=predicted[:,r['selected']][np.isfinite(r['reference'][:,r['selected']])]
+                truth=r['reference'][:,r['selected']][np.isfinite(r['reference'][:,r['selected']])]
+                self.folder.mkdir(parents=True,exist_ok=True)
+                np.savez_compressed(self.folder/(key+'-evaluation.npz'),prediction=predicted,reference=r['reference'],
+                    selection_ids=r['selected'],test_ids=r['test'],reference_coordinates=r['query'])
             digest=sha256(values.tobytes()).hexdigest()
             if digest in self.state_seen:
                 row['same_validation_predictions_as']=self.state_seen[digest]
             else:self.state_seen[digest]=key
             error=values-truth;rmse=float(np.sqrt(np.mean(error**2)))
-            row.update(status='PASS',metrics=dict(objective=rmse,RMSE=rmse,MAE=float(np.mean(abs(error))),count=len(error)),traces=traces)
+            row.update(status='PASS',evaluation_mode=self.evaluation_plan['mode'],
+                metrics=dict(objective=rmse,RMSE=rmse,MAE=float(np.mean(abs(error))),Bias=float(error.mean()),
+                             coverage=1.,failure_rate=0.,count=len(error)),traces=traces)
+            row['reconstruction_reference_used_for_selection']=self.reconstruction is not None
         except SearchBudgetExceeded: return
         except Exception as exc:
             if getattr(exc,'details',{}).get('budget_exhausted'):return
@@ -804,6 +937,11 @@ class SpatialSearch:
         quality=ResultQualityGate().validate(task.fields[0] if task.fields else out,out,variable=variable,
             nonnegative=bool(self.request.get('nonnegative')),expected_output_unit=self.request['unit'])
         if quality['status']=='BLOCK':raise ValueError('Result quality gate blocked spatial output: '+str(quality))
+        if task.reference_grid is not None:
+            from ecodata.spatial.regridding import require_target_grid
+            out.attrs['target_grid_validation']=json.dumps(require_target_grid(out,task.template,variable))
+            out[variable].attrs.update(spatial_semantics='cell_mean',estimate_kind='Reconstructed target-cell mean estimate; not independently observed fine detail')
+            out.attrs['sampling_operator']='Sources conservatively reconstructed before graph; every candidate executes full target field; area-mean observation operator scores original reference cells'
         return out,trace
 
 
@@ -822,6 +960,7 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     if request.get('preferences'):
         raise ValueError('Custom multiobjective preference scoring is not yet supported for the new spatial ports')
     task=SpatialTask.build(parsed,request,audit)
+    request=task.request
     save(folder/'request.json',dict(request=request,inputs=audit,budget=budget,seed=seed,version=VERSION))
     if progress:progress('搜索准备：按固定评价队列比较真实候选；评分不等于独立实测精度，搜索不保证全局最优')
     search=SpatialSearch(task,folder,budget,seed,model=model,progress=progress);search.budget=budget
@@ -871,10 +1010,14 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     if len(search.confirm_times):
         try:
             for fold in search.folds:
-                cohort=task.cohort(fold['train'],fold['query'],search.confirm_times)
+                cohort=task.cohort(fold['train'],task.query_grid(fold['query']),search.confirm_times)
                 executor=search.executor(cohort,'validation_audit')
                 executed=executor.run(search.nodes(best['key']),best['key']);a=executed['outputs']['field'].value[:,:len(fold['held'])]
                 if request.get('nonnegative'):a=np.maximum(a,0.)
+                if task.reference_grid is not None:
+                    fine=executed['outputs']['field'].value[:,:cohort['query_count']]
+                    if request.get('nonnegative'):fine=np.maximum(fine,0.)
+                    a=task.observe_grid(fine,fold['query'])
                 ref=task.observations.pivot(index='time',columns='station_id',values='value').reindex(index=search.confirm_times,columns=fold['held']).to_numpy(float)
                 mask=np.isfinite(ref)
                 if not np.isfinite(a[mask]).all():raise ValueError('Incomplete confirmation support')
@@ -917,7 +1060,22 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
             candidate_order=leaves,portrait_proposals=sum(t['strategy']=='portrait' for t in search.transitions),
             changed_choices=sum(t['guidance_changed_choice'] for t in search.transitions))
     result['component_catalog']=COMPONENTS
+    result['evaluation_protocol']=search.evaluation_plan
+    result['evaluation_cost']=dict(preparation_seconds=search.evaluation_plan.get('cost_seconds',0.),
+        numerical_calls='Included in total_cost search ledger; coarse diagnostic and reduced scale run separately')
+    if search.reconstruction is not None:
+        result['self_validation_protocol'].update(tasks=['reduced_scale_product_selection','frozen_reduced_scale_outer_blocks','coarse_primary_diagnostic'],
+            coarse_diagnostic_folds=groups,folds=[],location_split=search.reconstruction['split'],
+            selection_protocol_file='evaluation_protocol.json',
+            reference_scope='Withheld native finer product at reduced scale, not independent observations')
     result['input_relationships']=task.relationships
+    if task.reference_grid is not None:
+        from ecodata.spatial.regridding import require_target_grid
+        result['target_grid_contract']=dict(requirement=request['target_grid'],lat=task.template.lat.values.tolist(),lon=task.template.lon.values.tolist(),
+            output=require_target_grid(out,task.template,request['variable']),preparation=task.target_alignment,
+            preparation_seconds=sum(r['record']['elapsed_seconds'] for r in task.target_alignment),
+            reference_shape=dict(task.reference_grid.sizes),reference_role='Original native cell means; no interpolated target truth',
+            area_operator_shape=list(task.reference_operator.shape),candidate_checks=[dict(key=r['key'],status=r['status'],check=r.get('target_grid_check')) for r in search.rows])
     save(folder/'selection_comparison.json',comparison);save(folder/'post_selection_assessment.json',assessment)
     save(folder/'graphs.json',search.records);save(folder/'candidate_results.json',search.rows);save(folder/'transitions.json',search.transitions)
     if search.portraits is not None:save(folder/'portraits.json',dict(profiles=search.portraits.profiles,scores=search.portraits.cache))
@@ -965,5 +1123,25 @@ def evaluate_bank(parsed,request,audit,graphs,folder,*,budget,seed):
     result=dict(selection_performed=False,product=None,control_keys=keys,
         controls={name:next((r for r in engine.rows if r['key']==key),dict(status='NOT_EVALUATED_RESOURCE_LIMIT')) for name,key in keys.items()},
         total_cost=engine.account.receipt(),external_test_used=False)
+    result['evaluation_protocol']=engine.evaluation_plan
+    result['post_selection_assessment']=engine.post_selection_assessment(keys)
+    result['fixed_graphs']=graphs
+    result['per_date']=[]
+    result['counts']=dict(evaluated=len(engine.rows),proposals=engine.attempts)
+    result['full_domain_controls']={}
+    if engine.reconstruction is not None:
+        from ecodata.algorithms.spatial_selection_protocol import error_metrics
+        r=engine.reconstruction
+        for name,key in keys.items():
+            if key not in engine.reconstruction_predictions:continue
+            prediction=engine.reconstruction_predictions[key]
+            result['full_domain_controls'][name]=dict(key=key,used_for_selection=False,
+                metrics=error_metrics(prediction,r['reference']))
+            for date,time in enumerate(engine.search_times):
+                for split,index in [('selection_region',r['selected']),('frozen_outer_region',r['test']),
+                                    ('all_target_cells',np.arange(r['reference'].shape[1]))]:
+                    if not len(index):continue
+                    result['per_date'].append(dict(control=name,key=key,date=str(time),region=split,
+                        used_for_selection=False,metrics=error_metrics(prediction[date:date+1,index],r['reference'][date:date+1,index])))
     save(folder/'summary.json',result)
     return result

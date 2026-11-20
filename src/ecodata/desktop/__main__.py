@@ -218,6 +218,15 @@ class Window(QMainWindow):
         hint=QLabel("选好数据和目标模型，点击「开始自动处理」：评估多源数据的处理价值，准备模型输入。DS按需检查，平台验证后执行；不预设融合必然更好。所需摘要和少量样例发送至DeepSeek，原始文件只读。")
         hint.setWordWrap(True)
         scanbox.addWidget(hint)
+        self.target_grid_row=QWidget()
+        target_layout=QHBoxLayout(self.target_grid_row)
+        target_layout.setContentsMargins(0,0,0,0)
+        target_layout.addWidget(QLabel('目标网格间距（纬度,经度；度）'))
+        self.target_grid_input=QLineEdit()
+        self.target_grid_input.setPlaceholderText('可选，例如 0.1,0.1；填写后作为硬性输出要求')
+        self.target_grid_input.textChanged.connect(self.reset_target)
+        target_layout.addWidget(self.target_grid_input,1)
+        scanbox.addWidget(self.target_grid_row);self.target_grid_row.hide()
         self.workflow_status=QLabel("待开始 · 选择数据与目标模型即可")
         self.workflow_status.setWordWrap(True)
         scanbox.addWidget(self.workflow_status)
@@ -988,6 +997,7 @@ class Window(QMainWindow):
         if model_id==self.decision_model:
             return
         self.decision_model=model_id
+        self.target_grid_row.setVisible(model_id=='data_only')
         self.model_button.setText(f"目标模型 · {discovery.MODELS[model_id]}")
         self.model.setCurrentIndex(self.model.findData(model_id))
         if self.scan is not None:
@@ -1013,14 +1023,23 @@ class Window(QMainWindow):
             self.path.clear()
             self.api_key.setFocus()
             raise ValueError("这里需要本地数据路径。请把密钥粘贴到首页下方的「DeepSeek 线上 API」输入框。")
+        requirements=self.task_requirements()
         def scan_job(log):
             log("正在列出输入目录，等待 DeepSeek 按需检查…")
             from .file_agent import scan_index
             scanned,metrics=scan_index(path,progress=log)
             log("正在识别候选并整理脱敏工程资料…")
             summary,candidates=discovery.discover(scanned,self.decision_model,task_goal='evaluate_gain')
+            summary['task_requirements']=requirements
             return scanned,metrics,summary,candidates
         self.work(scan_job,self.show_scan)
+
+    def task_requirements(self):
+        if self.decision_model!='data_only' or not self.target_grid_input.text().strip():return {}
+        from ecodata.spatial.regridding import target_grid_spec
+        parts=re.split(r'[,，×x\s]+',self.target_grid_input.text().strip())
+        if len(parts)!=2:raise ValueError('目标网格请填写纬度和经度两个间距，例如0.1,0.1；单位为度')
+        return dict(target_grid=target_grid_spec(dict(crs='EPSG:4326',latitude_step=float(parts[0]),longitude_step=float(parts[1]),extent='intersection')))
 
     def show_scan(self,value):
         scan,self.scan_metrics,summary,candidates=value
@@ -1498,7 +1517,7 @@ class Window(QMainWindow):
     def candidate_changed(self,*_):
         row=self.candidate_select.currentData()
         if not row:return
-        reference=('格点代理，不能代表独立实测精度' if row['reference_basis']=='PRIMARY_GRID_RECONSTRUCTION_PROXY'
+        reference=('格点代理，不能代表独立实测精度' if row['reference_basis'] in {'PRIMARY_GRID_RECONSTRUCTION_PROXY','REDUCED_SCALE_PRODUCT_RECONSTRUCTION','COARSE_PRODUCT_RECONSTRUCTION_ONLY'}
                    else '按已声明的验证参考；独立性以验收记录为准')
         parameters=json.dumps(row['parameters'],ensure_ascii=False)
         self.candidate_note.setText(f"同队列数值评价通过 · MAE {row['metrics']['MAE']:.4g} · 样本 {row['metrics']['count']} · {reference}\n"

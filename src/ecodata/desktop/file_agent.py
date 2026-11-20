@@ -231,6 +231,7 @@ def run(scan, summary, cache, mock, key, progress, feedback):
     if final is None:
         full['warnings'].append('已到按需检查轮数上限，工程结论尚未完成')
     catalogue, _ = discovery.discover(full, summary['target_model']['id'], task_goal=summary.get('task_goal', 'auto'))
+    catalogue['task_requirements']=summary.get('task_requirements',{})
     originals, details = catalog_decision.local_fields(full, catalogue)
     # Existing capability/contract checks and downstream recommendation protocol stay authoritative.
     decision = service.preview(dict(catalogue, inspection_conclusion=final,

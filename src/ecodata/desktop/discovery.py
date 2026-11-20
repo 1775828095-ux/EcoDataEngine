@@ -724,6 +724,21 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         except Exception as exc:
             row["reason"]=str(exc)
     assert_current(scan)
+    target=approved_summary.get('task_requirements',{}).get('target_grid')
+    if target:
+        from ecodata.spatial.regridding import target_grid_spec
+        target=target_grid_spec(target)
+        for key,task in prepared.items():
+            if task.get('route') not in {'independent_grid_search','independent_alignment'}:
+                for row in results:
+                    if (row.get('candidate'),row.get('action'))==key:
+                        row.update(status='条件不足',next_step=None,block_code='target_grid_unsupported',reason='此任务适配器尚未消费目标网格硬约束，不能按默认网格继续')
+            else:
+                task['target_grid']=target
+                for row in results:
+                    if (row.get('candidate'),row.get('action'))==key:
+                        row['target_grid']=target
+                        row['reason']='已声明目标网格硬约束：纬向 '+str(target['latitude_step'])+'°、经向 '+str(target['longitude_step'])+'°；仅在共同覆盖内执行，所有候选先生成目标网格再评价，不按默认粗网格交付。原始粗参考只能验证回聚合代理误差，不能证明细节准确。'
     return results,prepared
 
 

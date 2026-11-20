@@ -165,6 +165,7 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
     if include_samples:
         attach_samples(scan,[task["context"] for task in tasks])
     request=dict(stage="recommendation",target_model=approved["target_model"],tasks=tasks,
+                 task_requirements=approved.get('task_requirements',{}),
                  engineering_documents=documents,
                  project_context_document_ids=approved.get("project_context_document_ids",[]),
                  engineering_inventory=approved.get("engineering_inventory",[]))

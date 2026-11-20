@@ -83,7 +83,7 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         source_formats=list(dict.fromkeys(formats)),target_format=" / ".join(dict.fromkeys(outputs)),
         original_report=reports,failed_tasks=failures,local=dict(artifacts=artifacts,native_ready=False,
             reason=" ".join(dict.fromkeys(notes)),
-            model_input=dict(whole_model_missing=notes)))
+            model_input=dict(whole_model_missing=notes if model_id and model_id!='data_only' else [])))
     if original:
         result["component_archive"] = original["original_archive"]
         result["archive_members"] = original["archive_members"]

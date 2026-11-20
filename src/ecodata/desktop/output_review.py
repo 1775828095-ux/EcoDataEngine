@@ -204,7 +204,7 @@ def cards(result, check):
 
     items = []
     for task, search in searches(result).items():
-        proxy = search["evidence"].get("reference_basis") == "PRIMARY_GRID_RECONSTRUCTION_PROXY"
+        proxy = search["evidence"].get("reference_basis") in {'PRIMARY_GRID_RECONSTRUCTION_PROXY','REDUCED_SCALE_PRODUCT_RECONSTRUCTION','COARSE_PRODUCT_RECONSTRUCTION_ONLY'}
         for row in search["rankings"]:
             methods = row.get("steps") or [row["algorithm"]]
             labels = [METHODS.get(op, (op, ""))[0] for op in methods]
@@ -221,6 +221,22 @@ def cards(result, check):
                                 if name in {"power", "weight"} and isinstance(value, (int, float)))
             audit = []
             if row["selected"]:
+                evidence=search['evidence'];protocol=evidence.get('evaluation_protocol') or {}
+                if protocol.get('mode')=='REDUCED_SCALE_PRODUCT_RECONSTRUCTION':
+                    audit.extend(['评价：所有来源先面积聚合变粗，再恢复原细产品；参考只在评价侧使用',
+                        '参考 '+protocol['reference_source']+'（按网格粗细选取，不是独立实测真值）',
+                        f"选型 {protocol['selection_count']} 样本；方案冻结后复核 {protocol['test_count']} 样本；多源无额外加分"])
+                    for omitted in evidence.get('source_ablations',[]):
+                        score=omitted.get('metrics')
+                        audit.append('去掉 '+omitted['omitted_source']+'：'+(f"RMSE {score['RMSE']:.4g}" if score else '未评价'))
+                    for name,score in evidence.get('coarse_diagnostics',{}).items():
+                        if score:audit.append(f"{FAMILY_NAMES[name]}粗主产品诊断 RMSE {score['RMSE']:.4g}（不参与选图）")
+                    paired=evidence.get('paired_selection')
+                    if paired and paired['RMSE_change_percent'] is not None:
+                        audit.append(f"多源相对最佳单源RMSE变化 {paired['RMSE_change_percent']:+.2f}%（负数为改善）；改善空间块 {paired['improved_blocks']}/{len(paired['blocks'])}")
+                    audit.append('仅为降尺度产品重建试验；跨尺度有效性、独立实测精度及稳定增益未证实')
+                elif protocol.get('missing_evidence'):
+                    audit.append('细尺度评价条件不足：'+'；'.join(protocol['missing_evidence']))
                 for family, score in search["evidence"].get("selection_scores", {}).items():
                     if score:
                         audit.append(f"{FAMILY_NAMES[family]}最佳 RMSE {score['RMSE']:.4g}")

@@ -67,7 +67,7 @@ def export_evaluated_candidate(folder,key,destination):
                 max_abs_difference=float(np.max(np.abs(finite))) if len(finite) else None,
                 scope='同一输入上的产品数值差异，不是独立精度评价')
         report=dict(selection='USER_SELECTED',automatic_winner=summary['best']['key'],chosen_key=key,
-            validation_metrics=selected['metrics'],reference_basis=summary['selection_comparison']['reference_basis'],
+            validation_metrics=selected['metrics'],reference_basis=summary['selection_comparison'].get('selection_reference_basis',summary['selection_comparison']['reference_basis']),
             same_evaluation_support=True,original_engineering_archive_changed=False,native_writeback=False,native_model_executed=False,
             note='所选方案的数据产品；不替换默认工程包，不代表独立实测精度提升',deployment=receipt,
             default_product_comparison=comparison)
@@ -152,6 +152,24 @@ def describe(result):
                              f"MAE {metrics['MAE']:.4g} · 样本 {metrics['count']}")
         if evidence.get("reference_basis")=="PRIMARY_GRID_RECONSTRUCTION_PROXY":
             lines.append("评分参考：格点代理。结果用于本次选优，实测精度仍待验证。")
+        elif evidence.get('reference_basis')=='REDUCED_SCALE_PRODUCT_RECONSTRUCTION':
+            protocol=evidence['evaluation_protocol']
+            lines.extend(['评分依据：两个来源都先按面积聚合变粗，再恢复未提供给算法的原细产品；不是对主来源自我打分。',
+                '参考来源：'+protocol['reference_source']+'（按原生网格粗细确定，不按误差挑选）；它仍是产品代理，不是独立实测真值。',
+                f"评分样本 {protocol['selection_count']}；冻结后复核样本 {protocol['test_count']}；粗尺度误差另列，不与重建误差加权混排。",
+                '多源没有额外奖励；目标细网格与质量门仍为共同硬约束。'])
+            for item in evidence.get('source_ablations',[]):
+                metric=item.get('metrics')
+                lines.append('去掉来源 '+item['omitted_source']+'：'+(f"最佳已执行路线 RMSE {metric['RMSE']:.4g} · MAE {metric['MAE']:.4g}" if metric else '未评价'))
+            paired=evidence.get('paired_selection')
+            if paired:
+                change=paired['RMSE_change_percent']
+                lines.append(('多源相对最佳单源：RMSE变化 '+f'{change:+.2f}%' if change is not None else '单源误差为0，不计算相对百分比')+
+                    f"；改善的空间块 {paired['improved_blocks']}/{len(paired['blocks'])}。负数表示误差下降。")
+                lines.append('空间块差异仅作描述；独立日期不足，不能据此声称稳定或显著增益。')
+            for label,score in evidence.get('coarse_diagnostics',{}).items():
+                if score:
+                    lines.append(f"{family_labels.get(label,label)}的粗主产品诊断（不参与选图）：RMSE {score['RMSE']:.4g} · 样本 {score['count']}")
         elif not evidence.get("independence_verified"):
             lines.append("参考数据的独立性未确认。")
         holdout=evidence.get("holdout_scores", {})
@@ -182,7 +200,7 @@ def describe(result):
                          + ("  ← 原版选中" if row["selected"] else ""))
     lines.extend(["","转换与导出理由",result["local"].get("reason","")])
     if result["mode"].startswith("independent_"):
-        lines.append("将降水率积分为共同 UTC 日期的日累计量，再保守对齐到较粗网格，以统一空间尺度。")
+        lines.append("将降水率积分为共同 UTC 日期的日累计量，按本次已核验的目标网格对齐；分辨率与掩码见产品回读记录。")
     source=" / ".join(dict.fromkeys(result["source_formats"]))
     lines.append(f"格式 · {source} → {result['target_format']} · {len(result['files'])} 个数据文件")
     local=result["local"]
