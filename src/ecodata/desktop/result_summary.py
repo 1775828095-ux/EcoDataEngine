@@ -4,6 +4,43 @@ import json
 from .output_review import collect_steps
 
 
+def seed_usage(folder, search):
+    """Separate locally scored recommendations from actual mutations of them."""
+    receipts=search.get('recommendation_validation',[])
+    if not receipts:
+        return None
+    passed=[row for row in receipts if row.get('status')=='PASS' and row.get('metrics')]
+    parents={key for row in passed for key in row.get('keys',[])}
+    path=folder/'transitions.json'
+    transitions=json.loads(path.read_text(encoding='utf8')) if path.is_file() else None
+    return dict(recommended=len(receipts),scored=len(passed),mutations=None if transitions is None else
+        sum(row.get('actual_execution') is True and row.get('parent') in parents for row in transitions))
+
+
+def nonspatial_winner(search, graphs):
+    """Read the deployed graph and the backend's own score, without reranking."""
+    best=search.get('best') or {}
+    if search.get('service')!='PlatformSearch/PortraitMutation' or not search.get('product') or best.get('key') not in graphs:
+        return None
+    seen=set()
+    steps=[]
+
+    def visit(key):
+        if key in seen or key not in graphs:
+            return
+        seen.add(key)
+        node=graphs[key]
+        for parent in node.get('parents',[]):
+            visit(parent)
+        if node['operation']!='source':
+            steps.append(node['operation'])
+
+    visit(best['key'])
+    return dict(steps=steps,metrics=best.get('metrics') or {},
+        mutation_executed=bool(search.get('mutation_new_executions')),
+        validation_best_delivered=search.get('final_validation_best_delivered'))
+
+
 def candidate_options(result,limit=10):
     """Only already measured candidates, never an invented improvement label."""
     from .output_review import searches

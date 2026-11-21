@@ -41,6 +41,7 @@ PREPARATION = {
 }
 
 ALGORITHM_NAMES = {
+    "spatial.source": "保留单源",
     **PREPARATION,
     "spatial.regrid.conservative": "保守重网格",
     "spatial.blend": "加权融合",
@@ -177,13 +178,15 @@ def algorithm_registry():
             {**ALGORITHMS,**ENGINEERING,**ALIGNMENT,**PREPARATION}.items()}
 
 
-def recommend_plan(plan, decisions, *, mock=False, api_key=None, progress=None):
+def recommend_plan(plan, decisions, *, mock=False, api_key=None, progress=None, on_request=None):
     """One shared online recommendation protocol over the checked recipe catalog."""
     from . import service
     receipts=[]
     try:
         if progress:progress('DeepSeek正在从已核验的具体算法组合中推荐；推荐仍须真实数值验证')
         approved=service.preview(plan)
+        if on_request is not None:
+            on_request(approved)
         reply=service.send(approved,approved.digest,mock,api_key=api_key,
             on_progress=progress,on_receipt=receipts.append)
         if not reply.get('recommendations'):raise ValueError('线上未返回目录内的可执行组合')

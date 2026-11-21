@@ -54,6 +54,23 @@ def test_prepared_request_automatically_enters_shared_decision(window,monkeypatc
     assert calls==['shared_decision'] and window.auto_phase=='analyze'
 
 
+def test_algorithm_recommendation_audit_displays_the_request_and_feedback(window):
+    from ecodata.desktop import request_batches, service
+
+    approved=service.preview(dict(stage='recommendation',tasks=[],target_model={'id':'swat_plus','name':'SWAT+'}))
+    batch=request_batches.Batch(approved,('C1:fusion',))
+    window.show_decision_feedback(dict(phase=4,batch=1,request_batch=batch,rows=[],failure=None))
+    assert window.recommend_batch_index.count()==1 and window.decision_batch_index.count()==0
+    visible=window.recommend_json.toPlainText()
+    assert visible.startswith('{\n') and json.loads(visible)==json.loads(approved.body)
+    assert window.recommend_json.textCursor().atStart()
+    window.show_decision_feedback(dict(phase=4,batch=1,notice='已收到推荐',rows=[],failure=None))
+    feedback,_=window.batch_response[window.recommend_batch_index]
+    assert '已收到推荐' in feedback.toPlainText()
+    window.reset_target()
+    assert window.recommend_json.toPlainText()=='' and window.recommend_batch_index.count()==0
+
+
 def test_checked_recipes_pause_for_user_choice_before_execution(window,monkeypatch):
     row=dict(task='C1:fusion',steps=['spatial.blend'])
     check=QCheckBox();window.recommendation_rows=[row];window.recommendation_checks=[check]

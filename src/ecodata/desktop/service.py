@@ -170,8 +170,15 @@ def preview(summary, file=None, *, local_evidence=None):
                 "短时试读不等于原模拟期完整运行或精度提高；科学工作假设不能说成历史事实。"
                 "只列已定位或待核对的资料、字段、坐标和模型配置，避免猜测具体项目情况。"
                 "用一句话解释从输入格式到输出格式的用途和好处，格式相同时说清结构或坐标为何调整。"
+                "另外逐个解释 selected_plans 中本地已执行的方案。每个方案写两到四句，说明每个主要步骤具体解决什么问题、"
+                "给后续读取、逐格比较或模型输入匹配带来什么好处；如有同一评价样本上的备选 RMSE，解释实际比较结论。"
+                "例如保守重网格按格点覆盖面积将数据对齐到目标网格，方便在相同位置逐格比较；保留来源场是沿用所选单源估计，不能写成已执行加权融合。"
+                "输入输出都是 NetCDF 时，区分网格或数据内容调整与文件编码转换。"
+                "说明代理评价的边界；没有独立实测、完整模型运行或端到端验证证据时，不声称真实精度提升或工程可直接运行。"
+                "仅为 selected_plans 中的 id 返回解释，不改变本地选择、评分或验收结论。"
                 "返回 JSON 对象 verdict（ready、needs_inputs、needs_verification 三选一）、"
-                "missing_data、missing_information（中文字符串数组）、conversion_benefit（中文一句话）。")
+                "missing_data、missing_information（中文字符串数组）、conversion_benefit（中文一句话）、"
+                "plan_explanations（数组，每项含 id、benefit〔处理收益〕、limits〔评价与适用边界〕；没有方案时返回空数组）。")
     if stage=="algorithm":
         prompt=("针对已通过本地核验的重采样任务，从 JSON 中各任务列出的可用方法推荐方案。"
                 "解释时间语义、目标网格和待确认事项。返回 JSON 对象，含 decision、reason、algorithms 数组。")
@@ -269,6 +276,7 @@ def preview(summary, file=None, *, local_evidence=None):
         return json.dumps(value,ensure_ascii=False,separators=(",",":"),default=str)
 
     output_tokens = {"recommendation":max(8192, len(loaded.get("tasks", [])) * 900),
+                     "output_check":max(1300, 1000 + 500 * len(loaded.get('selected_plans',[]))),
                      "decision":max(4096, len(loaded.get("candidates", [])) * 320)}.get(stage,900)
     if stage=="decision":
         prompt+=" 已识别到两边共同物理量时，用英文标准标识填 physical_quantity（如 air_temperature），平台将用原版单位引擎实测换算。可以推荐单位、格式、时间、空间及站点配对的独立处理或融合前置组合。"
@@ -284,6 +292,30 @@ def preview(summary, file=None, *, local_evidence=None):
                    stream=True,stream_options={"include_usage":True},
                    max_tokens=min(384*1024,output_tokens+reasoning_tokens))).encode("utf8")
     return Preview(stage,body,hashlib.sha256(body).hexdigest(),brief)
+
+def verify_api_key(key):
+    """Authenticate against the official model list without sending task data."""
+    import certifi
+
+    if not key or not key.isascii() or any(not 33 <= ord(char) <= 126 for char in key):
+        raise ValueError('请输入有效的 DeepSeek API Key。')
+    request=urllib.request.Request('https://api.deepseek.com/models',
+        headers={'Authorization':'Bearer '+key,'Accept':'application/json'})
+    handler=urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=certifi.where()))
+    opener=urllib.request.build_opener(NoRedirect(),handler)
+    try:
+        with opener.open(request,timeout=10) as response:
+            models=json.loads(response.read(1024*1024))
+    except urllib.error.HTTPError as error:
+        with error:
+            message={401:'密钥无效，请检查后重试。',403:'此密钥无权访问 DeepSeek。',
+                     429:'请求过于频繁，请稍后重试。'}.get(error.code,f'DeepSeek 返回 HTTP {error.code}，请稍后重试。')
+        raise ValueError(message) from None
+    except (OSError,ValueError):
+        raise ValueError('无法验证 DeepSeek 连接，请检查网络后重试。') from None
+    if not isinstance(models,dict) or models.get('object')!='list' or not isinstance(models.get('data'),list):
+        raise ValueError('DeepSeek 返回了意外结果，密钥尚未验证。')
+
 
 def tool_turn(messages, tools, api_key=None, progress=None):
     """Use the existing authenticated transport for native function calling."""
@@ -361,9 +393,15 @@ def send(approved, approved_digest, mock=False, *, api_key=None, on_receipt=None
                            for row in json.loads(approved.summary)["local_stops"]]}
     if mock and approved.stage=="output_check":
         summary=json.loads(approved.summary)
-        return dict(verdict="ready" if summary["local_native_ready"] else "needs_verification",
+        plans=summary.get('selected_plans',[])
+        from .output_review import validate_review
+        return validate_review(dict(verdict="ready" if summary["local_native_ready"] else "needs_verification",
                     missing_data=[], missing_information=[],
-                    conversion_benefit="可用文件中的维度和变量结构检查目标模型的输入映射。")
+                    conversion_benefit="可用文件中的维度和变量结构检查目标模型的输入映射。",
+                    plan_explanations=[dict(id=plan['id'],
+                        benefit='模拟说明：按已记录的处理步骤整理输出，便于核对坐标、字段或单位。',
+                        limits='本次未调用 DeepSeek，请以本地评分及校验记录为准。') for plan in plans]),
+                    plan_ids=[plan['id'] for plan in plans])
     if mock and approved.stage=="recommendation":
         from .recommendations import validate
         summary=json.loads(approved.summary)
@@ -440,7 +478,8 @@ def send(approved, approved_digest, mock=False, *, api_key=None, on_receipt=None
         return output
     if approved.stage=="output_check":
         from .output_review import validate_review
-        return validate_review(output)
+        plans=json.loads(approved.summary).get('selected_plans',[])
+        return validate_review(output,plan_ids=[row['id'] for row in plans])
     if approved.stage=="recommendation" and isinstance(output,dict):
         from .recommendations import validate
         return dict(mode="DeepSeek API",recommendations=validate(output,json.loads(approved.summary)))
@@ -699,38 +738,50 @@ def run_original_workbench(scan, model_id, folder, progress=None, *, declared_on
         members=[info.filename for info in z.infolist() if not info.is_dir()]
     source_formats=list(dict.fromkeys(row["format"] for row in scan["rows"]
                         if row["format"] not in {"ZIP", "JSON", "Markdown"}))
-    from .result_summary import ranked_candidates
+    from .result_summary import nonspatial_winner, ranked_candidates, seed_usage
     from .local_search import pareto_comparison
     manifest=result["manifest"]
     searches={}
-    for candidate_path in sorted(folder.rglob("candidate_results.json")):
-        search_dir=candidate_path.parent
-        summary=search_dir/"summary.json"
-        if not summary.is_file() or not (search_dir/"graphs.json").is_file():
+    other_searches={}
+    for summary in sorted(folder.rglob('summary.json')):
+        search_dir=summary.parent
+        graph_path=search_dir/'graphs.json'
+        if not graph_path.is_file():
             continue
         search=json.loads(summary.read_text(encoding="utf8"))
+        task=search_dir.relative_to(folder).as_posix()
         if not (search.get("selection_comparison") and (search.get("best") or {}).get("key")):
+            recorded=nonspatial_winner(search,json.loads(graph_path.read_text(encoding='utf8')))
+            if recorded is not None:
+                other_searches[task]=recorded
+            continue
+        if not (search_dir/'candidate_results.json').is_file():
             continue
         try:
             rankings=ranked_candidates(search_dir,search)
         except (KeyError,TypeError,ValueError):
             continue
-        searches[search_dir.relative_to(folder).as_posix()]=dict(rankings=rankings,
+        searches[task]=dict(rankings=rankings,
             search_folder=str(search_dir),
             evidence=fusion_evidence(search),confirmed_initial=search.get("confirmed_initial",[]),
             recommendation_validation=search.get('recommendation_validation',[]),
+            seed_usage=seed_usage(search_dir,search),
             pareto_comparison=pareto_comparison(rankings))
     return dict(original_archive=archive,manifest=manifest,archive_members=members,
-                source_formats=source_formats,grid_searches=searches,final_check_folder=result.get('final_check_folder'))
+                source_formats=source_formats,grid_searches=searches,other_searches=other_searches,
+                final_check_folder=result.get('final_check_folder'))
 
 
-def review_model_output(result,profile,*,api_key=None,mock=False,progress=None):
+def review_model_output(result,profile,*,api_key=None,mock=False,progress=None,summaries=None):
     """Same final model-requirement review used by desktop and toolkit."""
     from . import output_review
     from ecodata.models.final_check import complete_final_check
     gate=result.get('manifest',{}).get('final_check',{})
     check=output_review.describe_output(result,profile)
-    request=output_review.review_request(check,output_review.cards(result,check))
+    items=output_review.cards(result,check)
+    if summaries is None:
+        summaries=output_review.selection_summaries(items,result.get('failed_tasks',[]),[],result=result)
+    request=output_review.review_request(check,items,summaries=summaries)
     approved=preview(request)
     if gate.get('ai_review',{}).get('status') in {'COMPLETED','SIMULATED','FAILED'} and gate['ai_review'].get('request_sha256')==approved.digest:
         return gate['ai_review'].get('review'),gate['ai_review'].get('error')

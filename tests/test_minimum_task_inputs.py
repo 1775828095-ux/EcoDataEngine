@@ -97,8 +97,10 @@ def test_shared_online_recommendation_uses_checked_catalog_and_marks_fallback(mo
         calls.append(json.loads(approved.summary))
         return dict(recommendations=recommendations.validate(dict(recommendations=[dict(task='C1:fusion',recipe='R1',reason='valid proposal')]),plan))
     monkeypatch.setattr(service,'send',send)
-    rows,receipt=recommendations.recommend_plan(plan,[])
+    previews=[]
+    rows,receipt=recommendations.recommend_plan(plan,[],on_request=previews.append)
     assert calls[0]['stage']=='recommendation'
+    assert previews[0].digest==receipt['request_sha256']
     assert rows[0]['recommendation_origin']=='deepseek' and receipt['status']=='COMPLETED'
     def failed(*args,**kwargs):raise OSError('bounded network failure')
     monkeypatch.setattr(service,'send',failed)

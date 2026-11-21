@@ -1,8 +1,16 @@
 """Result-card data and a bounded, public-schema-only output review."""
+from math import isfinite
 from pathlib import PurePosixPath
 
 
 FAMILY_NAMES = {"SINGLE_SOURCE": "单源", "MULTISOURCE": "多源"}
+SELECTION_REFERENCES = {
+    'OBSERVATION_HOLDOUT': '留出的观测样本',
+    'HELD_STATION_OBSERVATIONS': '留出的站点观测',
+    'PRIMARY_GRID_RECONSTRUCTION_PROXY': '主产品网格重建（代理评价）',
+    'REDUCED_SCALE_PRODUCT_RECONSTRUCTION': '降尺度产品重建（代理评价）',
+    'COARSE_PRODUCT_RECONSTRUCTION_ONLY': '粗网格产品重建（代理评价）',
+}
 METHODS = {
     "spatial.source": ("保留来源场", "直接使用来源场在目标位置上的估计"),
     "spatial.idw": ("反距离权重插值（IDW）", "用邻近位置按距离加权估计目标位置"),
@@ -47,7 +55,8 @@ def collect_steps(key, graphs):
 def searches(result):
     if result.get("search"):
         return {"本次任务": dict(rankings=result["rankings"], evidence=result["fusion_evidence"],
-                                confirmed_initial=result["search"].get("confirmed_initial", []))}
+                                confirmed_initial=result["search"].get("confirmed_initial", []),
+                                seed_usage=result.get('seed_usage'))}
     return result.get("grid_searches") or result.get("batch_searches") or {}
 
 
@@ -212,8 +221,10 @@ def cards(result, check):
             if alignment:
                 labels.insert(0,recipe_name(alignment))
             elif result.get("mode") == "independent_grid_search" or search.get("backend")=="independent_grid_search":
+                alignment = ('spatial.regrid.conservative',)
                 labels.insert(0, "保守重网格")
             elif search.get("backend")=="native_reference_search":
+                alignment = ('reference.native_grid_support',)
                 labels.insert(0, "卫星质量筛选与网格聚合")
             benefit = "，再".join(dict.fromkeys(METHODS.get(op, ("", ""))[1] for op in methods
                                                if op in METHODS))
@@ -248,12 +259,28 @@ def cards(result, check):
                     algorithm = METHODS.get(seed["algorithm"], (seed["algorithm"], ""))[0]
                     status = "评分通过" if seed["status"] == "PASS" else "评分未通过"
                     audit.append(f"AI 初始候选 {algorithm}（{status}）")
+            reference=SELECTION_REFERENCES.get(search['evidence'].get('reference_basis'))
+            alternative=None
+            if row['selected']:
+                alternative=next((candidate['metrics'] for candidate in search['rankings']
+                                  if not candidate['selected'] and candidate.get('metrics')),None)
             items.append(dict(task=task, title=" → ".join(labels), family=FAMILY_NAMES.get(row["family"], ""),
                               rank=row["rank"], selected=row["selected"], metrics=row["metrics"], audit=audit,
                               methods=methods, parameters=params, proxy=proxy, format_line=format_line,
+                              selection_reason='在通过核验的候选中按 RMSE 选优；误差在容差内时优先步骤更少的方案。',
+                              selection_reference=reference,
+                              seed_usage=search.get('seed_usage'),steps=[*alignment,*methods],alternative=alternative,
                               reason=(benefit + "。" if benefit else "") + check["conversion_reason"]))
     for entry in result.get("original_report", []) if result.get("mode")=="selected_operations" else []:
-        for report in entry["report"] if isinstance(entry["report"],list) else []:
+        reports=entry['report']
+        if entry.get('backend')=='statistical_preprocessing' and isinstance(reports,dict):
+            reports=[reports]
+        for report in reports if isinstance(reports,list) else []:
+            if entry.get('backend') in {'statistical_preprocessing','structure_conversion'} and report.get('methods'):
+                items.append(dict(task=entry['task'],title=recipe_name(report['methods']),selected=False,
+                    metrics={},methods=report['methods'],parameters='',proxy=False,performed=True,
+                    format_line=format_line,reason='该处理方案已生成可回读产物，未执行候选评分。'))
+                continue
             if entry.get("backend")=="station_grid":
                 methods=report["methods"]
                 title=recipe_name(methods)
@@ -261,7 +288,7 @@ def cards(result, check):
                 baseline=report.get("heldout_baseline")
                 if not score:
                     items.append(dict(task=entry["task"],title=title,selected=False,metrics={},methods=methods,
-                        parameters="",proxy=False,format_line=format_line,
+                        parameters="",proxy=False,format_line=format_line,performed=True,
                         reason=f"配对成功，共 {report['matched_records']} 条。"))
                     continue
                 selected=report["selected"]
@@ -270,36 +297,164 @@ def cards(result, check):
                     items.append(dict(task=entry["task"],title=title if name=="corrected" else "原始格点单源基线",
                         family="订正试跑" if name=="corrected" else "单源",rank=rank,selected=name==selected,
                         metrics=dict(RMSE=metrics["rmse"],MAE=metrics["mae"],count=metrics["count"]),
-                        methods=methods,parameters="",proxy=False,format_line=format_line,
+                        methods=methods,steps=methods if name=='corrected' else ['spatial.source'],
+                        alternative=(dict(RMSE=baseline['rmse'],count=baseline['count']) if name=='corrected'
+                                     else dict(RMSE=score['rmse'],count=score['count'])),
+                        parameters="",proxy=False,format_line=format_line,
+                        selection_reason='比较同一批留出时刻的 RMSE；订正没有降低 RMSE 时保留单源基线。',
+                        selection_reference='已配对站点的时间留出样本',
                         reason="在同一批站点留出时刻比较误差，适用范围为已配对站点。"))
                 continue
             weighted = str(report.get("method","")).startswith("fusion.uncertainty_weighted.")
-            if report.get("operation") not in {"align_time","align_space"} and not weighted:
+            aligned=entry.get('backend')=='independent_alignment'
+            if report.get("operation") not in {"align_time","align_space"} and not weighted and not aligned:
                 continue
-            reason = ("统一共同覆盖时段的时间间隔，保留时间轴与单位。" if report["operation"]=="align_time" else
-                      "统一网格坐标，保留各来源，便于逐格对照。")
-            if weighted:
+            if aligned:
+                reason='按共同 UTC 日期和目标网格对齐，分别保留两份来源。'
+            elif weighted:
                 reason = "用原始 uncertainty 降低较不确定来源的权重，输出合成值和合成不确定度。"
-            items.append(dict(task=entry["task"],title=recipe_name(report["name"]),selected=False,metrics={},
-                methods=[],parameters="",proxy=False,format_line=format_line,reason=reason))
+            elif report.get('operation')=='align_time':
+                reason='统一共同覆盖时段的时间间隔，保留时间轴与单位。'
+            else:
+                reason='统一网格坐标，保留各来源，便于逐格对照。'
+            items.append(dict(task=entry["task"],title='保守重网格' if aligned else recipe_name(report["name"]),selected=False,metrics={},performed=True,
+                methods=['spatial.regrid.conservative'] if aligned else report['name'],
+                parameters="",proxy=False,format_line=format_line,reason=reason))
     for row in result.get("research_records",[]):
         status = {"PASS":"已执行","PARTIAL":"部分方案完成","BLOCKED":"条件不足"}.get(row["status"],row["status"])
         reason = row.get("reason") or f"原版服务返回 {row['status']}，已读回 {len(row.get('readback',[]))} 份 NetCDF。"
         items.append(dict(task=row["label"],title=status,selected=False,metrics={},methods=[],
+                          performed=row['status'] in {'PASS','PARTIAL'},
                           parameters="",proxy=False,format_line=format_line,reason=reason))
     if not items:
         title = "保守重网格" if result.get("mode") == "independent_alignment" else "输出格式与转换"
-        items.append(dict(task="", title=title, selected=False, metrics={}, methods=[], parameters="",
+        items.append(dict(task="", title=title, selected=False, metrics={},
+                          methods=['spatial.regrid.conservative'] if result.get('mode')=='independent_alignment' else [],parameters="",
+                          performed=result.get('mode')=='independent_alignment',
                           proxy=False, format_line=format_line, reason=check["conversion_reason"]))
     return items
 
 
-def review_request(check, items):
+def preparation_summaries(result):
+    """Describe operations verified by the original handoff, including no-score runs."""
+    from .recommendations import recipe_name
+
+    manifest=result.get('manifest') or {}
+    preparation=manifest.get('preparation') or {}
+    admission=preparation.get('source_admission') or {}
+    summaries=[]
+    adaptation=preparation.get('adaptation') or admission.get('adaptation') or []
+    for row in adaptation:
+        if row.get('status')!='ADAPTED_AWAITING_ADMISSION' or not row.get('product'):
+            continue
+        titles={
+            'coordinate_equivalence':'坐标排序与等价整理',
+            'strict_time_concatenation':'时间分片顺序拼接',
+            'rate_interval_integral':'降水率按时间区间积分',
+        }
+        operations=[titles[item['operation']] for item in row.get('operations',[]) if item.get('operation') in titles]
+        detail=f"已回读 {row.get('time_records','未知数量')} 条时间记录，单位 {row.get('units') or '未注明'}。该预处理没有候选评分。"
+        summaries.append(dict(task=row.get('source_id'),title=' → '.join(operations) or '降水适配',
+                              reason=detail,performed=True,steps=['engineering.precipitation_adaptation']))
+    for task in preparation.get('tasks',[]):
+        execution=task.get('result') or (task.get('execution') or {}).get('result') or {}
+        if execution.get('status')=='UNCHANGED_COMPLETE_INPUT':
+            summaries.append(dict(task=task.get('field'),title='保留完整单源',performed=True,
+                reason=execution.get('reason') or '通过数据检查后保留原有数据和分辨率。',steps=['spatial.source']))
+        elif task.get('operation') and (manifest.get('component_format_generated') or manifest.get('native_writeback_verified')):
+            summaries.append(dict(title=recipe_name([task['operation']]),performed=True,
+                reason='原生文件已写出并回读，清单记录的是格式或写回校验。'))
+    if manifest.get('status')=='PROJECT_UPDATED' and preparation.get('route')=='bound_multirun_multigrid_meteorology_v1':
+        summaries.append(dict(title='同刻观测局部残差校正',performed=True,
+            reason='已在有观测支持的区域完成局部校正并回读工程副本。'))
+    if manifest.get('status')=='CONVERTED':
+        summaries.append(dict(title='模型原生格式转换',performed=True,
+            reason='转换器已提供原生输出文件及格式校验记录。',steps=['format.normalize']))
+    if manifest.get('status')=='ENGINEERING_INSPECTED':
+        blocked=(admission.get('weather') or {}).get('blocked_search') or {}
+        reason=blocked.get('reason') or '本次交付记录为工程资料盘点，没有可确认的工程融合或写回成果。'
+        summaries.append(dict(task='原版工程',title='工程盘点',performed=True,reason=reason))
+    return summaries
+
+
+def selection_summaries(items, failures, recommendations, *, result=None):
+    """Summarize recorded outcomes without treating AI recommendations as winners."""
+    from .recommendations import recipe_name
+
+    summaries = []
+    for row in items:
+        if row['selected'] and row['metrics']:
+            summaries.append(dict(task=row['task'], title=row['title'], metrics=row['metrics'],
+                reason=row['selection_reason'], reference=row.get('selection_reference'),
+                parameters=row['parameters'],seed_usage=row.get('seed_usage'),
+                steps=row.get('steps',row.get('methods',[])),alternative=row.get('alternative'),proxy=row['proxy']))
+        elif row.get('performed'):
+            summary=dict(task=row['task'],title=row['title'],reason=row['reason'],performed=True,
+                         steps=row.get('steps',row.get('methods',[])))
+            if summary not in summaries:
+                summaries.append(summary)
+    result=result or {}
+    for task, row in result.get('other_searches',{}).items():
+        reason=('按同一评价条件下的实测目标值排序；误差等价时优先结构更简单的方案。'
+                if row.get('validation_best_delivered') is not False else
+                '交付方案由后端通过部署核验后选定；可能与评价阶段的第一名不同。')
+        summaries.append(dict(task=task,title=recipe_name(row['steps']) if row['steps'] else '保留来源场',
+            metrics=row['metrics'],reason=reason,performed=True,steps=row['steps'] or ['spatial.source'],
+            search_note='已记录实际变异执行。' if row['mutation_executed'] else '未记录新的变异候选执行。'))
+    summaries.extend(preparation_summaries(result))
+    for failure in failures:
+        task = (failure.get('task') if isinstance(failure,dict) else None) or '本次任务'
+        recipes = dict.fromkeys(recipe_name(row['steps']) for row in recommendations if row['task'] == task)
+        reason = (failure.get('reason') if isinstance(failure,dict) else str(failure)) or '后台未返回具体失败原因。'
+        if reason in {"'time_bounds'", '"time_bounds"'}:
+            reason = '本地处理时未找到时间区间字段 time_bounds。'
+        summaries.append(dict(task=task, title='处理失败 · 未选出算法', reason=reason, failed=True,
+            proposed='；'.join(recipes)))
+    if not summaries:
+        summaries.append(dict(title='未产生算法评分',
+            reason='本次结果没有可展示的候选选优记录。实际执行的操作见下方处理记录。'))
+    explainable=[row for row in summaries if row.get('steps')]
+    for number,row in enumerate(explainable[:8],1):
+        row['review_id']=f'P{number}'
+    return summaries
+
+
+def public_plans(summaries):
+    """Send only stable operation names and aggregate scores for finished plans."""
+    from .recommendations import ALGORITHM_NAMES
+
+    allowlist={**ALGORITHM_NAMES,**{key:label for key,(label,_) in METHODS.items()}}
+
+    def scores(values):
+        return {key:values[key] for key in ('RMSE','MAE','count','objective')
+                if type(values.get(key)) in (int,float) and isfinite(values[key])}
+
+    plans=[]
+    for row in summaries:
+        if not row.get('review_id'):
+            continue
+        steps=row['steps']
+        if not all(step in allowlist for step in steps):
+            continue
+        metrics=scores(row.get('metrics') or {})
+        alternative=scores(row.get('alternative') or {})
+        plan=dict(id=row['review_id'],steps=[allowlist[step] for step in steps],scores=metrics,
+                  grid_proxy=row.get('proxy',False))
+        if row.get('reference') in (*SELECTION_REFERENCES.values(),'已配对站点的时间留出样本'):
+            plan['evaluation_reference']=row['reference']
+        if metrics.get('count') and alternative.get('count')==metrics['count'] and 'RMSE' in alternative:
+            plan['alternative_RMSE']=alternative['RMSE']
+        plans.append(plan)
+    return plans
+
+
+def review_request(check, items, *, summaries=()):
     """Only fixed format/category labels and bundled model-profile fields can leave the machine."""
     known_formats = set(FORMATS.values()) | {"Text", "原版工程交付包", "模型专用产物", "其他产物"}
     final=check.get('final_check') or {}
     native=final.get('native',{})
     weather=final.get('format',{}).get('weather_files',{})
+    format_detail=check.get('format_conversion') or {}
     return dict(stage="output_check", target_model=check["model"], zip_readable=check["zip_readable"],
                 task_scope='component_conversion' if check.get('component_only') else 'data_only' if not check['model'] else 'model_project',
                 final_model_check=dict(model_requirements=final.get('model_requirements'),
@@ -324,14 +479,16 @@ def review_request(check, items):
                 archive_formats=check["archive_formats"],
                 source_formats=[f for f in check["source_formats"] if f in known_formats],
                 target_format=check["target_format"] if check["target_format"] in known_formats else "其他产物",
+                actual_output_formats=[fmt for fmt in format_detail.get('target_formats',[]) if fmt in known_formats],
                 model_requirements=[dict(role=r["role"], missing_field_matches=r["missing"],
                                          structure_needs_check=r["structure_needs_check"])
                                     for r in check["requirements"]],
                 methods=sorted({op for item in items for op in item["methods"] if op in METHODS}),
+                selected_plans=public_plans(summaries),
                 physical_reference="grid_proxy" if any(item["proxy"] for item in items) else "unspecified")
 
 
-def validate_review(output):
+def validate_review(output, *, plan_ids=()):
     if not isinstance(output, dict) or not isinstance(output.get("conversion_benefit"), str):
         raise ValueError("输出复核响应缺少转换说明")
     if output.get("verdict") not in {"ready", "needs_inputs", "needs_verification"}:
@@ -342,6 +499,16 @@ def validate_review(output):
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
             raise ValueError("输出复核响应缺少数据或信息检查")
         clean[key] = list(dict.fromkeys(item.strip()[:170] for item in value if item.strip()))[:8]
+    explanations={}
+    rows=output.get('plan_explanations')
+    for row in rows if isinstance(rows,list) else []:
+        if not isinstance(row,dict) or not isinstance(row.get('id'),str) or row['id'] not in plan_ids:
+            continue
+        benefit,limits=row.get('benefit'),row.get('limits')
+        if isinstance(benefit,str) and benefit.strip() and isinstance(limits,str) and limits.strip():
+            explanations.setdefault(row['id'],dict(benefit=benefit.strip()[:420],limits=limits.strip()[:250]))
+    if explanations:
+        clean['plan_explanations']=explanations
     return clean
 
 
