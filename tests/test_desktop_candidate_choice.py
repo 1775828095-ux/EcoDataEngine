@@ -73,6 +73,11 @@ def test_explanation_toggle_and_candidate_choice_are_real_widgets(tmp_path,compl
     assert evidence.isHidden();toggle.click();assert not evidence.isHidden()
     _,_,display=completed;window.set_candidate_options(display)
     assert window.candidate_export.isEnabled() and window.candidate_select.count()>1
+    for i in range(window.candidate_select.count()):
+        row=window.candidate_select.itemData(i)
+        selected=' · 本次选中' if row['selected'] else ''
+        assert window.candidate_select.itemText(i)==(
+            f"{recommendations.recipe_name(row['steps'])} · RMSE {row['metrics']['RMSE']:.4g}{selected}")
     window.candidate_select.setCurrentIndex(1)
     assert 'MAE' in window.candidate_note.text() and '不替换默认工程包' in window.candidate_note.text()
     window.set_candidate_options(None);assert not window.candidate_export.isEnabled()

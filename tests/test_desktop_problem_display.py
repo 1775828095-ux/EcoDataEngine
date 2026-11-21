@@ -7,16 +7,22 @@ from ecodata.interface.engineering_completeness import IncompleteProject,report,
 
 
 def test_original_validator_names_and_actions_survive(window,monkeypatch):
+    window.show()
     exc=IncompleteProject(report('WRF',[finding('wrfbdy_d01','missing','控制文件引用了此边界文件，但包内未找到','提供同工程、同时间窗口的wrfbdy_d01')]))
     monkeypatch.setattr(QMessageBox,'warning',lambda *a:None)
     window.error(exc)
-    assert not window.problem_panel.isHidden()
+    assert not window.problem_panel.isVisible()
     assert window.problem_table.rowCount()==1
     assert 'wrfbdy_d01' in window.problem_table.item(0,0).text()
     assert '未找到' in window.problem_table.item(0,2).text()
     assert '同时间窗口' in window.problem_table.item(0,3).text()
+    window.tabs.setCurrentIndex(1)
+    assert window.problem_panel.isVisible()
+    window.issue_button.click()
+    assert window.drawer.pages.currentWidget() is window.issue_details
+    window.drawer.hide()
     window.tabs.setCurrentIndex(2)
-    assert not window.problem_panel.isHidden()
+    assert not window.problem_panel.isVisible() and window.problem_table.rowCount()==1
 
 
 def test_no_executable_plan_lists_the_actual_reason(window):

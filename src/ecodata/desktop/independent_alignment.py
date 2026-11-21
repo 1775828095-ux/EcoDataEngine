@@ -14,7 +14,7 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
     from ecodata.recognition import recognise_file
     from ecodata.spatial.regridding import GridRegridder, RegridConfig
     from .service import bundle
-    from .result_summary import ranked_candidates
+    from .result_summary import ranked_candidates, seed_usage
 
     assert_current(scan)
     folder.mkdir(parents=True, exist_ok=True)
@@ -141,6 +141,7 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
             searches[task_id]=dict(evidence=fusion_evidence(search),best=search["best"],
                 search_folder=str(search_folder),
                 recommendation_validation=search.get('recommendation_validation',[]),
+                seed_usage=seed_usage(search_folder,search),
                 confirmed_initial=search["confirmed_initial"],selected_graph=search["selected_graph"],
                 rankings=rankings,pareto_comparison=pareto_comparison(rankings),
                 portrait_strategy=search.get("portrait_strategy"),soft_guidance=search["soft_guidance"])
