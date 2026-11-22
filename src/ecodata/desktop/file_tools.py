@@ -9,11 +9,11 @@ import sys
 import tarfile
 import zipfile
 
-from .scan import FORMATS, decode, kind, materialize_member, safe, scientific
+from .scan import FORMATS, archive_stream, decode, kind, materialize_member, safe, scientific
 
 
 @contextmanager
-def selected(root, locator):
+def selected(root, locator, *, stream_table=False):
     root = Path(root).resolve(strict=True)
     parts = locator.split('!/') if locator else []
     if root.is_dir():
@@ -55,6 +55,9 @@ def selected(root, locator):
             else:
                 raise ValueError('只有归档路径可以包含 !/')
             reference = [original, format_kind, member, offset]
+            if (stream_table and index == len(parts) - 1 and format_kind == 'zip'
+                    and Path(member).suffix.lower() in {'.csv', '.tsv'}):
+                break
             current = stack.enter_context(materialize_member((current, format_kind, member, offset), size))
             # Preserve the suffix used by format-specific readers, including nested archives.
             if index < len(parts) - 1:
@@ -87,7 +90,7 @@ def inspect(root, operation, arguments):
     locator = arguments.get('path', '')
     if not isinstance(locator, str):
         raise ValueError('path必须为字符串')
-    with selected(root, locator) as (path, reference, containers):
+    with selected(root, locator, stream_table=operation == 'read_header') as (path, reference, containers):
         if operation == 'list_directory':
             start = arguments.get('offset', 0)
             if type(start) is not int or start < 0:
@@ -113,16 +116,26 @@ def inspect(root, operation, arguments):
             offset = arguments.get('offset', 0)
             if type(offset) is not int or offset < 0:
                 raise ValueError('offset必须为非负字节位置')
+            suffix = Path(locator or path.name).suffix.lower()
+            if suffix in {'.docx', '.pdf'}:
+                from .document_evidence import extract
+                evidence = extract(path, suffix, offset)
+                return dict(**evidence, row=row, document=dict(name=display,
+                            text=evidence['text'], partial=True), evidence_path=locator, arrays_read=False)
             with path.open('rb') as stream:
                 stream.seek(offset)
                 raw = stream.read(16385)
             if b'\x00' in raw:
                 raise ValueError('此文件为二进制，请使用read_header')
             text = decode(raw[:16384])
-            return dict(text=text, next_offset=offset + 16384 if len(raw) > 16384 else None,
+            result = dict(text=text, next_offset=offset + 16384 if len(raw) > 16384 else None,
                         row=row, document=dict(name=display, text=text, offset=offset,total_bytes=path.stat().st_size,
                             raw_base64=base64.b64encode(raw[:16384]).decode('ascii'),partial=offset > 0 or len(raw) > 16384),
                         evidence_path=locator, arrays_read=False)
+            if suffix in {'.md', '.txt'}:
+                from .document_evidence import text_passages
+                result['evidence'] = text_passages(text, markdown=suffix == '.md')
+            return result
         if operation != 'read_header':
             raise ValueError('未知只读工具')
         suffix = Path(locator or path.name).suffix.lower()
@@ -131,8 +144,14 @@ def inspect(root, operation, arguments):
                 tables = database.execute("select name,sql from sqlite_master where type='table' order by name limit 150").fetchall()
             return dict(tables=tables, row=row, arrays_read=False)
         if suffix in {'.csv', '.tsv', '.txt', '.pcp', '.tmp', '.cli', '.cio'}:
-            with path.open('rb') as stream:
-                raw = stream.read(16384)
+            if suffix in {'.csv', '.tsv'} and reference[1] == 'zip':
+                with zipfile.ZipFile(path) as archive:
+                    row['bytes'] = archive.getinfo(reference[2]).file_size
+                with archive_stream(path, *reference[1:]) as stream:
+                    raw = stream.read(16384)
+            else:
+                with path.open('rb') as stream:
+                    raw = stream.read(16384)
             lines = decode(raw).splitlines()[:8]
             if suffix in {'.csv', '.tsv'} and lines:
                 delimiter = '\t' if suffix == '.tsv' else ','

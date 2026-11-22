@@ -1108,6 +1108,8 @@ class Window(QMainWindow):
                 plan=recommendations.make_request(full_scan,approved,checked,gated,
                                                   local_checks=reply.get("local_checks",[]),include_samples=False)
                 rows,receipt=recommendations.recommend_plan(plan,reply['decisions'],mock=mock,api_key=key,progress=log)
+                log("正在本地复查留出的数据窗口…")
+                recommendations.review_holdouts(full_scan,approved,plan,rows,gated)
                 reply['algorithm_recommendation']=receipt
                 reply['api_receipts']=[*reply.get('api_receipts',[]),*receipt['api_receipts']]
                 reply['batch_count']=len(reply['api_receipts'])
@@ -1123,7 +1125,7 @@ class Window(QMainWindow):
             self.update_task_checks(checked)
             self.show_local_explanation(reply,checked)
             self.detail.setPlainText(s.dump(dict(
-                DeepSeek=reply, 本地核验=checked, 待选算法=rows,
+                DeepSeek=reply, 本地核验=checked, 文档核对=full_scan.get('document_evidence_checks',[]), 待选算法=rows,
                 扫描依据=discovery.local_overview(full_scan,candidates))))
             self.render_recommendations(dict(reply,recommendations=rows))
             facts=[f"已按需读取 {len(full_scan['rows'])} 份资料；形成 {len(candidates)} 组候选，{len(rows)} 项建议。"]
@@ -1131,6 +1133,10 @@ class Window(QMainWindow):
                 fields=[f"{f['name']}（{f.get('unit') or '单位未确认'}）" for f in source['fields'] if not f.get('axis')][:2]
                 facts.append('数据事实 · '+PurePosixPath(source['name']).name+' · '+'、'.join(fields))
             for item in checked[:3]:facts.append(f"{item['candidate']} · {self.operation_labels.get(item['action'],item['action'])} · {item['status']}：{item['reason'][:160]}")
+            heldout=[result for row in rows for result in row.get('local_holdout_review',[])]
+            if heldout:
+                counts={status:sum(item['status']==status for item in heldout) for status in ('checked','pending','failed')}
+                facts.append(f"本地留出回检 · 已核验 {counts['checked']} · 待核实 {counts['pending']} · 失败 {counts['failed']}")
             if full_scan.get('saved_input_context'):facts.append('历史约定 · '+full_scan['saved_input_context'].get('explanation',''))
             self.basis_summary.setPlainText('\n'.join(facts))
             self.ai_advice_button.setEnabled(bool(rows))

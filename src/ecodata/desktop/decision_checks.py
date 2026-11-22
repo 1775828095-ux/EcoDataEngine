@@ -101,7 +101,8 @@ class LocalChecks:
             assert_current(self.scan)
             try:
                 row = self.scan["rows"][item[0]]
-                result = sample_values.export_sample(sample_values.field_sample(row, item[2], outbound=True))
+                from .sampling_plan import export_field
+                result = export_field(row, item[2])
             except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
                 result=dict(status="unavailable",basis="local_reader_or_metadata_unavailable")
             assert_current(self.scan)

@@ -65,7 +65,7 @@ def recipe_name(steps):
 
 
 def attach_samples(scan, pairs):
-    from .sample_values import export_sample, field_sample
+    from .sampling_plan import export_field
 
     samples={}
     for pair in pairs:
@@ -80,8 +80,7 @@ def attach_samples(scan, pairs):
                         raise ValueError("invalid field")
                     row=scan["rows"][index]
                     selected=row["fields"][offset]
-                    values=field_sample(row,selected,outbound=True) if not selected.get("axis") else None
-                    samples[fid]=export_sample(values).get("perturbed_samples",[])[:4]
+                    samples[fid]=export_field(row,selected).get("perturbed_samples",[])[:4]
                 except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
                     samples[fid]=[]
             field["perturbed_samples"]=samples[fid]
@@ -203,6 +202,24 @@ def recommend_plan(plan, decisions, *, mock=False, api_key=None, progress=None):
             row['reason']='线上具体算法推荐未完成，以下为平台已有候选补充，不是DS已验证方案。'+row['reason']
         if progress:progress('线上算法推荐未完成；保留平台可核验候选：'+str(exc))
         return rows,dict(status='PLATFORM_FALLBACK',error=str(exc),api_receipts=receipts)
+
+
+def review_holdouts(scan, approved, plan, recommendations, gated):
+    from .catalog_decision import local_fields
+    from .sampling_plan import recommendation_review
+
+    originals, _ = local_fields(scan, approved)
+    tasks = {task["id"]: task for task in plan["tasks"]}
+    cache = {}
+    assert_current(scan)
+    for recommendation in recommendations:
+        task = tasks.get(recommendation["task"])
+        if not task:
+            continue
+        refs = [originals[fid] for fid in task["context"]["fields"] if fid in originals]
+        report = recommendation_review(scan, recommendation, gated.get((task["candidate"], task["operation"])), refs, cache)
+        recommendation["local_holdout_review"] = report
+    assert_current(scan)
 
 
 def from_decisions(summary,decisions):

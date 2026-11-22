@@ -99,7 +99,11 @@ class FileTools:
                     complete=len(combined)==document['total_bytes']
                     self.documents[document['name']]=combined.decode('utf-8-sig',errors='replace')
                     if complete:self.rows[document['name']]['original_probe_payload']=combined
-                else:self.documents[document['name']] = document['text']
+                else:
+                    previous = self.documents.get(document['name'], '')
+                    text = document['text']
+                    if text and text not in previous:
+                        self.documents[document['name']] = '\n'.join(part for part in (previous, text) if part)
             for document in value.get('companion_documents',[]):
                 self.documents[document['name']]=document['text']
                 self.document_locators[document['name']]=arguments.get('path','')+'.receipt.json'
@@ -249,6 +253,8 @@ def run(scan, summary, cache, mock, key, progress, feedback):
         [(set(originals), answer)], ask_implicit=False)
     decisions = [row for item in dialogue.values() for row in item['decisions']]
     checked, gated = discovery.check(full, candidates, dict(decisions=decisions), approved)
+    from .document_evidence import cross_check
+    full['document_evidence_checks'] = cross_check(full)
     reply = dict(mode='DeepSeek API', decisions=decisions, failures=[], batch_count=len(receipts),
         local_checks=answer['field_checks'], api_receipts=receipts, reused_batches=0,
         file_agent=full['file_agent_audit'])
