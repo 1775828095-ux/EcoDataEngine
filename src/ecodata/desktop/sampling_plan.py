@@ -4,7 +4,7 @@ import hashlib
 import re
 from contextlib import contextmanager
 from io import TextIOWrapper
-from itertools import islice, zip_longest
+from itertools import chain, islice, zip_longest
 
 from .scan import AXES, local_member, open_tabular_member
 
@@ -13,6 +13,20 @@ IDENTIFIERS = {"station_id", "station", "site_id", "site", "sensor_id", "object_
 TIME = {"time", "tstep", "date", "datetime", "timestamp", "time_utc", "时间", "日期"}
 PROBE_LIMIT = 4096
 VALUE_LIMIT = 64
+TIME_COORD_LIMIT = 32768
+LOCAL_SUMMARIES = {"original_probe_payload", "time_coverage", "time_coverage_evidence",
+                   "declared_coverage_duration_seconds", "declared_output_print_period",
+                   "sampling_interval_seconds", "time_cell_duration_seconds", "time_seconds",
+                   "time_resolution_class", "time_spacing_evidence"}
+
+
+def recommendation_metadata(value):
+    """Whole-series observed coverage stays in the local catalogue."""
+    if isinstance(value, dict):
+        return {key: recommendation_metadata(item) for key, item in value.items() if key not in LOCAL_SUMMARIES}
+    if isinstance(value, list):
+        return [recommendation_metadata(item) for item in value]
+    return value
 
 
 def numerics(values):
@@ -31,7 +45,7 @@ def member_available(row):
                 and leaf["bytes"] > MAX_SAMPLE_MATERIALIZATION)
 
 
-def sample(row, field, *, holdout=False, spatial=False):
+def sample(row, field, *, holdout=False, spatial=False, future=False):
     if row["format"] not in SUPPORTED or row.get("original_reader") or not member_available(row):
         return dict(status="pending", basis="bounded_reader_unavailable", values=[])
     name = normalized(field.get("source_column") or field["name"])
@@ -42,7 +56,7 @@ def sample(row, field, *, holdout=False, spatial=False):
     elif row["format"] == "GeoTIFF":
         record = raster(row, field, holdout)
     else:
-        record = table(row, field, holdout)
+        record = table(row, field, holdout, future=future)
     record["status"] = "checked" if any(v is not None for v in record["values"]) else "pending"
     return record
 
@@ -67,16 +81,15 @@ def netcdf(row, field, holdout, spatial=False):
         size = array.sizes[partition]
         reserved = max(1, size // 5)
         boundary = size - reserved
-        spacing = row.get("declared_time_resolution") or row.get("resolution", {}).get("time_seconds")
+        spacing = row.get("declared_time_resolution")
         tile_axes = [dim for dim in dims if dim not in {partition, temporal} and array.sizes[dim] >= 4][:2]
         width = min(16 // 2**len(tile_axes), reserved if holdout else max(1, boundary // 4))
-        start = boundary if holdout else 0
-        last = size - width if holdout else boundary - width
-        windows = 1 if holdout else min(4, last + 1)
+        start, stop = (boundary, size) if holdout else (0, boundary)
+        coordinate = dataset.coords.get(temporal) if partition == temporal else None
+        windows, frequency_scope = frequency_windows(coordinate, partition, start, stop, width)
         regions, groups = [], []
-        for index in range(windows):
-            portion = index / max(1, windows - 1)
-            lower = start + int((last - start) * portion)
+        for index, (lower, upper, interval) in enumerate(windows):
+            portion = index / max(1, len(windows) - 1)
             selection = {}
             for dim in dims:
                 if dim == partition:
@@ -86,12 +99,11 @@ def netcdf(row, field, holdout, spatial=False):
                 tile = 2 if dim in tile_axes else 1
                 position = int((limit - tile) * (0.5 if holdout else portion))
                 selection[dim] = slice(position, position + tile) if tile > 1 else position
-            selection[partition] = slice(lower, lower + width)
+            selection[partition] = slice(lower, upper)
             groups.append(array.isel(selection).values.reshape(-1))
-            region = {"axis": partition, "start_index": lower, "stop_index": lower + width}
-            if temporal == partition and temporal in dataset.coords:
-                coordinate = dataset[temporal]
-                coordinate_values = coordinate.isel({temporal: slice(lower, lower + width)}).values
+            region = {"axis": partition, "start_index": lower, "stop_index": upper, "interval": interval}
+            if coordinate is not None:
+                coordinate_values = coordinate.isel({temporal: slice(lower, upper)}).values
                 bounds = coordinate.attrs.get("bounds")
                 numeric_times = np.issubdtype(coordinate_values.dtype, np.number)
                 region["time"] = dict(first=float(coordinate_values[0]) if numeric_times else str(coordinate_values[0]),
@@ -103,7 +115,7 @@ def netcdf(row, field, holdout, spatial=False):
                     if len(intervals):
                         region["time"]["interval_range"] = [float(intervals.min()), float(intervals.max())]
                 if bounds in dataset and temporal in dataset[bounds].dims:
-                    edges = dataset[bounds].isel({temporal: slice(lower, lower + width)}).transpose(temporal, ...).values
+                    edges = dataset[bounds].isel({temporal: slice(lower, upper)}).transpose(temporal, ...).values
                     if np.isfinite(edges).all():
                         region["time"]["bounds"] = edges.tolist()
                         if edges.ndim == 2 and edges.shape[1] == 2:
@@ -115,7 +127,56 @@ def netcdf(row, field, holdout, spatial=False):
         return dict(basis="time_windows" if partition == temporal else "spatial_blocks",
                     partition=dict(axis=partition, holdout_start=boundary, size=size),
                     unit=array.attrs.get("units") or field.get("unit"), frequency=spacing,
+                    frequency_scope=frequency_scope,
                     variable=field["name"], windows=regions, values=values)
+
+
+def frequency_windows(coordinate, axis, start, stop, width):
+    """Group regular runs on the time coordinate without loading the data variable."""
+    import numpy as np
+
+    def split(lower, upper):
+        if coordinate is None:
+            return [(lower, upper, None)]
+        values = coordinate.isel({axis: slice(lower, upper)}).values
+        if not np.issubdtype(values.dtype, np.number) or len(values) < 2:
+            return [(lower, upper, None)]
+        points = np.diff(values.astype(float))
+        runs = []
+        segment_start = 0
+        cadence = points[0]
+        discontinuities = np.flatnonzero(np.r_[not np.isfinite(cadence) or cadence <= 0, (
+            ~np.isclose(points[1:], points[:-1], rtol=1e-5, atol=1e-9)
+            | ~np.isfinite(points[1:]) | (points[1:] <= 0))])
+        for index in discontinuities:
+            if index >= segment_start:
+                runs.append((lower + segment_start, lower + index + 1,
+                             float(cadence) if np.isfinite(cadence) and cadence > 0 else None))
+                segment_start = index + 1
+                cadence = points[index + 1] if index + 1 < len(points) else np.nan
+        runs.append((lower + segment_start, upper, float(cadence) if np.isfinite(cadence) and cadence > 0 else None))
+        return runs
+
+    count = min(4, max(1, (stop - start) // width))
+    starts = sorted({start + i * (stop - start - width) // max(1, count - 1) for i in range(count)})
+    regular = [(index, index + width, None) for index in starts]
+    if coordinate is None:
+        return regular, "not_time_axis"
+    if stop - start > TIME_COORD_LIMIT:
+        runs = [run for lo, hi, _ in regular for run in split(lo, hi)]
+        scope = "sampled_time_coordinate_windows"
+    else:
+        runs = split(start, stop)
+        if len(runs) == 1:
+            return [(lo, hi, runs[0][2]) for lo, hi, _ in regular], "partition_time_coordinates"
+        scope = "partition_time_coordinates"
+    # Cover distinct cadences first, then use remaining slots to spread over runs.
+    selected = {}
+    for run in sorted(runs, key=lambda item: item[1] - item[0], reverse=True):
+        selected.setdefault(run[2], run)
+    ordered = list(selected.values())[:4]
+    ordered.extend([run for run in runs if run not in ordered][:4 - len(ordered)])
+    return [(lo, min(hi, lo + width), interval) for lo, hi, interval in sorted(ordered)], scope
 
 
 def raster(row, field, holdout):
@@ -170,7 +231,9 @@ def records(row, field, encoding, sheet_name=None):
             yield csv.reader(stream, delimiter="\t" if row["format"] == "TSV" else ","), None, []
 
 
-def table(row, field, holdout):
+def table(row, field, holdout, *, future=False):
+    from .csv_index import indexed_records, load, month
+
     for encoding in ("utf-8-sig", "gb18030"):
         try:
             with records(row, field, encoding) as (rows, sheet, sheets):
@@ -181,7 +244,23 @@ def table(row, field, holdout):
                     return dict(basis="column_changed", values=[])
                 col = header.index(original)
                 station = next((i for i, name in enumerate(names) if name in IDENTIFIERS - {"id"}), None)
+                station_col = station
                 time = next((i for i, name in enumerate(names) if name in TIME), None)
+                indexed = load(row, encoding, header) if row["format"] in {"CSV", "TSV"} else None
+                prefix = [] if indexed else list(islice(rows, PROBE_LIMIT))
+                months = (sorted(indexed.get("month", {})) if indexed else
+                          sorted({candidate for record in prefix if time is not None and len(record) > time
+                                  if (candidate := month(record[time]))}))
+                held_month = months[-1] if len(months) >= 2 else None
+                if future and holdout and time is not None and not indexed and row["format"] in {"CSV", "TSV"}:
+                    review = latest_month_review(prefix, rows, time, station, col, held_month)
+                    if review["values"] or station is None:
+                        return dict(basis="calendar_months", unit=field.get("unit"), sheet=sheet, **review)
+                    # A single observed month cannot support a future-month test.
+                    # Fall back to independently reserved stations within the prefix.
+                    future = False
+                if future and held_month:
+                    station = None
                 basis = "station_groups" if station is not None else "calendar_months" if time is not None else "row_blocks"
                 if basis == "row_blocks" and len(sheets) > 1:
                     reserved = sheets[-1]
@@ -198,16 +277,58 @@ def table(row, field, holdout):
                                          (item.get("original_header") or item.get("name")) == original), {})
                             if field.get("unit") and peer.get("unit") and field["unit"] != peer["unit"]:
                                 return dict(basis="heldout_sheet_unit_conflict", values=[])
-                            cells = (record[index] for record in islice(other, VALUE_LIMIT) if len(record) > index)
+                            for attribute in ("standard_name", "physical_variable", "temporal_semantics"):
+                                if field.get(attribute) and peer.get(attribute) and field[attribute] != peer[attribute]:
+                                    return dict(basis="heldout_sheet_semantics_conflict", values=[])
+                            preview = list(islice(other, VALUE_LIMIT))
+                            clock = next((i for i, name in enumerate(alternate) if normalized(name) in TIME), None)
+                            date_check = valid_dates([record[clock] for record in preview if len(record) > clock]) if clock is not None else None
+                            cells = (record[index] for record in preview if len(record) > index)
                             return dict(basis="worksheet_groups", partition=dict(held_sheet=reserved),
-                                        unit=peer.get("unit"), values=numerics(cells))
+                                        unit=peer.get("unit"), dates_valid=date_check, values=numerics(cells))
                     if sheet == reserved and holdout:
                         cells = (record[col] for record in islice(rows, VALUE_LIMIT) if len(record) > col)
                         return dict(basis="worksheet_groups", partition=dict(held_sheet=reserved),
                                     unit=field.get("unit"), values=numerics(cells))
                 groups = {}
                 stamps = {}
-                for index, record in enumerate(islice(rows, PROBE_LIMIT)):
+                category = "station" if station is not None else "month" if time is not None else None
+                if indexed and category:
+                    eligible = sorted(indexed.get(category, {}))
+                    if category == "station":
+                        eligible = [group for group in eligible if station_reserved(group) == holdout]
+                    else:
+                        eligible = [group for group in eligible if month_reserved(group, held_month) == holdout]
+                    staged = []
+                    for key in distributed(eligible, 12):
+                        limit = VALUE_LIMIT if len(eligible) == 1 else 16
+                        for record in indexed_records(row, encoding, indexed[category][key], limit):
+                            column = station if category == "station" else time
+                            if len(record) <= column:
+                                continue
+                            observed = str(record[column]).strip() if category == "station" else month(record[column])
+                            if observed == key:
+                                staged.append(record)
+                    prefix = staged
+                elif indexed:
+                    prefix = list(islice(rows, PROBE_LIMIT))
+                if holdout and basis == "row_blocks" and row["format"] in {"CSV", "TSV"}:
+                    from random import Random
+                    rng = Random(0)
+                    pool = []
+                    seen = 0
+                    for index, record in enumerate(chain(prefix, rows)):
+                        if len(record) <= col or (index // 8) % 4 != 3:
+                            continue
+                        seen += 1
+                        if len(pool) < VALUE_LIMIT:
+                            pool.append(record[col])
+                        elif (slot := rng.randrange(seen)) < VALUE_LIMIT:
+                            pool[slot] = record[col]
+                    return dict(basis="uniform_heldout_row_blocks", unit=field.get("unit"),
+                                partition=dict(coverage="streamed_file", eligible_records=seen),
+                                values=numerics(pool))
+                for index, record in enumerate(prefix):
                     if len(record) <= col:
                         continue
                     if basis == "row_blocks":
@@ -221,14 +342,17 @@ def table(row, field, holdout):
                             continue
                         group = str(record[key]).strip()
                         if time == key and station is None:
-                            match = re.match(r"^\d{4}-\d{2}", group)
-                            if match is None:
+                            group = month(group)
+                            if group is None:
                                 continue
-                            group = match[0]
                         if not group:
                             continue
-                        reserved = hashlib.sha256(group.encode("utf-8")).digest()[0] % 4 == 0
+                        if station is not None and not holdout and held_month and len(record) > time and month(record[time]) == held_month:
+                            continue
+                        reserved = station_reserved(group) if station is not None else month_reserved(group, held_month)
                     if reserved == holdout:
+                        if basis == "calendar_months" and station_col is not None and station_col < len(record):
+                            group = (group, str(record[station_col]).strip())
                         bucket = groups.setdefault(group, [])
                         if len(bucket) < VALUE_LIMIT:
                             bucket.append(record[col])
@@ -237,10 +361,72 @@ def table(row, field, holdout):
                 values = numerics(islice((value for batch in zip_longest(*groups.values())
                                           for value in batch if value is not None), VALUE_LIMIT))
                 return dict(basis=basis, unit=field.get("unit"), sheet=sheet,
+                            partition=dict(held_month=held_month, coverage="indexed_file" if indexed else "bounded_prefix"),
+                            dates_valid=valid_dates([clock for batch in stamps.values() for clock, _ in batch]) if holdout and time is not None else None,
                             groups=len(groups), values=values, observation_groups=list(stamps.values()) if holdout else [])
         except UnicodeDecodeError:
             if encoding == "gb18030":
                 raise
+
+
+def station_reserved(group):
+    return hashlib.sha256(group.encode("utf-8")).digest()[0] % 4 == 0
+
+
+def month_reserved(group, held_month):
+    return bool(held_month and group == held_month)
+
+
+def distributed(values, count):
+    if len(values) <= count:
+        return values
+    return [values[index * (len(values) - 1) // (count - 1)] for index in range(count)]
+
+
+def valid_dates(values):
+    if not values:
+        return None
+    import pandas as pd
+    dates = pd.to_datetime([str(v).replace("_", "T", 1) for v in values], format="mixed", errors="coerce", utc=True)
+    return bool(dates.notna().all())
+
+
+def latest_month_review(prefix, remainder, time, station, column, prefix_holdout):
+    """Find the actual last month only after recommendation, without sending new rows."""
+    from .csv_index import month
+
+    latest = None
+    groups = {}
+    seen = 0
+    # Exclude every month that may have contributed to first-round evidence.
+    sampled = {month(record[time]) for record in prefix
+               if len(record) > max(time, column)
+               and month(record[time]) != prefix_holdout
+               and (station is None or (len(record) > station and not station_reserved(str(record[station]).strip())))
+               and (station is not None or not month_reserved(month(record[time]) or "", prefix_holdout))}
+    for record in chain(prefix, remainder):
+        if len(record) <= max(time, column):
+            continue
+        key = month(record[time])
+        if not key or latest is not None and key < latest:
+            continue
+        if key != latest:
+            latest, groups, seen = key, {}, 0
+        seen += 1
+        group = str(record[station]).strip() if station is not None and len(record) > station else ""
+        if group not in groups and len(groups) >= VALUE_LIMIT:
+            continue
+        values = groups.setdefault(group, [])
+        if len(values) < VALUE_LIMIT:
+            values.append((record[time], record[column]))
+    partition = dict(held_month=latest, coverage="streamed_file", eligible_records=seen)
+    if latest in sampled or not latest:
+        partition["reason"] = "latest_month_not_independent_or_absent"
+        return dict(partition=partition, values=[], observation_groups=[])
+    observations = list(groups.values())
+    values = numerics(islice((pair[1] for group in zip_longest(*observations) for pair in group if pair), VALUE_LIMIT))
+    return dict(partition=partition, values=values, observation_groups=observations,
+                dates_valid=valid_dates([stamp for batch in observations for stamp, _ in batch]))
 
 
 def export_field(row, field):
@@ -251,11 +437,13 @@ def export_field(row, field):
     record = sample(row, field)
     payload = export_sample(record["values"])
     windows = [dict(axis=window.get("axis"), points=window["stop_index"] - window["start_index"],
+                    interval=window.get("interval"),
                     time={key: value for key, value in window.get("time", {}).items()
                           if key in {"ordered", "intervals_valid", "interval_range", "interval_widths", "calendar"}})
                for window in record.get("windows", []) if "stop_index" in window]
     payload["sampling"] = dict(basis=record["basis"], groups=record.get("groups"),
-                               windows=windows, unit=record.get("unit"), frequency=record.get("frequency"))
+                               windows=windows, unit=record.get("unit"), frequency=record.get("frequency"),
+                               frequency_scope=record.get("frequency_scope"))
     return payload
 
 
@@ -268,20 +456,26 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
 
     steps = recommendation.get("steps", ())
     spatial = any(step.startswith(("spatial.", "raster_task.spatial")) for step in steps)
+    future = any(step.startswith("temporal.") for step in steps)
     cache = {} if cache is None else cache
     reports = []
     for index, fid, field in fields:
         report = dict(field=fid, status="pending", checks=[])
         reports.append(report)
         try:
-            key = (index, fid, spatial)
+            key = (index, fid, spatial, future)
             if key not in cache:
-                cache[key] = sample(scan["rows"][index], field, holdout=True, spatial=spatial)
+                cache[key] = sample(scan["rows"][index], field, holdout=True, spatial=spatial, future=future)
             held = cache[key]
             values = [v for v in held["values"] if v is not None]
             report.update(partition=held.get("partition"), basis=held["basis"], count=len(values))
-            if held["basis"] in {"heldout_sheet_unit_conflict", "heldout_schema_mismatch"}:
+            if held["basis"] in {"heldout_sheet_unit_conflict", "heldout_schema_mismatch", "heldout_sheet_semantics_conflict"}:
                 report["status"] = "failed"
+            if held.get("dates_valid") is False:
+                report.update(status="failed", basis="invalid_heldout_table_dates")
+                continue
+            if held.get("dates_valid"):
+                report["checks"].append("heldout_dates_parsed")
             if not values:
                 continue
             times = [window["time"] for window in held.get("windows", ()) if "time" in window]
@@ -295,6 +489,16 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
                 report["checks"].append("raster_crs_resolution_and_valid_values")
                 method = next((step.rsplit(".", 1)[-1] for step in steps
                                if step in {"raster_task.spatial.bilinear", "raster_task.spatial.nearest"}), None)
+                source = scan["rows"][index]
+                reference = scan.get("local_raster_references", {}).get(source["name"])
+                if method and reference:
+                    from .raster_reference import compare
+                    metrics = compare(source, field, held, reference, method)
+                    if metrics:
+                        report["metrics"] = metrics
+                        report["checks"].append("aligned_candidate_and_baseline_scored_on_independent_raster")
+                        if len(steps) == 1:
+                            report["status"] = "checked"
                 specification = (gated or {}).get("target_grid") or {}
                 resolution = (gated or {}).get("target_resolution") or specification.get("resolution")
                 if "longitude_step" in specification and "latitude_step" in specification:

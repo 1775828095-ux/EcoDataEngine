@@ -9,7 +9,7 @@ import sys
 import tarfile
 import zipfile
 
-from .scan import FORMATS, archive_stream, decode, kind, materialize_member, safe, scientific
+from .scan import FORMATS, archive_stream, decode, kind, materialize_member, safe, scientific, tabular
 
 
 @contextmanager
@@ -90,6 +90,8 @@ def inspect(root, operation, arguments):
     locator = arguments.get('path', '')
     if not isinstance(locator, str):
         raise ValueError('path必须为字符串')
+    if operation == 'read_text' and Path(locator or root).suffix.lower() in {'.csv', '.tsv'}:
+        raise ValueError('请用 read_header 读取列名，再按已审核字段申请数值样本')
     with selected(root, locator, stream_table=operation == 'read_header') as (path, reference, containers):
         if operation == 'list_directory':
             start = arguments.get('offset', 0)
@@ -111,8 +113,6 @@ def inspect(root, operation, arguments):
                    format=FORMATS.get(Path(locator or path.name).suffix.lower(), '其他'),
                    fields=[], resolution={}, basis=[], pending=[], evidence=[], roles=[])
         if operation == 'read_text':
-            if row['format'] in {'CSV', 'TSV'}:
-                raise ValueError('请用 read_header 读取列名，再按已审核字段申请数值样本')
             offset = arguments.get('offset', 0)
             if type(offset) is not int or offset < 0:
                 raise ValueError('offset必须为非负字节位置')
@@ -156,7 +156,10 @@ def inspect(root, operation, arguments):
             if suffix in {'.csv', '.tsv'} and lines:
                 delimiter = '\t' if suffix == '.tsv' else ','
                 columns = next(csv.reader([lines[0]], delimiter=delimiter))
-                row['fields'] = [dict(name=n, type='UNKNOWN', unit='', axis=False) for n in columns]
+                from io import StringIO
+                header = StringIO()
+                csv.writer(header, delimiter=delimiter).writerow(columns)
+                tabular(row, header.getvalue().encode('utf-8'), False)
             if suffix in {'.csv', '.tsv'}:
                 lines = lines[:1]
             answer=dict(header_lines=lines, row=row, arrays_read=False,

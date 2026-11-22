@@ -42,6 +42,8 @@ class FileTools:
         self.document_locators={}
         self.directory_members={}
         self.root = Path(root).resolve(strict=True)
+        from .raster_reference import references
+        self.local_references = references(self.root)
         self.signature = tuple(inventory(self.root))
         self.events = []
         self.rows = {}
@@ -52,6 +54,19 @@ class FileTools:
             raise ValueError('不支持的工具')
         if not isinstance(arguments, dict) or set(arguments) - {'path', 'offset'}:
             raise ValueError('工具参数不合法')
+        from .raster_reference import MANIFEST
+        from .csv_index import SUFFIX
+        locator = arguments.get('path', '')
+        if not isinstance(locator, str):
+            raise ValueError("path 必须为字符串")
+        excluded = {record["locator"].casefold() for record in self.local_references.values()}
+        if locator.casefold() in excluded or Path(locator).name == MANIFEST or locator.endswith(SUFFIX):
+            raise ValueError("该本地索引或留出参考文件仅用于本地复查")
+        if locator and self.root.is_dir() and '!/' not in locator:
+            target = (self.root / locator).resolve()
+            if (target.is_relative_to(self.root) and target.is_file()
+                    and any(target.samefile(ref["path"]) for ref in self.local_references.values())):
+                raise ValueError("独立参考栅格只用于本地复查")
         if tuple(inventory(self.root)) != self.signature:
             raise ValueError('原始输入已变化，需重新确认')
         start = time.perf_counter()
@@ -73,6 +88,10 @@ class FileTools:
         self.events.append(event)
         if result['ok']:
             value = result['result']
+            if 'entries' in value:
+                value['entries'] = [entry for entry in value['entries']
+                                    if entry['path'].casefold() not in excluded
+                                    and Path(entry['path']).name != MANIFEST and not entry['path'].endswith(SUFFIX)]
             for item in value.get('entries',[]):
                 if not item.get('directory'):
                     display=(self.root.name+'!/'+item['path']) if self.root.is_file() else item['path']
@@ -109,14 +128,17 @@ class FileTools:
                 self.document_locators[document['name']]=arguments.get('path','')+'.receipt.json'
             # Internal exact bytes support native validation, not another copy
             # of configuration/base64 in every remote tool transcript.
-            if 'row' in value:value['row']={k:v for k,v in value['row'].items() if k!='original_probe_payload'}
+            if 'row' in value:
+                from .sampling_plan import recommendation_metadata
+                value['row'] = recommendation_metadata(value['row'])
             if 'document' in value:value['document']={k:v for k,v in value['document'].items() if k!='raw_base64'}
         return result
 
     def scan(self):
         return dict(path=self.root, signature=self.signature, rows=list(self.rows.values()),
             engineering_docs=list(self.documents.items()), warnings=[], cmaq_grid_checks=[],
-            shallow=False, on_demand=True,directory_members=self.directory_members)
+            shallow=False, on_demand=True,directory_members=self.directory_members,
+            local_raster_references=self.local_references)
 
 
 def complete_pair_headers(tools,calls,completion,progress):
@@ -238,7 +260,8 @@ def run(scan, summary, cache, mock, key, progress, feedback):
     catalogue['task_requirements']=summary.get('task_requirements',{})
     originals, details = catalog_decision.local_fields(full, catalogue)
     # Existing capability/contract checks and downstream recommendation protocol stay authoritative.
-    decision_input = dict(catalogue, inspection_conclusion=final,
+    from .sampling_plan import recommendation_metadata
+    decision_input = dict(recommendation_metadata(catalogue), inspection_conclusion=final,
         task_requirements=summary.get('task_requirements', {}),
         inspection_scope='only tool-inspected files; uninspected files remain unknown')
     decision = service.preview(decision_input)

@@ -87,6 +87,7 @@ def attach_samples(scan, pairs):
 
 
 def make_request(scan, approved, checked, gated, *, local_checks=(), include_samples=True):
+    from .sampling_plan import recommendation_metadata
     assert_current(scan)
     pairs={pair["id"]:pair for pair in approved["candidates"] if isinstance(pair,dict) and isinstance(pair.get("id"),str)}
     documents=approved.get("engineering_documents",[])
@@ -156,7 +157,7 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
                                    validation="仅用实际重叠、统计口径可比的样本，比较单源与融合的误差及偏差",
                                    output="按本地评分决定保留单源或采用融合")
                               if alignment_plan else None),
-                          verified_checks=[record for record in local_checks
+                          verified_checks=[recommendation_metadata(record) for record in local_checks
                                            if record["candidate"] == cid or (
                                                record.get("check") == "numeric_samples"
                                                and record.get("field") == record["candidate"]
@@ -167,7 +168,7 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
     # Samples are added only to the candidate-specific recommendation request.
     if include_samples:
         attach_samples(scan,[task["context"] for task in tasks])
-    request=dict(stage="recommendation",target_model=approved["target_model"],tasks=tasks,
+    request=dict(stage="recommendation",target_model=approved["target_model"],tasks=recommendation_metadata(tasks),
                  task_requirements=approved.get('task_requirements',{}),
                  engineering_documents=documents,
                  project_context_document_ids=approved.get("project_context_document_ids",[]),

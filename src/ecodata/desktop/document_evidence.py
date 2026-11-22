@@ -1,10 +1,11 @@
 """Bounded local document extraction with traceable passages."""
-from pathlib import PurePosixPath
+from base64 import b64encode
+import os
+from pathlib import Path, PurePosixPath
 import re
 from shutil import which
 import subprocess
 from tempfile import TemporaryDirectory
-from pathlib import Path
 
 KEYWORDS = re.compile(r"\b(?:units?|utc|time\s*zone|variable|calendar|precipitation|daily|references?)\b"
                       r"|单位|时区|日界|变量|累计|降水|引用", re.I)
@@ -14,9 +15,16 @@ IDENTITY = re.compile(r"(?:variable|变量)\s*[:：=]?\s*[`'\x22]?([\w-]+)[`'\x2
 
 
 def passages(items):
-    return [dict(location=location, excerpt=text.strip()[:500],
-                 references=REFERENCE.findall(text)[:10])
-            for location, text in items if text and KEYWORDS.search(text)][:10]
+    evidence = []
+    for location, text in items:
+        # Windows OCR can insert blanks between adjacent Chinese characters.
+        text = re.sub(r"(?<=[\u3400-\u9fff])\s+(?=[\u3400-\u9fff])", "", text or "")
+        if KEYWORDS.search(text):
+            evidence.append(dict(location=location, excerpt=text.strip()[:500],
+                                 references=REFERENCE.findall(text)[:10]))
+        if len(evidence) == 10:
+            break
+    return evidence
 
 
 def text_passages(text, markdown=False):
@@ -79,12 +87,14 @@ def extract(path, suffix, offset):
 
 def ocr(path, page):
     executable = which("tesseract")
-    if not executable:
+    if not executable and os.name != "nt":
         return ""
     import pypdfium2
     with pypdfium2.PdfDocument(path) as pdf, TemporaryDirectory() as folder:
         image = Path(folder) / "page.png"
         pdf[page].render(scale=2).to_pil().save(image)
+        if not executable:
+            return windows_ocr(image)
         try:
             available = subprocess.run([executable, "--list-langs"], capture_output=True,
                                        encoding="utf-8", errors="replace", timeout=5)
@@ -99,11 +109,92 @@ def ocr(path, page):
         return result.stdout if result.returncode == 0 else ""
 
 
+WINDOWS_OCR = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+    $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetParameters().Count -eq 1
+} | Select-Object -First 1
+function Await($operation, $type) {
+    $task = $asTask.MakeGenericMethod($type).Invoke($null, @($operation))
+    $task.GetAwaiter().GetResult()
+}
+$storage = [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]
+$streamType = [Windows.Storage.Streams.IRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime]
+$decoderType = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime]
+$bitmapType = [Windows.Graphics.Imaging.SoftwareBitmap,Windows.Graphics.Imaging,ContentType=WindowsRuntime]
+$resultType = [Windows.Media.Ocr.OcrResult,Windows.Foundation,ContentType=WindowsRuntime]
+$engine = [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]::TryCreateFromUserProfileLanguages()
+if ($null -eq $engine) { exit 2 }
+$file = Await ($storage::GetFileFromPathAsync($env:ECODATA_OCR_IMAGE)) $storage
+$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode,Windows.Storage,ContentType=WindowsRuntime]::Read)) $streamType
+try {
+    $decoder = Await ($decoderType::CreateAsync($stream)) $decoderType
+    $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) $bitmapType
+    try {
+        $result = Await ($engine.RecognizeAsync($bitmap)) $resultType
+        $result.Lines | ForEach-Object { $_.Text }
+    } finally { $bitmap.Dispose() }
+} finally { $stream.Dispose() }
+"""
+
+
+def windows_ocr(image):
+    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    encoded = b64encode(WINDOWS_OCR.encode("utf-16le")).decode("ascii")
+    try:
+        result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+                                env=dict(os.environ, ECODATA_OCR_IMAGE=str(image)), timeout=25,
+                                capture_output=True, encoding="utf-8", errors="replace",
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout if result.returncode == 0 else ""
+
+
 def document_result(items, next_offset, pending=None):
     evidence = passages(items)
     text = "\n".join(f"[{item['location']}] {item['excerpt']}" for item in evidence)
     return dict(text=text, evidence=evidence, next_offset=next_offset,
                 pending=pending or (None if evidence else "该范围没有可定位的相关声明，需回查原文"))
+
+
+def relative_reference(scan, name, reference):
+    """Resolve within the same archive or input directory, never across its root."""
+    from .file_tools import selected
+    from zipfile import BadZipFile, ZipFile
+
+    outer, _, member = name.rpartition("!/")
+    parts = list(PurePosixPath(member if outer else name).parent.parts)
+    relative = PurePosixPath(reference)
+    if relative.is_absolute():
+        return None, False
+    for part in relative.parts:
+        if part == "..":
+            if not parts:
+                return None, False
+            parts.pop()
+        elif part not in {"", "."}:
+            parts.append(part)
+    target = "/".join(parts)
+    if not target or not scan.get("path"):
+        return (f"{outer}!/" if outer else "") + target, False
+    root = Path(scan["path"])
+    try:
+        if outer:
+            locator = outer
+            if root.is_file():
+                locator = locator.removeprefix(root.name).removeprefix("!/")
+            with selected(root, locator) as (path, _, __), ZipFile(path) as archive:
+                exists = not archive.getinfo(target).is_dir()
+            return f"{outer}!/{target}", exists
+        if root.is_dir():
+            candidate = (root / target).resolve()
+            return target, candidate.is_relative_to(root.resolve()) and candidate.is_file()
+    except (OSError, ValueError, KeyError, BadZipFile):
+        pass
+    return (f"{outer}!/" if outer else "") + target, False
 
 
 def cross_check(scan):
@@ -112,16 +203,16 @@ def cross_check(scan):
     known.update(row["name"].replace("!/", "/") for row in scan["rows"])
     results = []
     for name, text in scan.get("engineering_docs", ()):
-        base = PurePosixPath(name.replace("!/", "/")).parent
         references = list(dict.fromkeys(REFERENCE.findall(text)))[:20]
+        resolved = set()
         for reference in references:
-            relative = PurePosixPath(reference)
-            checked = ".." not in relative.parts and (base / relative).as_posix() in known
+            target, exists = relative_reference(scan, name, reference)
+            checked = bool(target and (exists or target.replace("!/", "/") in known))
+            if checked:
+                resolved.add(target)
             results.append(dict(document=name, reference=reference, check="member_reference",
                                 status="checked" if checked else "pending"))
-        linked = [row for row in scan["rows"] if (references and row["name"].replace("!/", "/") in
-                  {(base / PurePosixPath(reference)).as_posix() for reference in references
-                   if ".." not in PurePosixPath(reference).parts})]
+        linked = [row for row in scan["rows"] if row["name"] in resolved]
         for variable, unit in IDENTITY.findall(text):
             for row in linked:
                 field = next((item for item in row.get("fields", ())
@@ -163,6 +254,7 @@ def cross_check(scan):
                             and (stop - start).total_seconds() == 86400 for start, stop in dates))
                         if not is_daily:
                             status, basis = "conflict", "heldout_bounds_disagree_with_utc_daily"
+                            break
                         else:
                             status, basis = "checked", "heldout_cf_bounds_at_daily_utc_boundaries"
                 except (OSError, ValueError, TypeError, RuntimeError, ImportError):
