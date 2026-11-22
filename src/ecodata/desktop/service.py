@@ -292,7 +292,7 @@ def tool_turn(messages, tools, api_key=None, progress=None):
     key = (api_key or os.environ.get('DEEPSEEK_API_KEY', '')).strip()
     if not key:
         raise ValueError('缺少DeepSeek API密钥')
-    body = json.dumps(dict(model='deepseek-flash', messages=messages, tools=tools,
+    body = json.dumps(dict(model='deepseek-flash', messages=messages, **({"tools": tools} if tools else {}),
         thinking=dict(type='disabled'), max_tokens=8192, stream=True,
         response_format=dict(type='json_object'),
         stream_options=dict(include_usage=True)), ensure_ascii=False).encode('utf8')

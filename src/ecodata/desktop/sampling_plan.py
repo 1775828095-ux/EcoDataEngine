@@ -106,6 +106,8 @@ def netcdf(row, field, holdout, spatial=False):
             selection[partition] = slice(lower, upper)
             groups.append(array.isel(selection).values.reshape(-1))
             region = {"axis": partition, "start_index": lower, "stop_index": upper, "interval": interval}
+            if holdout:
+                region["local_values"] = numerics(groups[-1])
             if coordinate is not None:
                 coordinate_values = coordinate.isel({temporal: slice(lower, upper)}).values
                 bounds = coordinate.attrs.get("bounds")
@@ -183,12 +185,12 @@ def frequency_windows(coordinate, axis, start, stop, width):
     return [(lo, min(hi, lo + width), interval) for lo, hi, interval in sorted(ordered)], scope
 
 
-def netcdf_time_review(row, field):
+def netcdf_time_review(row, field, *, allow_materialization=False):
     """Audit the complete time coordinate locally, with bounded memory and no grid loads."""
     import numpy as np
     import xarray as xr
 
-    if not member_available(row):
+    if not allow_materialization and not member_available(row):
         return None
     with local_member(row) as path, xr.open_dataset(path, decode_times=False, cache=False) as dataset:
         dim = time_dimension(dataset[field["name"]], dataset)
@@ -259,6 +261,16 @@ def raster(row, field, holdout):
                     holdout_start=boundary, size=size), windows=windows, crs=str(dataset.crs) if dataset.crs else None,
                     resolution=list(dataset.res), nodata=dataset.nodata, unit=field.get("unit"),
                     values=numerics(v for group in zip_longest(*groups) for v in group))
+
+
+def raster_windows(dataset, band):
+    from rasterio.windows import Window
+
+    for _, block in dataset.block_windows(band):
+        for row in range(0, int(block.height), 512):
+            for column in range(0, int(block.width), 512):
+                yield Window(int(block.col_off) + column, int(block.row_off) + row,
+                             min(512, int(block.width) - column), min(512, int(block.height) - row))
 
 
 def normalized(value):
@@ -626,6 +638,12 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
             if any(t.get("ordered") is False or t.get("intervals_valid") is False for t in times):
                 report.update(status="failed", basis="invalid_heldout_time_axis")
                 continue
+            if "engineering.precipitation_adaptation" in steps:
+                from .release_gate import precipitation_trial
+                trial = precipitation_trial(held, field)
+                if trial:
+                    report["precipitation_trial"] = trial
+                    report["checks"].append("precipitation_integrated_with_explicit_bounds")
             if held["basis"] == "spatial_blocks" and "resolution" in held:
                 if not held["crs"] or any(not np.isfinite(v) or v <= 0 for v in held["resolution"]):
                     report.update(status="failed", basis="invalid_heldout_grid")
@@ -652,10 +670,11 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
                     pixel = [scan["rows"][source].get("resolution", {}).get("pixel", {}) for source, _, __ in fields]
                     resolutions = [entry["step"] for entry in pixel if entry.get("step") and entry.get("crs") == target_crs]
                     resolution = tuple(map(max, zip(*resolutions))) if resolutions else None
-                if method in {"nearest", "bilinear"} and resolution:
+                if method and resolution:
                     report["grid_trial"] = raster_trial(scan["rows"][index], field, held, resolution, method,
                                                         target_crs=target_crs)
-                    report["checks"].append("raster_reproject_executed_on_holdout")
+                    if report["grid_trial"]:
+                        report["checks"].append("raster_reproject_executed_on_holdout")
             if "format.normalize" in steps or any(step.startswith("format.") for step in steps):
                 report["checks"].append("finite_values_in_heldout_source")
             if "units.harmonize" in steps:
@@ -748,10 +767,22 @@ def raster_trial(row, field, held, resolution, method, *, target_crs=None):
         if not (0 < width * height <= PROBE_LIMIT and width > 0 and height > 0):
             raise ValueError("留出区域转换尺寸超出回检预算")
         values = dataset.read(field["band"], window=window, masked=True).astype(float).filled(np.nan)
-        target = np.full((height, width), np.nan)
-        reproject(values, target, src_transform=dataset.window_transform(window), src_crs=dataset.crs,
-                  dst_transform=from_origin(left, top, dx, dy), dst_crs=target_crs,
-                  src_nodata=np.nan, dst_nodata=np.nan, resampling=getattr(Resampling, method))
+        transform = from_origin(left, top, dx, dy)
+        if method == "conservative":
+            from rasterio.crs import CRS
+            from .raster_reference import conservative
+
+            semantics = field.get("spatial_semantics") or dataset.tags(field["band"]).get("spatial_semantics")
+            if CRS.from_user_input(target_crs) != dataset.crs or semantics not in {"cell_mean", "flux"}:
+                return None
+            target = conservative(values, dataset.window_transform(window), (height, width), transform, dataset.crs)
+            if target is None:
+                return None
+        else:
+            target = np.full((height, width), np.nan)
+            reproject(values, target, src_transform=dataset.window_transform(window), src_crs=dataset.crs,
+                      dst_transform=transform, dst_crs=target_crs,
+                      src_nodata=np.nan, dst_nodata=np.nan, resampling=getattr(Resampling, method))
         if not np.isfinite(target).any():
             raise ValueError("留出空间块回检没有有效目标像元")
         return dict(shape=[height, width], resolution=[dx, dy], crs=str(target_crs),

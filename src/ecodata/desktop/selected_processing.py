@@ -17,6 +17,10 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         if progress:
             progress(f"正在处理 {index}/{len(tasks)} · {task_id}")
         try:
+            runtime_report = []
+            if task.get("runtime_fields"):
+                from .release_gate import runtime
+                runtime_report = runtime(scan, {"fields": task["runtime_fields"]}, folder)
             if route == "station_grid":
                 result = station_grid.run(scan,task_id,task,stage,model_id,progress)
             elif route == "structure_conversion":
@@ -42,7 +46,8 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         formats.extend(result["source_formats"])
         outputs.append(result["target_format"])
         notes.append(result["local"]["reason"])
-        reports.append(dict(task=task_id,backend=route or "station_search",report=result["original_report"]))
+        reports.append(dict(task=task_id,backend=route or "station_search",report=result["original_report"],
+                            input_runtime_checks=runtime_report))
         for key, value in (result.get("grid_searches") or result.get("batch_searches") or {}).items():
             searches[key] = dict(value,backend=route or "station_search")
         prefix = f"group-{index}-"

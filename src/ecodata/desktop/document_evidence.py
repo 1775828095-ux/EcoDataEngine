@@ -43,7 +43,7 @@ def text_passages(text, markdown=False):
     return passages((f"第 {number} 行", line) for number, line in enumerate(text.splitlines(), 1))
 
 
-def extract(path, suffix, offset):
+def extract(path, suffix, offset, *, prefer_outline=True):
     if suffix == ".docx":
         from docx import Document
         from docx.table import Table
@@ -65,7 +65,7 @@ def extract(path, suffix, offset):
     if not reader.pages:
         return document_result([], None, pending="PDF 无可读取页面")
     pages = []
-    if not offset:
+    if not offset and prefer_outline:
         for entry in reader.outline:
             if not isinstance(entry, list) and KEYWORDS.search(str(entry.get("/Title", ""))):
                 page = reader.get_destination_page_number(entry)
@@ -301,3 +301,42 @@ def linked_documents(scan):
                 loaded += 1
             except (OSError, ValueError, KeyError):
                 continue
+
+
+def observation_table(path, section):
+    """Extract a user-selected intact observation table. Ambiguous layouts stay pending."""
+    if section < 1:
+        raise ValueError("表格或页码从 1 开始")
+    extension = Path(path).suffix.lower()
+    if extension == ".docx":
+        from docx import Document
+        document = Document(path)
+        if section > len(document.tables):
+            raise ValueError("该 Word 文件没有指定的表格")
+        rows = [[cell.text.strip() for cell in row.cells] for row in document.tables[section - 1].rows]
+    elif extension == ".pdf":
+        from pypdf import PdfReader
+        reader = PdfReader(path)
+        if section > len(reader.pages):
+            raise ValueError("PDF 没有指定页码")
+        text = reader.pages[section - 1].extract_text(extraction_mode="layout") or ""
+        rows = [re.split(r" {2,}", line.strip()) for line in text.splitlines() if line.strip()]
+    else:
+        from .scan import decode
+        with Path(path).open("rb") as stream:
+            data = decode(stream.read(64 * 1024))
+        rows = [[cell.strip() for cell in line.strip().strip("|").split("|")]
+                for line in data.splitlines() if "|" in line]
+        rows = [row for row in rows if not all(re.fullmatch(r"[: -]+", value) for value in row)]
+    from .sampling_plan import TIME, normalized
+    from .sample_values import numeric
+    index = next((i for i, row in enumerate(rows) if len(row) >= 2 and any(normalized(cell) in TIME for cell in row)), None)
+    if index is None:
+        raise ValueError("没有识别到带明确时间列的观测表，请回查原页")
+    header = rows[index]
+    data = [row for row in rows[index + 1:] if len(row) == len(header)]
+    time = next(i for i, name in enumerate(header) if normalized(name) in TIME)
+    if not data or not any(value is not None for value in numeric(
+            item for row in data for column, item in enumerate(row) if column != time)):
+        raise ValueError("指定观测表缺少可核实的连续数值")
+    return [header, *data]
