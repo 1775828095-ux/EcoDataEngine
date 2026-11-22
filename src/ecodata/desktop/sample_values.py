@@ -1,14 +1,16 @@
 """Read small numerical samples from fields registered by the local scanner."""
 import csv
 from io import TextIOWrapper
-from itertools import islice, product
+from itertools import islice, product, zip_longest
 from math import ceil, isfinite, nextafter
 from secrets import randbelow
 
-from .scan import local_member, open_tabular_member
+from .scan import AXES, local_member, open_tabular_member
 
 SAMPLE_SIZE = 16
 PROBE_ROWS = 4096
+MAX_SAMPLE_MATERIALIZATION = 8 * 1024**2
+IDENTIFIER_COLUMNS = {"id", "station_id", "site_id", "sensor_id", "object_id"}
 
 
 def numeric(values):
@@ -69,7 +71,33 @@ def tabular_values(row,field):
     return []
 
 
-def raw_sample(path,row,field):
+def netcdf_window_values(variable):
+    """Sample short windows spread through the time axis in one pass."""
+    import numpy as np
+
+    if not variable.shape or not all(variable.shape):
+        return numeric_grid(variable)
+    time_axis = next((axis for axis, name in enumerate(variable.dimensions)
+                      if name.casefold() in {"time", "tstep", "date", "datetime"}), None)
+    if time_axis is None:
+        return islice(numeric_grid(variable), SAMPLE_SIZE * 4)
+
+    count = variable.shape[time_axis]
+    window_count = min(4, count)
+    width = min(16, count // window_count)
+    windows = []
+    for index in range(window_count):
+        start = index * (count - width) // max(1, window_count - 1)
+        selection = [index * (size - 1) // max(1, window_count - 1) for size in variable.shape]
+        selection[time_axis] = slice(start, start + width)
+        windows.append(np.ma.asarray(variable[tuple(selection)]).ravel())
+
+    # Give each selected window a share of the outbound sample budget.
+    return (None if np.ma.is_masked(value) else value
+            for group in zip_longest(*windows) for value in group)
+
+
+def raw_sample(path,row,field,*,outbound=False):
     fmt=row["format"]
     name=field["name"]
     if row.get("original_reader"):
@@ -107,7 +135,9 @@ def raw_sample(path,row,field):
     if fmt=="NetCDF":
         from netCDF4 import Dataset
         with Dataset(str(path)) as dataset:
-            return list(numeric(numeric_grid(dataset.variables[name])))
+            variable = dataset.variables[name]
+            values = netcdf_window_values(variable) if outbound else numeric_grid(variable)
+            return list(numeric(values))
     if fmt=="GeoTIFF":
         import rasterio
         from rasterio.windows import Window
@@ -128,7 +158,20 @@ def itertools_batches(batches):
     return islice(chain.from_iterable(batch.column(0).to_pylist() for batch in batches),PROBE_ROWS)
 
 
-def field_sample(row,field):
+def field_sample(row,field,*,outbound=False):
+    if outbound:
+        name = str(field.get("source_column") or field["name"]).strip().casefold()
+        if field.get("axis") or name in AXES or name in IDENTIFIER_COLUMNS:
+            return None
+        member = row.get("attribute_member", row)
+        if any(size > MAX_SAMPLE_MATERIALIZATION for _, size in member.get("containers", ())):
+            return None
+        archive = member["ref"][1]
+        streaming_table = (row["format"] in {"CSV", "TSV"} and not row.get("original_reader")
+                           or row.get("swat_output_header") is not None)
+        materializes_member = archive and (not streaming_table or archive not in {"zip", "tar"})
+        if (row.get("original_reader") or materializes_member) and member["bytes"] > MAX_SAMPLE_MATERIALIZATION:
+            return None
     if row.get("swat_output_header") is not None:
         with open_tabular_member(row) as raw, TextIOWrapper(raw,encoding="utf-8-sig",errors="strict") as stream:
             for _ in range(row["swat_output_header"]+2):
@@ -147,7 +190,7 @@ def field_sample(row,field):
             return [decode(value,width,component) for value in values]
         return list(numeric(values))
     with local_member(row.get("attribute_member",row)) as path:
-        return raw_sample(path,row,field)
+        return raw_sample(path,row,field,outbound=outbound)
 
 
 def export_sample(values):

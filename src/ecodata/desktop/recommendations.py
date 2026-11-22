@@ -80,7 +80,7 @@ def attach_samples(scan, pairs):
                         raise ValueError("invalid field")
                     row=scan["rows"][index]
                     selected=row["fields"][offset]
-                    values=field_sample(row,selected) if not selected.get("axis") else None
+                    values=field_sample(row,selected,outbound=True) if not selected.get("axis") else None
                     samples[fid]=export_sample(values).get("perturbed_samples",[])[:4]
                 except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
                     samples[fid]=[]
@@ -157,7 +157,11 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
                                    validation="仅用实际重叠、统计口径可比的样本，比较单源与融合的误差及偏差",
                                    output="按本地评分决定保留单源或采用融合")
                               if alignment_plan else None),
-                          verified_checks=[record for record in local_checks if record["candidate"]==cid],
+                          verified_checks=[record for record in local_checks
+                                           if record["candidate"] == cid or (
+                                               record.get("check") == "numeric_samples"
+                                               and record.get("field") == record["candidate"]
+                                               and record["field"] in pair["fields"])],
                           advisory_only=advisory))
     if not tasks:
         raise ValueError("没有通过首页核验的任务")

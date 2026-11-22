@@ -108,6 +108,8 @@ def inspect(root, operation, arguments):
                    format=FORMATS.get(Path(locator or path.name).suffix.lower(), '其他'),
                    fields=[], resolution={}, basis=[], pending=[], evidence=[], roles=[])
         if operation == 'read_text':
+            if row['format'] in {'CSV', 'TSV'}:
+                raise ValueError('请用 read_header 读取列名，再按已审核字段申请数值样本')
             offset = arguments.get('offset', 0)
             if type(offset) is not int or offset < 0:
                 raise ValueError('offset必须为非负字节位置')
@@ -136,8 +138,12 @@ def inspect(root, operation, arguments):
                 delimiter = '\t' if suffix == '.tsv' else ','
                 columns = next(csv.reader([lines[0]], delimiter=delimiter))
                 row['fields'] = [dict(name=n, type='UNKNOWN', unit='', axis=False) for n in columns]
+            if suffix in {'.csv', '.tsv'}:
+                lines = lines[:1]
             answer=dict(header_lines=lines, row=row, arrays_read=False,
                         sample_scope='first eight lines, at most 16 KiB; not a full-series audit')
+            if suffix in {'.csv', '.tsv'}:
+                answer['sample_scope'] = 'column header only; observation samples are requested separately'
             if suffix in {'.cio','.cli'} and len(raw)==path.stat().st_size:
                 answer['document']=dict(name=display,text=decode(raw),offset=0,total_bytes=len(raw),
                     raw_base64=base64.b64encode(raw).decode('ascii'),partial=False)

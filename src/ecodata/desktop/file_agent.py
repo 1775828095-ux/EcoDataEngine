@@ -234,15 +234,22 @@ def run(scan, summary, cache, mock, key, progress, feedback):
     catalogue['task_requirements']=summary.get('task_requirements',{})
     originals, details = catalog_decision.local_fields(full, catalogue)
     # Existing capability/contract checks and downstream recommendation protocol stay authoritative.
-    decision = service.preview(dict(catalogue, inspection_conclusion=final,
+    decision_input = dict(catalogue, inspection_conclusion=final,
         task_requirements=summary.get('task_requirements', {}),
-        inspection_scope='only tool-inspected files; uninspected files remain unknown'))
+        inspection_scope='only tool-inspected files; uninspected files remain unknown')
+    decision = service.preview(decision_input)
     answer = service.send(decision, decision.digest, api_key=key, on_progress=progress,
         on_receipt=receipts.append)
+    from .decision_checks import LocalChecks
+    checker = LocalChecks(full, {})
+    answer = catalog_decision.answer_single_field_questions(
+        decision_input, set(originals), answer, lambda fid: checker.field_question(originals[fid]),
+        mock, key, progress, lambda: assert_current(full), receipts.append)
     candidates, approved, dialogue = catalog_decision.materialize(full, catalogue, originals, details,
         [(set(originals), answer)], ask_implicit=False)
     decisions = [row for item in dialogue.values() for row in item['decisions']]
     checked, gated = discovery.check(full, candidates, dict(decisions=decisions), approved)
     reply = dict(mode='DeepSeek API', decisions=decisions, failures=[], batch_count=len(receipts),
-        local_checks=[], api_receipts=receipts, reused_batches=0, file_agent=full['file_agent_audit'])
+        local_checks=answer['field_checks'], api_receipts=receipts, reused_batches=0,
+        file_agent=full['file_agent_audit'])
     return reply, checked, gated, candidates, approved, full
