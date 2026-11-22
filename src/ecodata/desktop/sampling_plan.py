@@ -61,6 +61,12 @@ def sample(row, field, *, holdout=False, spatial=False, future=False):
     return record
 
 
+def time_dimension(array, dataset):
+    return next((dim for dim in array.dims
+                 if dim.casefold() in TIME or
+                 (dim in dataset.coords and dataset[dim].attrs.get("axis") == "T")), None)
+
+
 def netcdf(row, field, holdout, spatial=False):
     import numpy as np
     import xarray as xr
@@ -70,9 +76,7 @@ def netcdf(row, field, holdout, spatial=False):
         if not array.ndim or not all(array.shape):
             return dict(basis="no_disjoint_partition", values=[])
         dims = tuple(array.dims)
-        temporal = next((dim for dim in dims
-                         if dim.casefold() in TIME or
-                         (dim in dataset.coords and dataset[dim].attrs.get("axis") == "T")), None)
+        temporal = time_dimension(array, dataset)
         spatial_axis = next((dim for dim in dims if dim != temporal and array.sizes[dim] > 1), None)
         time_partition = temporal if temporal and array.sizes[temporal] > 1 else None
         partition = (spatial_axis if spatial else time_partition) or spatial_axis or time_partition
@@ -179,6 +183,57 @@ def frequency_windows(coordinate, axis, start, stop, width):
     return [(lo, min(hi, lo + width), interval) for lo, hi, interval in sorted(ordered)], scope
 
 
+def netcdf_time_review(row, field):
+    """Audit the complete time coordinate locally, with bounded memory and no grid loads."""
+    import numpy as np
+    import xarray as xr
+
+    if not member_available(row):
+        return None
+    with local_member(row) as path, xr.open_dataset(path, decode_times=False, cache=False) as dataset:
+        dim = time_dimension(dataset[field["name"]], dataset)
+        if dim not in dataset.coords or not np.issubdtype(dataset[dim].dtype, np.number):
+            return None
+        clock = dataset[dim]
+        bound_name = clock.attrs.get("bounds")
+        bounds = dataset[bound_name].transpose(dim, ...) if bound_name in dataset and dim in dataset[bound_name].dims else None
+        count = clock.size
+        previous = None
+        previous_step = np.nan
+        previous_end = None
+        bad_coordinates = overlaps = bad_bounds = nonincreasing = changes = 0
+        examples = []
+        for start in range(0, count, TIME_COORD_LIMIT):
+            window = {dim: slice(start, start + TIME_COORD_LIMIT)}
+            values = np.asarray(clock.isel(window).values, dtype=float)
+            bad_coordinates += int((~np.isfinite(values)).sum())
+            steps = np.diff(values, prepend=previous) if previous is not None else np.diff(values)
+            if len(steps):
+                earlier = np.r_[previous_step, steps[:-1]]
+                changed = (np.isfinite(earlier) & (earlier > 0) & np.isfinite(steps) & (steps > 0)
+                           & ~np.isclose(earlier, steps, rtol=1e-5, atol=1e-9))
+                changes += int(changed.sum())
+                indices = np.flatnonzero(changed)[:max(0, 16 - len(examples))]
+                examples.extend(int(start + idx + (previous is None)) for idx in indices)
+                nonincreasing += int((steps <= 0).sum())
+                previous_step = steps[-1]
+            if len(values):
+                previous = values[-1]
+            if bounds is not None:
+                edge = np.asarray(bounds.isel(window).values, dtype=float)
+                if edge.ndim != 2 or edge.shape[1] != 2:
+                    bad_bounds += len(values)
+                    continue
+                bad_bounds += int((~np.isfinite(edge).all(axis=1) | (edge[:, 1] <= edge[:, 0])).sum())
+                overlaps += int((edge[1:, 0] < edge[:-1, 1]).sum())
+                if len(edge):
+                    overlaps += int(previous_end is not None and edge[0, 0] < previous_end)
+                    previous_end = edge[-1, 1]
+        return dict(scope="all_time_coordinates", coordinate_count=count, interval_changes=changes,
+                    change_examples=examples, nonincreasing=nonincreasing, invalid_coordinates=bad_coordinates,
+                    invalid_bounds=bad_bounds, overlapping_bounds=overlaps)
+
+
 def raster(row, field, holdout):
     import rasterio
     from rasterio.windows import Window
@@ -189,14 +244,14 @@ def raster(row, field, holdout):
         if size < 2:
             return dict(basis="no_disjoint_partition", values=[])
         boundary = size - max(1, size // 5)
-        choice = [1] if holdout else [0, 0.5, 1]
+        choice = [(1, 1)] if holdout else [(0, 0), (1, 0), (0, 1), (1, 1)]
         windows, groups = [], []
-        for portion in choice:
+        for across_x, across_y in choice:
             start, stop = (boundary, size) if holdout else (0, boundary)
             width = min(4, dataset.width if along_y else stop - start)
             height = min(4, stop - start if along_y else dataset.height)
-            x = int((dataset.width - width) * portion) if along_y else start + int((stop - start - width) * portion)
-            y = start + int((stop - start - height) * portion) if along_y else int((dataset.height - height) * portion)
+            x = int((dataset.width - width) * across_x) if along_y else start + int((stop - start - width) * across_x)
+            y = start + int((stop - start - height) * across_y) if along_y else int((dataset.height - height) * across_y)
             window = Window(x, y, width, height)
             groups.append(dataset.read(field["band"], window=window, masked=True).ravel().tolist())
             windows.append(dict(row=y, column=x, width=width, height=height))
@@ -259,6 +314,10 @@ def table(row, field, holdout, *, future=False):
                     # A single observed month cannot support a future-month test.
                     # Fall back to independently reserved stations within the prefix.
                     future = False
+                    with records(row, field, encoding) as (again, _, __):
+                        next(again, None)
+                        review = stratified_csv_review(again, station, time, col, held_month)
+                    return dict(basis="station_groups", unit=field.get("unit"), sheet=sheet, **review)
                 if future and held_month:
                     station = None
                 basis = "station_groups" if station is not None else "calendar_months" if time is not None else "row_blocks"
@@ -277,15 +336,19 @@ def table(row, field, holdout, *, future=False):
                                          (item.get("original_header") or item.get("name")) == original), {})
                             if field.get("unit") and peer.get("unit") and field["unit"] != peer["unit"]:
                                 return dict(basis="heldout_sheet_unit_conflict", values=[])
+                            verified_semantics = False
                             for attribute in ("standard_name", "physical_variable", "temporal_semantics"):
                                 if field.get(attribute) and peer.get(attribute) and field[attribute] != peer[attribute]:
                                     return dict(basis="heldout_sheet_semantics_conflict", values=[])
+                                if field.get(attribute) and peer.get(attribute) and attribute != "temporal_semantics":
+                                    verified_semantics = True
                             preview = list(islice(other, VALUE_LIMIT))
                             clock = next((i for i, name in enumerate(alternate) if normalized(name) in TIME), None)
                             date_check = valid_dates([record[clock] for record in preview if len(record) > clock]) if clock is not None else None
                             cells = (record[index] for record in preview if len(record) > index)
                             return dict(basis="worksheet_groups", partition=dict(held_sheet=reserved),
-                                        unit=peer.get("unit"), dates_valid=date_check, values=numerics(cells))
+                                        unit=peer.get("unit"), dates_valid=date_check, values=numerics(cells),
+                                        worksheet_semantics="confirmed" if verified_semantics else "needs_declaration")
                     if sheet == reserved and holdout:
                         cells = (record[col] for record in islice(rows, VALUE_LIMIT) if len(record) > col)
                         return dict(basis="worksheet_groups", partition=dict(held_sheet=reserved),
@@ -293,6 +356,25 @@ def table(row, field, holdout, *, future=False):
                 groups = {}
                 stamps = {}
                 category = "station" if station is not None else "month" if time is not None else None
+                if holdout and category and row["format"] in {"CSV", "TSV"}:
+                    if indexed:
+                        selected = [key for key in sorted(indexed.get(category, {}))
+                                    if (station_reserved(key) if category == "station" else month_reserved(key, held_month))]
+
+                        def indexed_holdout():
+                            for key in distributed(selected, 16):
+                                for item in indexed_records(row, encoding, indexed[category][key], None):
+                                    column = station if station is not None else time
+                                    if len(item) > column:
+                                        actual = item[column].strip() if station is not None else month(item[column])
+                                        if actual == key:
+                                            yield item
+
+                        review = stratified_csv_review(indexed_holdout(), station, time, col, held_month, station_col)
+                        review["partition"]["coverage"] = "indexed_file"
+                    else:
+                        review = stratified_csv_review(chain(prefix, rows), station, time, col, held_month, station_col)
+                    return dict(basis=basis, unit=field.get("unit"), sheet=sheet, **review)
                 if indexed and category:
                     eligible = sorted(indexed.get(category, {}))
                     if category == "station":
@@ -391,13 +473,70 @@ def valid_dates(values):
     return bool(dates.notna().all())
 
 
+class StratifiedReservoir:
+    """Bound memory while giving each retained stratum uniform within-stratum selection."""
+
+    def __init__(self):
+        self.groups = {}
+        self.seen = 0
+
+    def add(self, group, item):
+        from random import Random
+
+        self.seen += 1
+        key = int.from_bytes(hashlib.sha256(repr(group).encode()).digest()[:8], "big")
+        if key not in self.groups:
+            if len(self.groups) >= 16:
+                largest = max(self.groups)
+                if key >= largest:
+                    return
+                del self.groups[largest]
+            self.groups[key] = ([], 0, Random(key))
+        pool, count, rng = self.groups[key]
+        count += 1
+        self.groups[key] = pool, count, rng
+        if len(pool) < 16:
+            pool.append(item)
+        elif (slot := rng.randrange(count)) < len(pool):
+            pool[slot] = item
+
+    def result(self, partition):
+        pools = [pool for pool, _, _ in self.groups.values()]
+        values = numerics(islice((pair[1] for batch in zip_longest(*pools) for pair in batch if pair), VALUE_LIMIT))
+        clocks = [stamp for pool in pools for stamp, _ in pool if stamp is not None]
+        return dict(partition=dict(partition, eligible_records=self.seen, sampled_strata=len(pools),
+                                   selection="stratified_uniform_reservoir"),
+                    values=values, observation_groups=[pool for pool in pools if all(stamp is not None for stamp, _ in pool)],
+                    dates_valid=valid_dates(clocks))
+
+
+def stratified_csv_review(records, station, time, column, held_month, station_col=None):
+    from .csv_index import month
+
+    reservoir = StratifiedReservoir()
+    group_col = station if station is not None else time
+    for record in records:
+        if len(record) <= max(group_col, column):
+            continue
+        stamp = record[time] if time is not None and len(record) > time else None
+        if station is not None:
+            key = record[station].strip()
+            if not key or not station_reserved(key):
+                continue
+        elif not month_reserved(month(stamp), held_month):
+            continue
+        else:
+            key = (held_month, record[station_col].strip() if station_col is not None and len(record) > station_col else "")
+        reservoir.add(key, (stamp, record[column]))
+    return reservoir.result(dict(held_month=held_month, coverage="streamed_file"))
+
+
 def latest_month_review(prefix, remainder, time, station, column, prefix_holdout):
     """Find the actual last month only after recommendation, without sending new rows."""
     from .csv_index import month
 
     latest = None
-    groups = {}
-    seen = 0
+    reservoir = StratifiedReservoir()
     # Exclude every month that may have contributed to first-round evidence.
     sampled = {month(record[time]) for record in prefix
                if len(record) > max(time, column)
@@ -411,22 +550,14 @@ def latest_month_review(prefix, remainder, time, station, column, prefix_holdout
         if not key or latest is not None and key < latest:
             continue
         if key != latest:
-            latest, groups, seen = key, {}, 0
-        seen += 1
+            latest, reservoir = key, StratifiedReservoir()
         group = str(record[station]).strip() if station is not None and len(record) > station else ""
-        if group not in groups and len(groups) >= VALUE_LIMIT:
-            continue
-        values = groups.setdefault(group, [])
-        if len(values) < VALUE_LIMIT:
-            values.append((record[time], record[column]))
-    partition = dict(held_month=latest, coverage="streamed_file", eligible_records=seen)
+        reservoir.add(group, (record[time], record[column]))
+    partition = dict(held_month=latest, coverage="streamed_file", eligible_records=reservoir.seen)
     if latest in sampled or not latest:
         partition["reason"] = "latest_month_not_independent_or_absent"
         return dict(partition=partition, values=[], observation_groups=[])
-    observations = list(groups.values())
-    values = numerics(islice((pair[1] for group in zip_longest(*observations) for pair in group if pair), VALUE_LIMIT))
-    return dict(partition=partition, values=values, observation_groups=observations,
-                dates_valid=valid_dates([stamp for batch in observations for stamp, _ in batch]))
+    return reservoir.result(partition)
 
 
 def export_field(row, field):
@@ -469,6 +600,19 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
             held = cache[key]
             values = [v for v in held["values"] if v is not None]
             report.update(partition=held.get("partition"), basis=held["basis"], count=len(values))
+            row = scan["rows"][index]
+            if (row["format"] == "NetCDF" and held["basis"] == "time_windows"
+                    and held["partition"]["size"] > TIME_COORD_LIMIT):
+                axis = held.get("partition", {}).get("axis")
+                time_key = (index, "time_coordinate_audit", axis)
+                if time_key not in cache:
+                    cache[time_key] = netcdf_time_review(row, field)
+                clock = cache[time_key]
+                if clock:
+                    report["time_coordinate_audit"] = clock
+                    if any(clock[name] for name in ("nonincreasing", "invalid_coordinates", "invalid_bounds", "overlapping_bounds")):
+                        report.update(status="failed", basis="invalid_netcdf_time_coordinates")
+                        continue
             if held["basis"] in {"heldout_sheet_unit_conflict", "heldout_schema_mismatch", "heldout_sheet_semantics_conflict"}:
                 report["status"] = "failed"
             if held.get("dates_valid") is False:
@@ -487,8 +631,8 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
                     report.update(status="failed", basis="invalid_heldout_grid")
                     continue
                 report["checks"].append("raster_crs_resolution_and_valid_values")
-                method = next((step.rsplit(".", 1)[-1] for step in steps
-                               if step in {"raster_task.spatial.bilinear", "raster_task.spatial.nearest"}), None)
+                from .raster_reference import METHODS
+                method = next((METHODS[step] for step in steps if step in METHODS), None)
                 source = scan["rows"][index]
                 reference = scan.get("local_raster_references", {}).get(source["name"])
                 if method and reference:
@@ -508,7 +652,7 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
                     pixel = [scan["rows"][source].get("resolution", {}).get("pixel", {}) for source, _, __ in fields]
                     resolutions = [entry["step"] for entry in pixel if entry.get("step") and entry.get("crs") == target_crs]
                     resolution = tuple(map(max, zip(*resolutions))) if resolutions else None
-                if method and resolution:
+                if method in {"nearest", "bilinear"} and resolution:
                     report["grid_trial"] = raster_trial(scan["rows"][index], field, held, resolution, method,
                                                         target_crs=target_crs)
                     report["checks"].append("raster_reproject_executed_on_holdout")
@@ -549,6 +693,8 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
                         report["status"] = "checked"
             if report["status"] == "pending":
                 report["basis"] = "algorithm_or_independent_reference_not_verified"
+            if held.get("worksheet_semantics") == "needs_declaration" and report["status"] != "failed":
+                report.update(status="pending", basis="heldout_worksheet_field_semantics_need_declaration")
         except (EcoDataError, OSError, RuntimeError, ValueError, TypeError, KeyError, IndexError, ImportError):
             report["basis"] = "local_holdout_reader_or_operator_unavailable"
     return reports

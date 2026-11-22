@@ -13,7 +13,7 @@ from .scan import FORMATS, archive_stream, decode, kind, materialize_member, saf
 
 
 @contextmanager
-def selected(root, locator, *, stream_table=False):
+def selected(root, locator, *, stream_table=False, max_leaf_bytes=None):
     root = Path(root).resolve(strict=True)
     parts = locator.split('!/') if locator else []
     if root.is_dir():
@@ -55,6 +55,8 @@ def selected(root, locator, *, stream_table=False):
             else:
                 raise ValueError('只有归档路径可以包含 !/')
             reference = [original, format_kind, member, offset]
+            if index == len(parts) - 1 and max_leaf_bytes is not None and size > max_leaf_bytes:
+                raise ValueError("工程说明超出本地引用读取预算")
             if (stream_table and index == len(parts) - 1 and format_kind == 'zip'
                     and Path(member).suffix.lower() in {'.csv', '.tsv'}):
                 break

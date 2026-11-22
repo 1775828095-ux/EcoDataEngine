@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 KEYWORDS = re.compile(r"\b(?:units?|utc|time\s*zone|variable|calendar|precipitation|daily|references?)\b"
                       r"|单位|时区|日界|变量|累计|降水|引用", re.I)
-REFERENCE = re.compile(r"(?<![\w.])([\w./-]+\.(?:nc4?|tiff?|csv|xlsx|txt|md|cio|cli|json|pcp))\b", re.I)
+REFERENCE = re.compile(r"(?<![\w.])([\w./-]+\.(?:nc4?|tiff?|csv|xlsx|txt|md|cio|cli|json|pcp|ya?ml|toml|ini|cfg|nml|docx|pdf))\b", re.I)
 IDENTITY = re.compile(r"(?:variable|变量)\s*[:：=]?\s*[`'\x22]?([\w-]+)[`'\x22]?.{0,80}?"
                       r"(?:units?|单位)\s*[:：=]?\s*[`'\x22]?([^\s，。,;`'\x22]+)", re.I)
 
@@ -75,11 +75,13 @@ def extract(path, suffix, offset):
     items, unresolved = [], []
     for page in pages:
         text = reader.pages[page].extract_text() or ""
+        basis = "原生文字"
         if len(text.strip()) < 20:
             text = ocr(path, page)
+            basis = "OCR，需核对原页"
             if not text.strip():
                 unresolved.append(page + 1)
-        items.extend((f"第 {page + 1} 页 · 第 {line + 1} 行", part)
+        items.extend((f"第 {page + 1} 页 · 第 {line + 1} 行 · {basis}", part)
                      for line, part in enumerate(text.splitlines()))
     return document_result(items, offset + 2 if offset + 2 < len(reader.pages) else None,
                            pending=f"以下页面需 OCR 或回查原页：{unresolved}" if unresolved else None)
@@ -202,7 +204,7 @@ def cross_check(scan):
     known = {name.replace("!/", "/") for name in scan.get("directory_members", {})}
     known.update(row["name"].replace("!/", "/") for row in scan["rows"])
     results = []
-    for name, text in scan.get("engineering_docs", ()):
+    for name, text in linked_documents(scan):
         references = list(dict.fromkeys(REFERENCE.findall(text)))[:20]
         resolved = set()
         for reference in references:
@@ -229,6 +231,8 @@ def cross_check(scan):
                         result["basis"] = "convertible_but_declared_units_differ"
                     elif comparison.get("status") == "unit_not_convertible":
                         result["status"] = "conflict"
+                if any("OCR，需核对原页" in line and variable in line for line in text.splitlines()):
+                    result.update(status="pending", basis="ocr_unit_requires_original_page_confirmation")
                 results.append(result)
         if re.search(r"\bUTC\b", text, re.I) and re.search(r"\bdail(?:y|ies)\b|日界|日累计", text, re.I):
             for row in scan["rows"]:
@@ -259,6 +263,41 @@ def cross_check(scan):
                             status, basis = "checked", "heldout_cf_bounds_at_daily_utc_boundaries"
                 except (OSError, ValueError, TypeError, RuntimeError, ImportError):
                     pass
+                if any("OCR，需核对原页" in line and "UTC" in line for line in text.splitlines()):
+                    status, basis = "pending", "ocr_boundary_requires_original_page_confirmation"
                 results.append(dict(document=name, data=row["name"], check="utc_day_boundary",
                                     status=status, basis=basis))
     return results
+
+
+def linked_documents(scan):
+    """Follow explicit links to small engineering text documents locally."""
+    from collections import deque
+    from .file_tools import selected
+    from .scan import decode
+
+    documents = deque(scan.get("engineering_docs", ()))
+    visited = {name for name, _ in documents}
+    loaded = 0
+    while documents:
+        name, text = documents.popleft()
+        yield name, text
+        for reference in dict.fromkeys(REFERENCE.findall(text)):
+            target, exists = relative_reference(scan, name, reference)
+            if not exists or target in visited or loaded >= 32:
+                continue
+            if not target.lower().endswith((".md", ".txt", ".json", ".cio", ".cli", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".nml")):
+                continue
+            visited.add(target)
+            root = Path(scan["path"])
+            locator = target.removeprefix(root.name + "!/") if root.is_file() else target
+            try:
+                with selected(root, locator, max_leaf_bytes=64 * 1024) as (path, _, __):
+                    if path.stat().st_size > 64 * 1024:
+                        continue
+                    with path.open("rb") as stream:
+                        raw = stream.read(64 * 1024)
+                documents.append((target, decode(raw)))
+                loaded += 1
+            except (OSError, ValueError, KeyError):
+                continue

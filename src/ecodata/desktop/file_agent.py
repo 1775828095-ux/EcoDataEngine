@@ -261,9 +261,13 @@ def run(scan, summary, cache, mock, key, progress, feedback):
     originals, details = catalog_decision.local_fields(full, catalogue)
     # Existing capability/contract checks and downstream recommendation protocol stay authoritative.
     from .sampling_plan import recommendation_metadata
+    from .sampling_strata import strata
     decision_input = dict(recommendation_metadata(catalogue), inspection_conclusion=final,
         task_requirements=summary.get('task_requirements', {}),
         inspection_scope='only tool-inspected files; uninspected files remain unknown')
+    descriptions = strata(full, originals)
+    if descriptions:
+        decision_input["numeric_sampling_strata"] = descriptions
     decision = service.preview(decision_input)
     answer = service.send(decision, decision.digest, api_key=key, on_progress=progress,
         on_receipt=receipts.append)

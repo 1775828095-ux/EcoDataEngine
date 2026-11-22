@@ -6,6 +6,8 @@ from pathlib import Path
 from .scan import local_member, safe
 
 MANIFEST = "sampling-references.json"
+METHODS = {"raster_task.spatial.nearest": "nearest", "raster_task.spatial.bilinear": "bilinear",
+           "spatial.regrid.conservative": "conservative"}
 
 
 def references(root):
@@ -25,15 +27,18 @@ def references(root):
         reference = record.get("reference", "")
         band = record.get("band", 1)
         baseline = record.get("baseline", "nearest")
+        semantics = record.get("spatial_semantics")
         if (not isinstance(reference, str) or not safe(reference) or
-                type(band) is not int or band < 1 or baseline not in {"nearest", "bilinear"}):
+                type(band) is not int or band < 1 or baseline not in METHODS.values()
+                or semantics not in {None, "cell_mean", "flux"}):
             raise ValueError("独立参考栅格路径、波段或基线无效")
         source_path = (root / source).resolve(strict=True)
         reference_path = (root / reference).resolve(strict=True)
         if (not source_path.is_relative_to(root) or not reference_path.is_relative_to(root)
                 or source_path.samefile(reference_path)):
             raise ValueError("独立参考必须是授权工作目录中的不同文件")
-        result[source] = dict(path=reference_path, locator=reference, band=band, baseline=baseline)
+        result[source] = dict(path=reference_path, locator=reference, band=band, baseline=baseline,
+                              spatial_semantics=semantics)
     return result
 
 
@@ -71,6 +76,17 @@ def compare(row, field, held, reference, method):
             original = original * scale + offset
         outputs = {}
         for operator in {method, reference["baseline"]}:
+            if operator == "conservative":
+                declared = field.get("spatial_semantics") or source.tags(field["band"]).get("spatial_semantics")
+                confirmed = reference.get("spatial_semantics")
+                if (source.crs != truth.crs or (declared and confirmed and declared != confirmed)
+                        or (declared or confirmed) not in {"cell_mean", "flux"}):
+                    return None
+                outputs[operator] = conservative(original, source.window_transform(window), observed.shape,
+                                                 truth.window_transform(target), source.crs)
+                if outputs[operator] is None:
+                    return None
+                continue
             prediction = np.full(observed.shape, np.nan)
             reproject(original, prediction, src_crs=source.crs, src_transform=source.window_transform(window),
                       dst_crs=truth.crs, dst_transform=truth.window_transform(target),
@@ -84,3 +100,35 @@ def compare(row, field, held, reference, method):
                     baseline_method=reference["baseline"],
                     candidate=asdict(fidelity_metrics(xr.DataArray(outputs[method][mask], dims=["cell"]), expected)),
                     baseline=asdict(fidelity_metrics(xr.DataArray(outputs[reference["baseline"]][mask], dims=["cell"]), expected)))
+
+
+def conservative(values, source_transform, target_shape, target_transform, crs):
+    """Use the registered grid engine with real raster cell boundaries."""
+    import numpy as np
+    import xarray as xr
+    from ecodata.engines.grid import GridEngine
+
+    if (any(transform.b or transform.d for transform in (source_transform, target_transform))
+            or min(*values.shape, *target_shape) < 2):
+        return None
+
+    def coordinates(shape, transform):
+        lon = transform.c + transform.a * np.arange(shape[1] + 1)
+        lat = transform.f + transform.e * np.arange(shape[0] + 1)
+        return dict(lat=("lat", (lat[:-1] + lat[1:]) / 2), lon=("lon", (lon[:-1] + lon[1:]) / 2),
+                    lat_b=("lat_b", lat), lon_b=("lon_b", lon))
+
+    source = xr.Dataset({"value": (("lat", "lon"), values)},
+                        coords=coordinates(values.shape, source_transform), attrs={"crs": str(crs)})
+    target = xr.Dataset(coords=coordinates(target_shape, target_transform))
+    source = source.sortby(["lat", "lon", "lat_b", "lon_b"])
+    ordered = target.sortby(["lat", "lon", "lat_b", "lon_b"])
+    engine = GridEngine()
+    if crs.is_geographic and engine.availability()["available"]:
+        result, _ = engine.regrid(source, ordered, "conservative", backend="xesmf")
+    else:
+        # The lightweight backend derives bounds from regular centers. Extra
+        # bound dimensions would otherwise be mistaken for axes to remap.
+        result, _ = engine.regrid(source.drop_vars(["lat_b", "lon_b"]), ordered.drop_vars(["lat_b", "lon_b"]),
+                                  "conservative", backend="fallback")
+    return result["value"].sel(lat=target.lat, lon=target.lon).transpose("lat", "lon").values

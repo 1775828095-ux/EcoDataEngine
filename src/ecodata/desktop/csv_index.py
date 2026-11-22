@@ -93,13 +93,14 @@ def indexed_records(row, encoding, spans, limit):
                 raise ValueError("CSV 索引偏移超出原文件")
             stream.seek(start)
             reader = csv.reader(lines(stream, encoding), delimiter=delimiter)
-            while limit and stream.tell() < stop:
+            while (limit is None or limit > 0) and stream.tell() < stop:
                 record = next(reader, None)
                 if record is None or stream.tell() > stop:
                     raise ValueError("CSV 索引与原记录边界不符")
                 yield record
-                limit -= 1
-            if not limit:
+                if limit is not None:
+                    limit -= 1
+            if limit == 0:
                 break
 
 

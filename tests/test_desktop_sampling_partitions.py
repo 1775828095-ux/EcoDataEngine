@@ -258,3 +258,99 @@ def test_zip_relative_reference_checks_unread_member(tmp_path):
         ("inside.zip!/docs/README.md", "UTC references ../tables/rain.csv")]))
     assert checks == [{"document": "inside.zip!/docs/README.md", "reference": "../tables/rain.csv",
                        "check": "member_reference", "status": "checked"}]
+
+
+def test_netcdf_budget_covers_distinct_cadences_and_files(tmp_path):
+    from ecodata.desktop.sampling_strata import choose, strata
+
+    scan = {"rows": [{"format": "NetCDF", "declared_time_resolution": cadence}
+                     for cadence in ("PT1H", "PT1H", "P1D")]}
+    original = {fid: (index, fid, {"name": "rain", "unit": "mm"}) for fid, index in
+                [("D1.F1", 0), ("D1.F2", 0), ("D2.F1", 1), ("D3.F1", 2)]}
+    info = strata(scan, original)
+    assert choose(list(original), info, 3) == ["D1.F1", "D3.F1", "D2.F1"]
+    assert choose(["D1.F1"], info, 3) == ["D1.F1"]
+
+
+def test_complete_netcdf_coordinate_review_catches_between_window_change(tmp_path, monkeypatch):
+    path = tmp_path / "long-clock.nc"
+    samples = [0, 1, 2, 3, 5, 7, 9, 11, 11, 13, 15]
+    xr.Dataset({"rain": ("time", np.ones(len(samples)))}, coords={
+        "time": ("time", samples, {"units": "hours since 2020-01-01"})}).to_netcdf(path)
+    monkeypatch.setattr(sampling_plan, "TIME_COORD_LIMIT", 4)
+    source, field = row(path, "NetCDF"), {"name": "rain"}
+    result = sampling_plan.recommendation_review(dict(rows=[source]), {"steps": []}, {},
+        [(0, "D1.F1", field)])[0]
+    assert result["status"] == "failed"
+    clock = result["time_coordinate_audit"]
+    assert clock["scope"] == "all_time_coordinates"
+    assert clock["coordinate_count"] == len(samples)
+    assert clock["change_examples"] == [4]
+    assert clock["nonincreasing"] == 1
+
+
+def test_csv_station_reservoir_uses_rows_beyond_recommendation_prefix(tmp_path):
+    from ecodata.desktop.csv_index import build
+    from ecodata.desktop.sampling_plan import station_reserved
+
+    path = tmp_path / "stations.csv"
+    held = [str(value) for value in range(100) if station_reserved(str(value))][:2]
+    sent = next(str(value) for value in range(100) if not station_reserved(str(value)))
+    with path.open("w", encoding="utf-8") as stream:
+        stream.write("station_id,rain\n")
+        for index in range(5000):
+            for station, offset in [(sent, -10000), (held[0], 0), (held[1], 10000)]:
+                stream.write(f"{station},{index + offset}\n")
+    source, field = row(path, "CSV"), {"name": "rain"}
+    assert max(sampling_plan.sample(source, field)["values"]) < 0
+    local = sampling_plan.sample(source, field, holdout=True)
+    assert local["partition"]["selection"] == "stratified_uniform_reservoir"
+    assert local["partition"]["eligible_records"] == 10000
+    assert sum(value < 10000 for value in local["values"]) == 16
+    assert sum(value >= 10000 for value in local["values"]) == 16
+    assert max(value % 10000 for value in local["values"]) > 1366
+    build(path)
+    indexed = sampling_plan.sample(source, field, holdout=True)
+    assert indexed["partition"]["coverage"] == "indexed_file"
+    assert indexed["partition"]["eligible_records"] == 10000
+    assert set(indexed["values"]) == set(local["values"])
+
+
+def test_conservative_geotiff_uses_declared_cell_means_and_actual_reference(tmp_path):
+    import rasterio
+    from rasterio.transform import from_origin
+    from ecodata.desktop.raster_reference import compare
+
+    source_path, truth_path = tmp_path / "fine.tif", tmp_path / "truth.tif"
+    fine = np.broadcast_to(np.arange(20, dtype="float32"), (20, 20))
+    coarse = fine.reshape(10, 2, 10, 2).mean(axis=(1, 3))
+    for path, values, spacing in [(source_path, fine, 0.01), (truth_path, coarse, 0.02)]:
+        height, width = values.shape
+        with rasterio.open(path, "w", driver="GTiff", height=height, width=width,
+                           count=1, dtype="float32", crs="EPSG:4326",
+                           transform=from_origin(5, 40, spacing, spacing)) as writer:
+            writer.write(values, 1)
+            writer.set_band_unit(1, "mm")
+    source = row(source_path, "GeoTIFF")
+    field = {"name": "band1", "band": 1}
+    local = sampling_plan.sample(source, field, holdout=True)
+    reference = {"path": truth_path, "band": 1, "baseline": "nearest"}
+    assert compare(source, field, local, reference, "conservative") is None
+    reference["spatial_semantics"] = "cell_mean"
+    scored = compare(source, field, local, reference, "conservative")
+    assert scored["candidate_method"] == "conservative"
+    assert scored["n"] == 4
+    assert scored["candidate"]["rmse"] < 0.001
+    assert scored["baseline"]["rmse"] > 0.1
+
+
+def test_zip_follows_transitive_dependencies_without_reading_numeric_member(tmp_path):
+    path = tmp_path / "inside.zip"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("docs/README.md", "See details.txt")
+        archive.writestr("docs/details.txt", "Read ../data/forcing.csv")
+        archive.writestr("data/forcing.csv", "rain\n999\n")
+    checks = document_evidence.cross_check(dict(path=path, rows=[], engineering_docs=[
+        ("inside.zip!/docs/README.md", "See details.txt")]))
+    assert [(result["reference"], result["status"]) for result in checks] == [
+        ("details.txt", "checked"), ("../data/forcing.csv", "checked")]
