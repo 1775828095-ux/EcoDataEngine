@@ -1195,6 +1195,14 @@ class Window(QMainWindow):
                     button = QPushButton("补充样本或审核全量副本")
                     button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_full_fallback(item)))
                     layout.addWidget(button)
+                if row.get("independent_required"):
+                    validation_button = QPushButton("选择新的独立数据复验")
+                    validation_button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_new_independent_data(item)))
+                    layout.addWidget(validation_button)
+                if row["execution_release"]["status"] == "failed" and row.get("local_recipe_options"):
+                    adjustment = QPushButton("调整候选并重新复验")
+                    adjustment.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.adjust_review_candidate(item)))
+                    layout.addWidget(adjustment)
                 if self.scan and self.scan.get("engineering_docs"):
                     document_button = QPushButton("复查说明章节或观测表")
                     document_button.clicked.connect(lambda: self.safe(self.review_source_document))
@@ -1205,7 +1213,9 @@ class Window(QMainWindow):
             layout.addWidget(reason)
             explanation=QPlainTextEdit()
             explanation.setReadOnly(True)
-            explanation.setPlainText(recommendations.explanation_text(row))
+            members = row.get("execution_release", {}).get("members", ())
+            explanation.setPlainText(recommendations.explanation_text(row)
+                + ("\n工程成员放行与外发状态\n" + s.dump(members) if members else ""))
             explanation.setMaximumHeight(230)
             explanation.setAccessibleName('数据依据与推荐边界')
             explanation.hide()
@@ -1246,12 +1256,52 @@ class Window(QMainWindow):
         key = self.api_key.text().strip()
         if not key or self.mock.isChecked():
             raise ValueError("发送补充证据需要已连接的 DeepSeek API")
+        members = {scan["rows"][index]["name"]: index for index, _ in fields}
+        if len(members) > 1 and any("!/" in name for name in members):
+            name, ok = QInputDialog.getItem(self, "选择需要补样的 ZIP 成员", "授权范围",
+                                          ["全部获准成员", *members], 0, False)
+            if not ok:
+                return
+            if name in members:
+                fields = [item for item in fields if item[0] == members[name]]
+        targets = {}
+        tables = {scan["rows"][index]["name"]: index for index, _ in fields
+                  if scan["rows"][index]["format"] in {"CSV", "TSV", "Excel"}}
+        if tables:
+            name, ok = QInputDialog.getItem(self, "定向补样", "选择站点或工作表所在文件",
+                                          ["按当前覆盖范围补样", *tables], 0, False)
+            if not ok:
+                return
+            if name in tables:
+                index = tables[name]
+                choices = ["站点", "工作表"] if scan["rows"][index]["format"] == "Excel" else ["站点"]
+                mode, ok = QInputDialog.getItem(self, "定向补样", "分组方式", choices, 0, False)
+                if not ok:
+                    return
+                group, ok = QInputDialog.getText(self, "定向补样", f"输入{mode}名称，只用来在本地定位")
+                if not ok or not group.strip():
+                    return
+                targets[index] = ("station" if mode == "站点" else "sheet", group.strip())
         archive = Path(self.task.name) / f"outbound-evidence-{uuid4().hex}.zip"
+        selected_classification = []
+
+        def build_copy():
+            classifications = fallback.classification_fields(scan, fields)
+            if classifications:
+                options = {f"{scan['rows'][index]['name']} · {field['name']}": (index, field)
+                           for index, field in classifications}
+                selected, ok = QInputDialog.getItem(self, "分类波段授权", "原样保留的分类波段",
+                    ["仅连续数值", *options], 0, False)
+                if not ok:
+                    return
+                if selected in options:
+                    selected_classification.append(options[selected])
+            self.work(prepare, confirm)
 
         def prepare(log):
             if self.scan is not scan:
                 raise ValueError("当前任务已变化")
-            entries = fallback.build(scan, fields, archive, log)
+            entries = fallback.build(scan, [*fields, *selected_classification], archive, log)
             return entries, fallback.digest_file(archive)
 
         def confirm(value):
@@ -1259,8 +1309,9 @@ class Window(QMainWindow):
             count = sum(item["records"] for item in entries)
             size = sum(item["bytes"] for item in entries)
             batches = sum(len(item["parts"]) for item in entries)
-            scope = "\n".join(f"{scan['rows'][index]['name']} · {field['name']}（{field['unit']}）"
-                              for index, field in fields)
+            scope = "\n".join(f"{scan['rows'][index]['name']} · {field['name']}（"
+                              + ("分类编码原样" if field.get("approved_classification") else str(field.get("unit"))) + "）"
+                              for index, field in [*fields, *selected_classification])
             answer = QMessageBox.question(self, "审核全量扰动证据",
                 f"准备向 api.deepseek.com 分批发送 {count:,} 条获准数值记录，约 {size:,} 字节，{batches:,} 次请求。\n\n"
                 f"{scope}\n\n副本保留必要的网格或时间区间信息，省略站点编号和非选定字段。"
@@ -1271,20 +1322,61 @@ class Window(QMainWindow):
                 self.show_progress("全量扰动证据未发送")
                 return
 
+            from .independent_review import fields as bound_fields, invalidate
+
+            def identity(index, field):
+                return index, field["name"], field.get("sheet"), field.get("band")
+
+            approved_sources = {identity(index, field) for index, field in [*fields, *selected_classification]}
+            outbound = scan.setdefault("member_outbound", {})
+            for item in entries:
+                outbound[item["source_member"]] = "approved_pending_transmission"
+            def overlaps(item):
+                return any(identity(index, field) in approved_sources for index, _, field in bound_fields(scan, item))
+
+            def existing_task(item):
+                return self.gated.get(tuple(item["task"].split(":", 1)))
+
+            for item in self.recommendation_rows:
+                if overlaps(item):
+                    invalidate(scan, item, existing_task(item))
+            self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="已批准外发范围"))
+            archive.with_suffix(".approval.json").write_text(s.dump(dict(
+                digest=digest, fields=entries, trigger="补样覆盖不足", records=count,
+                bytes=size, requests=batches, approved=True)), encoding="utf8")
+
             def transmit(log):
                 assert_current(scan)
-                return fallback.transmit(archive, entries, digest, api_key=key, progress=log)
+                return fallback.transmit(archive, entries, digest, api_key=key, progress=log,
+                                         recipes=recommendation.get("local_recipe_options", ()))
 
             def sent(result):
-                self.show_progress(f"DeepSeek 已响应 {result['received']}/{result['total']} 个分片，等待独立回检")
-                self.detail.appendPlainText(f"扰动证据分片回执：{result['receipts']}")
+                from .independent_review import start
+                for item in entries:
+                    outbound[item["source_member"]] = "transmitted"
+                candidate = start(recommendation, result)
+                rows = []
+                for item in self.recommendation_rows:
+                    if candidate is not None and item["task"] == recommendation["task"]:
+                        continue
+                    if overlaps(item):
+                        invalidate(scan, item, existing_task(item))
+                    rows.append(item)
+                if candidate is not None:
+                    invalidate(scan, candidate, existing_task(candidate))
+                    rows.append(candidate)
+                self.render_recommendations(dict(recommendations=rows, mode="全量分片复核"))
+                self.show_progress("已形成新候选，等待独立数据复验" if candidate else
+                                   "已收齐分片回复，各分片依据尚不足以形成一致候选")
+                self.detail.appendPlainText(s.dump(dict(分片回执=str(result["receipts"]), 候选支持=result["votes"],
+                                                        形成候选=result.get("candidate"))))
 
             self.work(transmit, sent)
 
         def consider(samples):
             supplemental = [item for item in samples if item["perturbed_samples"]]
             if not supplemental:
-                self.work(prepare, confirm)
+                build_copy()
                 return
             answer = QMessageBox.question(self, "先补充小样本",
                 "已找到仍在推荐范围内、未发送的少量记录。先向 DeepSeek 发送这些扰动样本再判断？",
@@ -1307,15 +1399,71 @@ class Window(QMainWindow):
 
             def reviewed(value):
                 answer, receipt = value
+                for index, _ in fields:
+                    scan.setdefault("member_outbound", {})[scan["rows"][index]["name"]] = "supplement_reviewed"
                 self.detail.appendPlainText(s.dump(dict(补样结论=answer, 回执=receipt)))
                 if answer["needs_more"]:
-                    self.work(prepare, confirm)
+                    build_copy()
                 else:
                     self.show_progress("补样已完成 · 请核对回复并用独立数据复验")
 
             self.work(send_supplement, reviewed)
 
-        self.work(lambda _: fallback.supplement(scan, fields), consider)
+        self.work(lambda _: fallback.supplement(scan, fields, targets), consider)
+
+    def review_new_independent_data(self, candidate):
+        from .independent_review import apply, fields, review
+
+        scan = self.scan
+        entries = {f"{fid} · {scan['rows'][index]['name']} · {field['name']}": fid
+                   for index, fid, field in fields(scan, candidate)}
+        if not entries:
+            raise ValueError("该候选没有可复验的字段")
+        entry, accepted = QInputDialog.getItem(self, "独立复验", "选择要复验的字段", list(entries), 0, False)
+        if not accepted:
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "选择未用于推荐或外发的独立数据")
+        if not path:
+            return
+        answer = QMessageBox.question(self, "确认独立数据来源",
+            "确认这份资料的观测记录没有用于之前的推荐、调参或全量外发。该文件只用于本地复验。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        task = self.gated.get(tuple(candidate["task"].split(":", 1)))
+
+        def reviewed(report):
+            if self.scan is not scan:
+                return
+            apply(scan, candidate, task, report)
+            self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="独立复验"))
+            self.detail.appendPlainText(s.dump(dict(独立复验=report, 放行=candidate["execution_release"])))
+
+        self.work(lambda _: review(scan, candidate, task, entries[entry], path), reviewed)
+
+    def adjust_review_candidate(self, previous):
+        from .independent_review import fields
+        from .release_gate import assess
+
+        options = {f"{option['id']} · {option['name']}": option for option in previous["local_recipe_options"]
+                   if option["id"] != previous["id"]}
+        if not options:
+            raise ValueError("当前任务没有其他已登记的候选方案")
+        name, accepted = QInputDialog.getItem(self, "调整候选", "从已登记方案选择", list(options), 0, False)
+        if not accepted:
+            return
+        choice = options[name]
+        candidate = dict(previous, **{key: choice[key] for key in ("id", "name", "steps", "description")})
+        candidate.update(independent_required=True, local_holdout_review=[],
+                         previous_independent_hashes=list(dict.fromkeys([
+                             *previous.get("previous_independent_hashes", ()),
+                             *(item["independent_sha256"] for item in previous.get("local_holdout_review", ())
+                               if item.get("independent_sha256"))])))
+        task = self.gated.get(tuple(candidate["task"].split(":", 1)))
+        candidate["execution_release"] = assess(self.scan, candidate, task, fields(self.scan, candidate))
+        rows = [candidate if row is previous else row for row in self.recommendation_rows]
+        self.render_recommendations(dict(recommendations=rows, mode="候选已调整"))
+        self.detail.appendPlainText(s.dump(dict(上一轮失败=previous["execution_release"], 新候选=choice["id"])))
 
     def review_source_document(self):
         scan = self.scan
@@ -1401,7 +1549,13 @@ class Window(QMainWindow):
             raise ValueError("请将提取表保存到本次输入目录之外")
         with destination.open("w", encoding="utf-8-sig", newline="") as stream:
             csv.writer(stream).writerows(table)
-        self.show_progress("已保存观测表 · 核对列名和单位后可按 CSV 重新提交")
+        self.show_progress("已保存观测表 · 可转入 CSV 核验")
+        proceed = QMessageBox.question(self, "转入表格核验",
+            "已经保存原表日期、表头、单位和数值。确认表格结构后，是否用 CSV 流程开始核验这份观测表？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if proceed == QMessageBox.StandardButton.Yes:
+            self.path.setText(str(destination))
+            self.scan_now()
 
     def continue_recommendations(self):
         from .release_gate import require
@@ -1656,7 +1810,7 @@ class Window(QMainWindow):
         self.result_cards.append_progress('已接收所选方案；正在准备工程数据。推荐能否作为搜索初始图，仍须真实契约检查；结果仅为预算内最佳。')
         def perform(log):
             fields = list(dict.fromkeys(field for row in selected for field in row.get("execution_fields", ())))
-            review = runtime(scan, {"fields": fields}, folder)
+            review = runtime(scan, {"fields": fields, "steps": [step for row in selected for step in row.get("steps", ())]}, folder)
             result = s.run_original_workbench(scan,model,folder,
                 lambda msg:log(msg if isinstance(msg,str) else "正在核验原版候选与质量…"), recommendations=selected)
             result["input_runtime_checks"] = review

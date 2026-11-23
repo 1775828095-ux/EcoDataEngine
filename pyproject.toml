@@ -31,6 +31,7 @@ dependencies = [
   "paramiko>=5.1,<6",
   "psutil>=7,<8",
   "scipy>=1.12,<2",
+  "ruptures>=1.1.10,<2",
   "threadpoolctl>=3,<4",
   "streamlit>=1.50,<2",
   "xarray>=2024.1,<2027",

@@ -15,7 +15,9 @@ def assess(scan, recommendation, task, fields):
         supported = source["format"] in {"NetCDF", "GeoTIFF", "CSV", "TSV", "Excel"}
         if not supported:
             continue
-        if status == "failed":
+        if recommendation.get("independent_required") and not review.get("independent"):
+            status, reason = "pending", "new_independent_evidence_required"
+        elif status == "failed":
             pass
         elif source["format"] in {"CSV", "TSV", "Excel"} and not field.get("unit"):
             status, reason = "pending", "selected_table_unit_missing"
@@ -32,6 +34,7 @@ def assess(scan, recommendation, task, fields):
             else:
                 status, reason = "pending", "precipitation_time_bounds_or_unit_missing"
         elif (source["format"] == "NetCDF" and status != "checked" and review.get("count", 0)
+              and not recommendation.get("independent_required")
               and task and task.get("route") in {
                 "pair_processing", "station_grid", "observation_gap_search", "independent_alignment",
                 "independent_grid_search", "native_reference_search", "statistical_preprocessing"}):
@@ -45,7 +48,8 @@ def assess(scan, recommendation, task, fields):
             reason = "insufficient_sample_coverage"
         checks.append(dict(field=fid, source=source["name"], format=source["format"], status=status, reason=reason))
 
-    if any(step.startswith("engineering.") for step in steps):
+    engineering = any(step.startswith("engineering.") for step in steps)
+    if engineering:
         for check in scan.get("document_evidence_checks", ()):
             if check["status"] != "checked":
                 checks.append(dict(source=check["document"], status=check["status"],
@@ -57,7 +61,35 @@ def assess(scan, recommendation, task, fields):
         status = "failed"
     else:
         status = "pending" if blocked else "released"
-    return dict(status=status, checks=checks, blockers=blocked)
+    return dict(status=status, checks=checks, blockers=blocked,
+                members=package_members(scan, checks, engineering))
+
+
+def package_members(scan, checks, engineering):
+    from .document_evidence import relative_reference
+
+    combined = {}
+    ranks = {"checked": 0, "pending": 1, "failed": 2, "conflict": 2}
+
+    def add(name, item_status, reason):
+        if not name or "!/" not in name:
+            return
+        member = combined.setdefault(name, dict(member=name, status="checked", checks=[]))
+        if ranks.get(item_status, 1) > ranks[member["status"]]:
+            member["status"] = item_status if item_status in ranks else "pending"
+        member["checks"].append(reason)
+        member["outbound"] = scan.get("member_outbound", {}).get(name, "local_only")
+
+    for item in checks:
+        add(item.get("source"), item["status"], item["reason"])
+    if engineering:
+        for item in scan.get("document_evidence_checks", ()):
+            if item.get("check") == "member_reference" and item.get("reference"):
+                name, _ = relative_reference(scan, item["document"], item["reference"])
+                add(name, item["status"], "required_engineering_reference")
+            elif item.get("data"):
+                add(item["data"], item["status"], item.get("basis", "document_contract"))
+    return list(combined.values())
 
 
 def allowed(recommendation):
@@ -85,6 +117,8 @@ def explanation(release):
         "heldout_worksheet_field_semantics_need_declaration": "需要补充留出工作表的字段定义",
         "algorithm_or_independent_reference_not_verified": "留出数据尚未验证该算法",
         "selected_table_unit_missing": "表格数值列的单位尚未确认",
+        "new_independent_evidence_required": "全量发送后需要未发送的独立数据复验",
+        "formal_acceptance_sample_failed": "正式抽检发现不合格的留出单位",
     }
     reasons = [labels.get(item["reason"], "请补充字段定义、工程证据或留出回检")
                for item in release.get("blockers", ())]
@@ -107,7 +141,19 @@ def runtime(scan, task, folder):
             if evidence and any(evidence[key] for key in (
                     "nonincreasing", "invalid_coordinates", "invalid_bounds", "overlapping_bounds")):
                 raise ValueError("正式读取发现 NetCDF 时间戳重复、无效或时间区间重叠")
-            reports.append(dict(source=row["name"], time=evidence))
+            record = dict(source=row["name"], time=evidence)
+            if evidence:
+                from .segment_review import review_netcdf
+                changed = bool(evidence["interval_changes"] or evidence["interval_width_changes"])
+                segmented = review_netcdf(row, field, evidence,
+                    precipitation=bool(changed and
+                                       "engineering.precipitation_adaptation" in task.get("steps", ())))
+                record["segmented_recheck"] = segmented
+                if changed and segmented["status"] != "checked":
+                    failing = [f"{item['start']}–{item['stop']}" for item in segmented.get("segments", ())
+                               if item["status"] != "checked"]
+                    raise ValueError("NetCDF 频率分段复验未通过：" + ("、".join(failing) or segmented.get("reason", "待核实")))
+            reports.append(record)
         elif row["format"] == "GeoTIFF":
             reports.append(dict(source=row["name"], **raster_review(row, field)))
         elif row["format"] in {"CSV", "TSV", "Excel"} and not row.get("original_reader"):
@@ -223,6 +269,10 @@ def table_review(row, field, folder):
                 units = next((i for i, name in enumerate(names) if name in {"unit", "units", "单位"}), None)
                 declared = field.get("unit")
                 total = missing = 0
+                unit_ranges = []
+                distinct = set()
+                current_range = None
+                segment_count = 0
                 with closing(sqlite3.connect(Path(temporary) / "time.sqlite")) as seen:
                     seen.execute("CREATE TABLE records (station TEXT, instant TEXT, PRIMARY KEY (station, instant)) WITHOUT ROWID")
                     while batch := list(islice(rows, 4096)):
@@ -231,12 +281,16 @@ def table_review(row, field, folder):
                             record[col] if len(record) > col else None for record in batch))
                         if units is not None:
                             observed = {str(record[units]).strip() for record in batch if len(record) > units and record[units]}
-                            if declared:
-                                observed.add(declared)
-                            if len(observed) > 1:
-                                raise ValueError("正式读取发现表格单位发生变化")
-                            if observed:
-                                declared = next(iter(observed))
+                            for position, record in enumerate(batch, total - len(batch) + 1):
+                                unit = (str(record[units]).strip() if len(record) > units and record[units] else declared)
+                                distinct.add(unit)
+                                if current_range is None or current_range["unit"] != unit:
+                                    current_range = dict(start=position, stop=position, unit=unit)
+                                    segment_count += 1
+                                    if len(unit_ranges) < 64:
+                                        unit_ranges.append(current_range)
+                                else:
+                                    current_range["stop"] = position
                         if clock is not None:
                             dates = pd.to_datetime([str(record[clock]).replace("_", "T", 1)
                                                     if len(record) > clock and record[clock] is not None else None for record in batch],
@@ -251,7 +305,23 @@ def table_review(row, field, folder):
                                 raise ValueError("正式读取发现同一站点的重复时刻") from error
                 if not total or missing == total:
                     raise ValueError("正式读取发现表格没有有效数值")
-                return dict(records=total, missing=missing, unit=declared)
+                if len(distinct) > 1 or (declared and distinct and distinct != {declared}):
+                    from ecodata.core.exceptions import EcoDataError
+                    from ecodata.engines.units import UnitEngine
+
+                    statuses = {}
+                    for unit in distinct:
+                        try:
+                            UnitEngine().affine(unit, declared or unit_ranges[0]["unit"])
+                        except (EcoDataError, ValueError, TypeError):
+                            statuses[unit] = "failed"
+                        else:
+                            statuses[unit] = "checked"
+                    display = "、".join(f"第 {item['start']}–{item['stop']} 条 {item['unit'] or '单位未知'} {statuses[item['unit']]}"
+                                      for item in unit_ranges[:10])
+                    raise ValueError(f"表格已分成 {segment_count} 段并复查单位。当前整表方案不能安全覆盖这些分段：" + display)
+                return dict(records=total, missing=missing, unit=declared or next(iter(distinct), None),
+                            unit_segments=unit_ranges)
         except UnicodeDecodeError:
             if encoding == "gb18030":
                 raise

@@ -36,6 +36,21 @@ def approved_fields(scan, recommendation):
     return selected
 
 
+def classification_fields(scan, approved):
+    result = []
+    for index in dict.fromkeys(index for index, _ in approved):
+        row = scan["rows"][index]
+        if row["format"] != "GeoTIFF":
+            continue
+        for field in row["fields"]:
+            label = normalized(field["name"])
+            if (field.get("band") and (field.get("flag_values") or field.get("flag_meanings")
+                    or field.get("data_kind") == "categorical"
+                    or any(term in label for term in ("land_cover", "landuse", "classification", "category")))):
+                result.append((index, dict(field, approved_classification=True)))
+    return result
+
+
 def eligible(recommendation):
     release = recommendation.get("execution_release", {})
     if release.get("status") != "pending":
@@ -49,7 +64,8 @@ def eligible(recommendation):
 
 def metadata(row, field):
     import math
-    info = dict(format=row["format"], variable=field["name"], unit=field["unit"])
+    info = dict(format=row["format"], variable=field["name"], unit=field.get("unit"),
+                value_policy="unchanged_classification" if field.get("approved_classification") else "perturbed")
     if row["format"] == "GeoTIFF":
         import rasterio
         with local_member(row) as path, rasterio.open(path) as dataset:
@@ -99,7 +115,8 @@ def numerical_rows(row, field):
                 for i, j in product(range(block.shape[0]), range(block.shape[1])):
                     cell = block[i, j]
                     yield [int(window.row_off) + i, int(window.col_off) + j,
-                           value(cell) if not getattr(cell, "mask", False) else ""]
+                           (cell.item() if field.get("approved_classification") else value(cell))
+                           if not getattr(cell, "mask", False) else ""]
     elif row["format"] == "NetCDF":
         import numpy as np
         import xarray as xr
@@ -188,7 +205,14 @@ def build(scan, fields, destination, progress=None):
                     total += len(buffer)
                 if not count:
                     raise ValueError("获准字段没有可生成副本的记录")
-                entries.append(dict(info, id=f"F{ordinal}", bytes=total, records=count, parts=parts))
+                entry = dict(info, id=f"F{ordinal}", bytes=total, records=count, parts=parts,
+                             source_member=row["name"])
+                if row["format"] == "GeoTIFF":
+                    native = Path(folder) / f"raster-{ordinal}.tif"
+                    write_native_raster(row, field, archive, parts, native)
+                    entry["native_member"] = f"{prefix}/band.tif"
+                    archive.write(native, entry["native_member"])
+                entries.append(entry)
                 if progress:
                     progress(f"已生成扰动副本 {ordinal}/{len(fields)}")
             archive.writestr("manifest.json", json.dumps(entries, ensure_ascii=False, default=str))
@@ -197,7 +221,41 @@ def build(scan, fields, destination, progress=None):
     return entries
 
 
-def supplement(scan, fields):
+def write_native_raster(row, field, archive, parts, destination):
+    import numpy as np
+    import rasterio
+    from .sampling_plan import raster_windows
+
+    def values():
+        for part in parts:
+            with archive.open(part) as stream, io.TextIOWrapper(stream, encoding="utf-8", newline="") as text:
+                yield from csv.reader(text)
+
+    stream = values()
+    band = field["band"]
+    category = field.get("approved_classification")
+    with local_member(row) as path, rasterio.open(path) as original, rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+        config = dict(driver="GTiff", width=original.width, height=original.height, count=1,
+                      crs=original.crs, transform=original.transform, compress="deflate",
+                      dtype=original.dtypes[band - 1] if category else "float64")
+        with rasterio.open(destination, "w", **config) as out:
+            out.set_band_description(1, original.descriptions[band - 1] or field["name"])
+            if field.get("unit"):
+                out.set_band_unit(1, field["unit"])
+            for window in raster_windows(original, band):
+                shape = (int(window.height), int(window.width))
+                block = np.zeros(shape, dtype=config["dtype"])
+                mask = np.zeros(shape, dtype=np.uint8)
+                for index in np.ndindex(shape):
+                    value = next(stream)[2]
+                    if value:
+                        block[index] = (int(value) if block.dtype.kind in "iu" else float(value))
+                        mask[index] = 255
+                out.write(block, 1, window=window)
+                out.write_mask(mask, window=window)
+
+
+def supplement(scan, fields, targets=None):
     """Read bounded uncovered support without consuming the locked holdout."""
     from .sample_values import SAMPLE_SIZE, perturb
     from .sampling_plan import sample
@@ -208,13 +266,73 @@ def supplement(scan, fields):
         row = scan["rows"][index]
         record = sample(row, field)
         values = [value for value in record["values"] if value is not None]
-        extra, basis = uncovered_window(row, field, record)
-        if not extra:
+        target = (targets or {}).get(index)
+        if target:
+            extra, basis = targeted_table(row, field, record, target), "selected_tabular_group"
+        else:
+            extra, basis = uncovered_window(row, field, record)
+        if not extra and not target:
             extra, basis = values[SAMPLE_SIZE:SAMPLE_SIZE * 2], "remaining_recommendation_records"
         results.append(dict(variable=field["name"], unit=field["unit"], basis=basis,
                             perturbed_samples=perturb(extra[:SAMPLE_SIZE])))
     assert_current(scan)
     return results
+
+
+def targeted_table(row, field, sample, target):
+    from itertools import islice
+    from .csv_index import indexed_records, load, month
+    from .sample_values import numeric
+    from .sampling_plan import PROBE_LIMIT, station_reserved
+
+    kind, group = target
+    if kind == "station" and station_reserved(group):
+        raise ValueError("所选站点已留作独立回检，请选择推荐范围内的站点")
+    if kind == "sheet" and group == sample.get("partition", {}).get("held_sheet"):
+        raise ValueError("所选工作表已留作独立回检")
+    alternate = group if kind == "sheet" else None
+    if alternate and row["format"] != "Excel":
+        raise ValueError("工作表定向补样需要 Excel")
+    for encoding in ("utf-8-sig", "gb18030"):
+        try:
+            with records(row, field, encoding, alternate) as (rows, _, __):
+                header = list(next(rows, ()))
+                original = field.get("source_column") or field.get("original_header") or field["name"]
+                column = header.index(original)
+                names = [normalized(name) for name in header]
+                station = next((i for i, name in enumerate(names) if name in IDENTIFIERS - {"id"}), None)
+                clock = next((i for i, name in enumerate(names) if name in TIME), None)
+                held_month = sample.get("partition", {}).get("held_month")
+                if alternate and alternate != field.get("sheet"):
+                    other = next((option for option in row.get("fields", ()) if option.get("sheet") == alternate
+                                  and (option.get("original_header") or option["name"]) == original), None)
+                    if not other or other.get("unit") != field.get("unit"):
+                        raise ValueError("定向工作表的同名列缺少一致的单位证据")
+                if kind == "station" and station is None:
+                    raise ValueError("表格没有可用于定向补样的站点列")
+                indexed = load(row, encoding, header) if row["format"] in {"CSV", "TSV"} else None
+                if kind == "station" and indexed:
+                    rows = indexed_records(row, encoding, indexed.get("station", {}).get(group, ()), PROBE_LIMIT)
+                values = []
+                for number, record in enumerate(islice(rows, PROBE_LIMIT * 4)):
+                    if len(record) <= column or (station is not None and (len(record) <= station or station_reserved(str(record[station]).strip()))):
+                        continue
+                    if kind == "station" and str(record[station]).strip() != group:
+                        continue
+                    if held_month and clock is not None and len(record) > clock and month(record[clock]) == held_month:
+                        continue
+                    if not (indexed or alternate and alternate != field.get("sheet")) and station is None and clock is None and (number // 8) % 4 == 3:
+                        continue
+                    value = next(numeric([record[column]]))
+                    if value is not None:
+                        values.append(value)
+                    if len(values) >= 32:
+                        break
+                return values[-16:]
+        except UnicodeDecodeError:
+            if encoding == "gb18030":
+                raise
+    return []
 
 
 def uncovered_window(row, field, record):
@@ -280,7 +398,7 @@ def digest_file(path):
     return digest.hexdigest()
 
 
-def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None, send=None):
+def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None, send=None, recipes=()):
     from hashlib import sha256
     from .service import tool_turn
 
@@ -288,6 +406,9 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
     receipt_path = Path(archive_path).with_suffix(".receipts.jsonl")
     total = sum(len(entry["parts"]) for entry in manifest)
     received = 0
+    from collections import Counter
+    choices = Counter()
+    allowed = {item["id"] for item in recipes}
     with Path(archive_path).open("rb") as source:
         digest = sha256()
         while chunk := source.read(1024 * 1024):
@@ -299,14 +420,15 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
             if not total or json.loads(archive.read("manifest.json")) != manifest:
                 raise ValueError("待发清单与获准副本不一致")
             for entry in manifest:
-                meta = {key: value for key, value in entry.items() if key != "parts"}
+                meta = {key: value for key, value in entry.items()
+                        if key not in {"parts", "native_member", "source_member"}}
                 for number, part in enumerate(entry["parts"], 1):
                     if archive.getinfo(part).file_size > PART_BYTES:
                         raise ValueError("分片超过批准的单次请求大小")
                     messages = [
-                        dict(role="system", content="仅分析当前获准的扰动数据分片并返回简洁 JSON。只说明观察到的证据、可能的处理与缺项。不要把本分片结论解释为全数据验证。"),
+                        dict(role="system", content="只分析当前扰动数据分片。返回 JSON，recipe 使用目录中有证据支持的候选 ID，依据不足用 null；reason 简述证据。不要把分片结论解释为全数据验证。"),
                         dict(role="user", content=json.dumps(
-                            dict(field=meta, part=number, total_parts=len(entry["parts"]),
+                            dict(field=meta, part=number, total_parts=len(entry["parts"]), allowed_recipes=list(recipes),
                                  csv=archive.read(part).decode("utf-8")), ensure_ascii=False)),
                     ]
                     try:
@@ -315,9 +437,19 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
                         log.write(json.dumps(dict(field=entry["id"], part=number, status="unconfirmed"), ensure_ascii=False) + "\n")
                         raise ValueError(f"全量分片发送未完成，已确认 {received}/{total} 批。回执：{receipt_path}") from error
                     received += 1
+                    try:
+                        suggestion = json.loads(message.get("content") or "{}")
+                        vote = suggestion.get("recipe") if isinstance(suggestion, dict) else None
+                        if isinstance(vote, str) and vote in allowed:
+                            choices[vote] += 1
+                    except (TypeError, ValueError):
+                        pass
                     log.write(json.dumps(dict(field=entry["id"], part=number, receipt=receipt,
                                               advisory=message.get("content")), ensure_ascii=False) + "\n")
                     log.flush()
                     if progress:
                         progress(f"DeepSeek 扰动证据分片 {received}/{total} 已响应")
-    return dict(received=received, total=total, receipts=receipt_path)
+    ranked = choices.most_common()
+    winner = ranked[0][0] if ranked and ranked[0][1] * 2 > total else None
+    return dict(received=received, total=total, receipts=receipt_path, votes=dict(choices),
+                unresolved=total - sum(choices.values()), candidate=winner)

@@ -40,3 +40,11 @@ python -m ecodata.desktop.csv_index 'D:\data\weather.csv'
 只有采样覆盖不足的方案才会显示追加证据入口。优先发送少量补样。仍需全量且确认权限后，平台先生成获准连续数值字段的扰动副本，并显示发送字段、记录数、大小和分片数。表格标识、分类编码和未选定字段保留在本地。副本用 CSV 分片和清单保留位置、掩码与必要结构，归档内部按原成员路径组织。批准后，每个分片通过单独的 DeepSeek 请求发送并记录回执。
 
 全量分片的回复供补充判断。已发给 DeepSeek 的数据无法继续作为同次独立回检集，执行仍需独立依据和原始数据检查。
+
+## 正式抽检和独立复验
+
+正式抽检预先固定一轮。默认要求对占留出总体至少 5% 的问题，有 95% 的概率抽到至少一个。可通过 `ECODATA_ACCEPTANCE_DEFECT_SHARE` 和 `ECODATA_ACCEPTANCE_DETECTION` 设置目标。使用 SciPy 的超几何分布计算不放回样本量。千万级简单随机总体中，5% 对应约 59 个抽样单位，1% 对应约 299 个。报告标明实际使用的站点、时间窗口、空间块或记录块。该概率对应抽样规则和当前留出总体。 [NIST 抽样验收手册](https://www.itl.nist.gov/div898/handbook/pmc/section2/pmc232.htm) · [SciPy 超几何分布](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.hypergeom.html)
+
+频率和显式区间变化按边界自动拆分复验。表格单位变化会逐段核对维度，当前只支持统一单位的后端会暂停。运行时使用开源 `ruptures` 对有限窗口的统计摘要检测疑似变点，供本地复核。失败结果记录范围，调整候选后用新提供且未用于此前选择的独立文件再验。 [ruptures 源码](https://github.com/deepcharles/ruptures)
+
+全量兜底只处理采样覆盖不足，优先补选网格窗口、CSV 站点、Excel 工作表或包内成员。若仍不足，批准记录包含副本指纹、字段、条数、字节数、分片数和原因。经额外选择的 GeoTIFF 分类编码按原值写入本地原生副本，云端使用受支持的 CSV 表示。分片仅从已登记目录提议方案，取得过半支持才形成新候选，始终要用新增独立数据复验。 [DeepSeek 文件解析说明](https://api-docs.deepseek.com/guides/document_parsing/)

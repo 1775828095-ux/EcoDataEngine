@@ -209,6 +209,7 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
     from .catalog_decision import local_fields
     from .sampling_plan import recommendation_review
     from .release_gate import assess
+    from .sampling_risk import attach
 
     originals, _ = local_fields(scan, approved)
     tasks = {task["id"]: task for task in plan["tasks"]}
@@ -221,9 +222,12 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
         refs = [originals[fid] for fid in task["context"]["fields"] if fid in originals]
         execution = gated.get((task["candidate"], task["operation"]))
         report = recommendation_review(scan, recommendation, execution, refs, cache)
+        for (index, _, field), item in zip(refs, report):
+            attach(scan, index, field, item, cache)
         recommendation["local_holdout_review"] = report
         recommendation["execution_release"] = assess(scan, recommendation, execution, refs)
         recommendation["execution_fields"] = [(index, field["name"], fid) for index, fid, field in refs]
+        recommendation["local_recipe_options"] = [dict(option) for option in task["allowed_recipes"]]
     assert_current(scan)
 
 

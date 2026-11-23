@@ -20,7 +20,8 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
             runtime_report = []
             if task.get("runtime_fields"):
                 from .release_gate import runtime
-                runtime_report = runtime(scan, {"fields": task["runtime_fields"]}, folder)
+                runtime_report = runtime(scan, {"fields": task["runtime_fields"],
+                                                "steps": [step for recipe in task["recipes"] for step in recipe]}, folder)
             if route == "station_grid":
                 result = station_grid.run(scan,task_id,task,stage,model_id,progress)
             elif route == "structure_conversion":

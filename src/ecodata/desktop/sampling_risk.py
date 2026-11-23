@@ -1,0 +1,166 @@
+"""Preplanned finite-population acceptance sampling on reserved units."""
+from math import ceil
+from random import Random
+
+
+def settings():
+    from os import environ
+    return dict(defect_share=float(environ.get("ECODATA_ACCEPTANCE_DEFECT_SHARE", "0.05")),
+                detection=float(environ.get("ECODATA_ACCEPTANCE_DETECTION", "0.95")))
+
+
+def attach(scan, index, field, report, cache):
+    key = ("acceptance_sampling", index, report["field"])
+    if key not in cache:
+        cache[key] = review_field(scan["rows"][index], field, **settings())
+    result = cache[key]
+    if result is not None:
+        report["acceptance_sampling"] = result
+        if result["status"] == "failed":
+            report.update(status="failed", basis="formal_acceptance_sample_failed")
+    return report
+
+
+def plan(population, *, defect_share=0.05, detection=0.95):
+    from scipy.stats import hypergeom
+
+    if population < 1 or not 0 < defect_share <= 1 or not 0 < detection < 1:
+        raise ValueError("抽检总体、目标问题占比或检出概率无效")
+    defects = max(1, ceil(population * defect_share))
+    low, high = 1, population
+    while low < high:
+        middle = (low + high) // 2
+        if hypergeom.pmf(0, population, defects, middle) <= 1 - detection:
+            high = middle
+        else:
+            low = middle + 1
+    return dict(population=population, sample_size=low, rounds=1, defect_share=defect_share,
+                detection=detection, assumed_defects=defects)
+
+
+def evaluate(population, unit, test, *, seed=0, defect_share=0.05, detection=0.95, offset=0):
+    """Select all sample positions before evaluating the fixed acceptance rule."""
+    design = plan(population, defect_share=defect_share, detection=detection)
+    selected = sorted(Random(seed).sample(range(population), design["sample_size"]))
+    result = [test(offset + index) for index in selected]
+    failures = [item for item in result if item]
+    return dict(design, unit=unit, inspected=len(result), failed=len(failures),
+                status="failed" if failures else "checked", failures=failures[:20])
+
+
+def review_field(row, field, *, defect_share=0.05, detection=0.95):
+    """Check uniformly chosen withheld raster blocks or time windows."""
+    import numpy as np
+    from .scan import local_member
+    from .sampling_plan import member_available, time_dimension
+
+    if not member_available(row) or row.get("original_reader"):
+        return None
+    options = dict(defect_share=defect_share, detection=detection)
+    if row["format"] == "GeoTIFF":
+        import rasterio
+        from rasterio.windows import Window
+        with local_member(row) as path, rasterio.open(path) as source:
+            along_y = source.height >= 2
+            size = source.height if along_y else source.width
+            if size < 2:
+                return None
+            boundary = size - max(1, size // 5)
+            x0, y0 = (0, boundary) if along_y else (boundary, 0)
+            width, height = source.width - x0, source.height - y0
+            cols, rows = ceil(width / 4), ceil(height / 4)
+            def test(index):
+                i, j = divmod(index, cols)
+                block = source.read(field["band"], window=Window(
+                    x0 + 4*j, y0 + 4*i, min(4, width - 4*j), min(4, height - 4*i)), masked=True)
+                if not np.isfinite(block.compressed()).any():
+                    return dict(unit=index, rule="heldout_block_has_no_valid_values")
+                return None
+            return evaluate(cols * rows, "withheld_spatial_block", test, **options)
+    if row["format"] == "NetCDF":
+        import xarray as xr
+        with local_member(row) as path, xr.open_dataset(path, decode_times=False, cache=False) as dataset:
+            array = dataset[field["name"]]
+            clock = time_dimension(array, dataset)
+            if clock not in dataset.coords or not np.issubdtype(dataset[clock].dtype, np.number):
+                return None
+            size = array.sizes[clock]
+            if size < 2:
+                return None
+            reserved = max(1, size // 5)
+            start = size - reserved
+            selectors = {dim: (array.sizes[dim] - 1) // 2 for dim in array.dims if dim != clock}
+            def test(index):
+                bounds = slice(start + index*8, min(start + (index+1)*8, size))
+                clock_values = dataset[clock].isel({clock: bounds}).values.astype(float)
+                if not np.isfinite(clock_values).all() or (np.diff(clock_values) <= 0).any():
+                    return dict(unit=index, rule="time_window_coordinates_invalid")
+                values = array.isel({clock: bounds, **selectors}).values
+                if not np.isfinite(values).any():
+                    return dict(unit=index, rule="time_window_has_no_valid_values")
+                return None
+            return evaluate(ceil(reserved / 8), "withheld_time_window", test, **options)
+    if row["format"] in {"CSV", "TSV", "Excel"}:
+        return table_review_field(row, field, **options)
+    return None
+
+
+def table_review_field(row, field, **options):
+    from .csv_index import month
+    from .sample_values import numeric
+    from .sampling_plan import IDENTIFIERS, PROBE_LIMIT, TIME, normalized, records, station_reserved
+    from datetime import datetime
+    from functools import lru_cache
+    from itertools import chain, islice
+
+    @lru_cache(maxsize=4096)
+    def valid_date(stamp):
+        try:
+            datetime.fromisoformat(stamp.replace("_", "T", 1))
+            return True
+        except ValueError:
+            return False
+
+    for encoding in ("utf-8-sig", "gb18030"):
+        try:
+            with records(row, field, encoding) as (rows, _, __):
+                header = list(next(rows, ()))
+                column = header.index(field.get("source_column") or field.get("original_header") or field["name"])
+                names = [normalized(name) for name in header]
+                site = next((index for index, name in enumerate(names) if name in IDENTIFIERS - {"id"}), None)
+                clock = next((index for index, name in enumerate(names) if name in TIME), None)
+                prefix = list(islice(rows, PROBE_LIMIT))
+                known_months = sorted({date for record in prefix if clock is not None and len(record) > clock
+                                       if (date := month(record[clock]))})
+                reserved = known_months[-1] if len(known_months) > 1 else None
+                summary = {}
+                for index, record in enumerate(chain(prefix, rows)):
+                    if len(record) <= column:
+                        continue
+                    stamp = record[clock] if clock is not None and len(record) > clock else None
+                    if site is not None:
+                        key = str(record[site]) if len(record) > site else ""
+                        if not key or not station_reserved(key):
+                            continue
+                    elif clock is not None:
+                        key = month(stamp)
+                        if reserved is None or key != reserved:
+                            continue
+                    else:
+                        if (index // 8) % 4 != 3:
+                            continue
+                        key = str(index // 8)
+                    previous = summary.get(key, (False, True))
+                    # A station with invalid dates is a defective unit.
+                    valid = next(numeric([record[column]])) is not None
+                    dated = bool(stamp and valid_date(str(stamp))) if clock is not None else True
+                    summary[key] = (previous[0] or valid, previous[1] and dated)
+                if not summary:
+                    return None
+                units = list(summary.values())
+                return evaluate(len(units), "withheld_station" if site is not None else
+                                "withheld_month" if clock is not None else "withheld_record_block",
+                                lambda i: None if all(units[i]) else dict(unit=i, rule="tabular_unit_incomplete"), **options)
+        except UnicodeDecodeError:
+            if encoding == "gb18030":
+                raise

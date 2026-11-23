@@ -203,8 +203,11 @@ def netcdf_time_review(row, field, *, allow_materialization=False):
         previous = None
         previous_step = np.nan
         previous_end = None
+        previous_width = np.nan
         bad_coordinates = overlaps = bad_bounds = nonincreasing = changes = 0
         examples = []
+        width_changes = 0
+        width_examples = []
         for start in range(0, count, TIME_COORD_LIMIT):
             window = {dim: slice(start, start + TIME_COORD_LIMIT)}
             values = np.asarray(clock.isel(window).values, dtype=float)
@@ -231,9 +234,17 @@ def netcdf_time_review(row, field, *, allow_materialization=False):
                 if len(edge):
                     overlaps += int(previous_end is not None and edge[0, 0] < previous_end)
                     previous_end = edge[-1, 1]
+                    width = edge[:, 1] - edge[:, 0]
+                    earlier_width = np.r_[previous_width, width[:-1]]
+                    different = np.isfinite(earlier_width) & np.isfinite(width) & ~np.isclose(earlier_width, width)
+                    width_changes += int(different.sum())
+                    width_examples.extend(int(start + index) for index in
+                                          np.flatnonzero(different)[:max(0, 16 - len(width_examples))])
+                    previous_width = width[-1]
         return dict(scope="all_time_coordinates", coordinate_count=count, interval_changes=changes,
                     change_examples=examples, nonincreasing=nonincreasing, invalid_coordinates=bad_coordinates,
-                    invalid_bounds=bad_bounds, overlapping_bounds=overlaps)
+                    invalid_bounds=bad_bounds, overlapping_bounds=overlaps,
+                    interval_width_changes=width_changes, interval_width_examples=width_examples)
 
 
 def raster(row, field, holdout):
