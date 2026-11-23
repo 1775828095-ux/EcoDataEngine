@@ -169,6 +169,7 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
     if include_samples:
         attach_samples(scan,[task["context"] for task in tasks])
     request=dict(stage="recommendation",target_model=approved["target_model"],tasks=recommendation_metadata(tasks),
+                 shared_algorithm_catalogue=shared_algorithm_catalogue(),
                  task_requirements=approved.get('task_requirements',{}),
                  engineering_documents=documents,
                  project_context_document_ids=approved.get("project_context_document_ids",[]),
@@ -179,6 +180,19 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
 def algorithm_registry():
     return {key: ALGORITHM_NAMES.get(key,value) for key,value in
             {**ALGORITHMS,**ENGINEERING,**ALIGNMENT,**PREPARATION}.items()}
+
+
+def shared_algorithm_catalogue():
+    from ecodata.algorithms.platform_search import platform_registry
+
+    catalogue = {
+        spec.id: dict(name=ALGORITHM_NAMES.get(spec.id, spec.name), status=spec.status,
+                      category=spec.category, input_kinds=list(spec.input_kinds))
+        for spec in platform_registry().specs()
+    }
+    if "fusion.residual" in catalogue:
+        catalogue["fusion.residual"]["station_fit_variants"] = ["linear", "rf"]
+    return catalogue
 
 
 def recommend_plan(plan, decisions, *, mock=False, api_key=None, progress=None):
@@ -216,6 +230,8 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
     cache = {}
     assert_current(scan)
     for recommendation in recommendations:
+        if recommendation.get("id") == "registry_advice":
+            continue
         task = tasks.get(recommendation["task"])
         if not task:
             continue
@@ -303,8 +319,10 @@ def validate(raw, summary):
     entries=raw.get("recommendations")
     if not isinstance(entries,list):
         raise ValueError("DeepSeek 未返回算法推荐列表")
-    options={(task["id"],recipe["id"]):recipe for task in summary["tasks"] for recipe in task["allowed_recipes"]}
+    tasks = {task["id"]: task for task in summary["tasks"]}
+    options={(task["id"],recipe["id"]):recipe for task in tasks.values() for recipe in task["allowed_recipes"]}
     advisory_tasks={task["id"]:task for task in summary["tasks"] if task.get("advisory_only")}
+    catalogue = summary.get("shared_algorithm_catalogue", {})
     recommendations=[]
     seen=set()
     for entry in entries:
@@ -315,11 +333,24 @@ def validate(raw, summary):
             continue
         if key in options:
             seen.add(key)
-            task=next(t for t in summary['tasks'] if t['id']==key[0])
+            task=tasks[key[0]]
             quantities={f.get('physical_family') for f in task['context'].get('pair_details',[])}-{None,'UNKNOWN'}
             scope=dict(variable=next(iter(quantities))) if len(quantities)==1 else {}
             reason=str(entry.get('reason',''))[:600]
             recommendations.append(dict(task=key[0],**options[key],scope=scope,reason=reason,explanation=explanation(task,reason)))
+        elif key[0] in tasks and key[1] == "registry_advice":
+            ids = entry.get("algorithms")
+            if not isinstance(ids, list) or not 1 <= len(ids) <= 8:
+                continue
+            if any(not isinstance(algorithm, str) or algorithm not in catalogue for algorithm in ids):
+                continue
+            seen.add(key)
+            methods = [catalogue[algorithm]["name"] for algorithm in dict.fromkeys(ids)]
+            reason = str(entry.get("reason", ""))[:600]
+            recommendations.append(dict(task=key[0], id=key[1], name=" → ".join(methods), steps=[],
+                                        catalogue_algorithms=list(dict.fromkeys(ids)), advisory_only=True,
+                                        description="仓库算法建议 · 供方案参考", reason=reason,
+                                        explanation=explanation(tasks[key[0]], reason)))
         elif key[0] in advisory_tasks and key[1]=="advisory":
             name=str(entry.get("name","")).strip()[:100]
             if not name:

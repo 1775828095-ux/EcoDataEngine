@@ -181,6 +181,9 @@ def preview(summary, file=None, *, local_evidence=None):
                 "若任务是对齐或转换，可以推荐独立方案，不必拼上融合算法。"
                 "说明理由和仍须原版验证的条件。扰动样本只用于理解量级，不能用于评分或判断精确分布。"
                 "返回 JSON 对象 recommendations 数组，每项含 task（任务 id）、recipe（方案 id）、reason（中文）。"
+                "shared_algorithm_catalogue 中所有算法都可作为目录建议，包括需要额外依赖或权重的算法。"
+                "每个任务至多一条目录建议，recipe 填 registry_advice，algorithms 填目录中的算法 ID 数组，"
+                "reason 说明建议的用途和已知前提。目录建议不代表已经执行。"
                 "advisory_only 为 true 的任务允许一条条件性方案，recipe 固定为 advisory，额外提供 name 写算法名称，"
                 "并在 reason 说明适配和验证前提，不填执行编号，不声称已经可运行。"
                 "若任务带 evaluation_plan，同一条推荐必须另填 alignment（具体对齐算法及可比支持域）"
@@ -258,7 +261,8 @@ def preview(summary, file=None, *, local_evidence=None):
             "local_check_results 里的随机小数扰动样本只用于理解量级，不能用于评分。两字段的问题必须给出两个字段 id。"
             "不能请求原始数据、位置或任意代码。"
             "每个建议可填 algorithm_steps（数组，每个元素是依序执行的算法 ID 数组，从 algorithm_registry 选择）"
-            "和 algorithm_name（中文方案名）。有足够资料时，给出决定和组合；"
+            "和 algorithm_name（中文方案名）。shared_algorithm_catalogue 中所有算法均可作为建议，目录状态是运行条件参考。"
+            "有足够资料时，给出决定和组合；"
             "没有把握时一次列出所有要补读的字段。local_check_results 中 final_round 为 true 时，结合本地回传给出最终决定和算法组合，停止追问。"
         )
     if stage in {"decision","recommendation"}:

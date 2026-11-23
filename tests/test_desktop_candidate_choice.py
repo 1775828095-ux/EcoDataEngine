@@ -97,3 +97,17 @@ def test_page_export_handler_uses_actual_user_choice(tmp_path,completed,monkeypa
     with zipfile.ZipFile(destination) as archive:assert json.loads(archive.read('selection.json'))['chosen_key']==chosen
     assert source.read_text()=='read-only input fixture'
     window.batch_timer.stop();window.close();app.processEvents()
+def test_shared_registry_algorithms_can_be_recommended_without_adding_execution_steps():
+    from ecodata.algorithms.platform_search import platform_registry
+
+    catalogue = recommendations.shared_algorithm_catalogue()
+    assert catalogue.keys() == {spec.id for spec in platform_registry().specs()}
+    ids = ["fusion.series_missing_fallback", "reconstruction.prior_grid_forest"]
+    assert all(algorithm in catalogue for algorithm in ids)
+    summary = dict(shared_algorithm_catalogue=catalogue,
+                   tasks=[dict(id="C1:fusion", context={}, allowed_recipes=[])])
+    reply = dict(recommendations=[dict(task="C1:fusion", recipe="registry_advice",
+                                      algorithms=ids, reason="比较补缺方法")])
+    row, = recommendations.validate(reply, summary)
+    assert row["catalogue_algorithms"] == ids
+    assert row["advisory_only"] and row["steps"] == []

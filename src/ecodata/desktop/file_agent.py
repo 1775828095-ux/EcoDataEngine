@@ -175,7 +175,7 @@ def scan_index(location, progress=None):
 
 
 def run(scan, summary, cache, mock, key, progress, feedback):
-    from . import service, discovery, catalog_decision
+    from . import service, discovery, catalog_decision, recommendations
     assert_current(scan)
     if mock:
         raise ValueError('自主文件工具验收需要真实API，未生成模拟判断')
@@ -266,6 +266,7 @@ def run(scan, summary, cache, mock, key, progress, feedback):
         task_requirements=summary.get('task_requirements', {}),
         inspection_scope='only tool-inspected files; uninspected files remain unknown')
     descriptions = strata(full, originals)
+    decision_input["shared_algorithm_catalogue"] = recommendations.shared_algorithm_catalogue()
     if descriptions:
         decision_input["numeric_sampling_strata"] = descriptions
     decision = service.preview(decision_input)
