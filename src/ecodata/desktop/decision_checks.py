@@ -100,7 +100,9 @@ class LocalChecks:
                             basis="noaa_decoded_components",sample_fields=parts)
             assert_current(self.scan)
             try:
-                result=sample_values.export_sample(self.numbers(item))
+                row = self.scan["rows"][item[0]]
+                from .sampling_plan import export_field
+                result = export_field(row, item[2])
             except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
                 result=dict(status="unavailable",basis="local_reader_or_metadata_unavailable")
             assert_current(self.scan)

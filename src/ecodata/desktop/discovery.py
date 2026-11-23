@@ -92,10 +92,11 @@ def pair_units(ar, a, br, b, inferred_quantity=None):
 def public_unit(value):
     if value in PUBLIC_UNITS:
         return value
-    if not re.fullmatch(r"[A-Za-z0-9°µμ%*/^(). +_-]{1,40}",value):
-        return None
     from ecodata.core.exceptions import SchemaError
-    from ecodata.engines.units import UnitEngine
+    from ecodata.engines.units import UnitEngine, normalize_unit
+    value = normalize_unit(value)
+    if not re.fullmatch(r"[A-Za-z0-9°µμ%*/^(). +_-]{1,40}", value):
+        return None
     try:
         return f"{UnitEngine.parse(value):~}"
     except (SchemaError, ValueError, TypeError):
@@ -580,10 +581,14 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         _,basis_a=field_identity(ar,a)
         _,basis_b=field_identity(br,b)
         same_quantity=bool(unit_check["quantity"])
+        cf_daily_pair = (action in {"align_space", "fusion"} and not delegated
+                         and unit_check.get("quantity") == "precipitation"
+                         and ar["format"] == br["format"] == "NetCDF")
         row["unit_check"]=unit_check
         row["physical_identity"]=dict(left_basis=basis_a,right_basis=basis_b,match=same_quantity,
                                       mapping_basis=unit_check.get("identity_basis","local_metadata"))
-        if action!="convert_format" and unit_check["status"] not in {"equivalent","convertible","physical_identity_unconfirmed"}:
+        if (action != "convert_format" and not cf_daily_pair
+                and unit_check["status"] not in {"equivalent", "convertible", "physical_identity_unconfirmed"}):
             row["block_code"]={"quantity_conflict":"quantity_conflict","unit_not_convertible":"unit_conflict"}.get(
                 unit_check["status"],"unit_unknown")
             row["reason"]=("两份元数据明确声明了不同物理量" if row["block_code"]=="quantity_conflict"
@@ -604,18 +609,34 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                     row["block_code"]="quantity_unknown"
                     raise ValueError("还需确定可共同换算的物理量和单位")
                 if action=="convert_units" and unit_check["status"]=="equivalent":
-                    results.pop()
-                    continue
+                    from .table_unit_segments import unit_column
+                    explicitly_segmented = any(
+                        source["format"] in {"CSV", "TSV", "Excel"} and
+                        unit_column([column.get("original_header") or column["name"] for column in source["fields"]
+                                     if column.get("sheet") == field.get("sheet")], field) is not None
+                        for source, field in ((ar, a), (br, b)))
+                    if not explicitly_segmented:
+                        results.pop()
+                        continue
                 task=conversion_task(scan,[(ai,a),(bi,b)],action,unit_check)
                 prepared[(cid,action)]=task
                 row.update(status="通过",reason="可独立转换字段并回读核对，供后续配对和融合使用。")
                 continue
             if "compare_station_grid" in detected and action in {"compare_station_grid","align_time","align_space","fusion"}:
-                from .station_grid import load, plan, task_for
+                from .station_grid import BIAS, EXACT, FORMAT_STEP, MATCH, NEAREST, UNIT_STEP, load, plan, task_for
                 if unit_check["status"] not in {"equivalent","convertible"}:
                     row["block_code"]="quantity_unknown"
                     raise ValueError("请识别共同物理量并检查单位后进行站点配对")
                 task=task_for(scan,(left,right),action,unit_check)
+                if action == "fusion":
+                    from .recipe_trials import FILL
+
+                    task["fields"] = [(ai, a["name"]), (bi, b["name"])]
+                    task["recipe_steps"] = [[UNIT_STEP, FORMAT_STEP, method, MATCH, FILL, BIAS]
+                                            for method in (EXACT, NEAREST)]
+                    prepared[(cid,action)] = task
+                    row.update(status="通过", reason="按表格索引留出站点或月份，在实际网格位置和时间上试跑订正与补位。")
+                    continue
                 evidence_key=tuple(item[1] for item in (left,right)),unit_check["quantity"]
                 if evidence_key not in station_matches:
                     station_matches[evidence_key]=load(scan,task)
@@ -623,6 +644,47 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                 prepared[(cid,action)]=task
                 row.update(status="通过",reason="原始站点与网格时空配对通过。可运行已登记的组合。")
                 continue
+            cf_error = None
+            if cf_daily_pair:
+                from .independent_alignment import check_cf_headers
+
+                selections = [(ai, a["name"]), (bi, b["name"])]
+                try:
+                    check_cf_headers(scan, selections)
+                except (EcoDataError, OSError, ValueError, KeyError) as error:
+                    cf_error = error
+                else:
+                    prepared[(cid, action)] = dict(action=action, cf_daily=True,
+                        route="independent_grid_search" if action == "fusion" else "independent_alignment",
+                        fields=selections)
+                    row.update(status="通过", next_step="alignment_then_fusion",
+                               reason="已核对 UTC 区间语义、单位和共同网格范围。完整日对齐，不完整日留待补位试跑。")
+                    continue
+            if action == "fusion" and unit_check["status"] in {"equivalent", "convertible"}:
+                from . import indexed_table_recipe, recipe_trials, windowed_grid_recipe
+
+                formats = {ar["format"], br["format"]}
+                task = dict(action=action, fields=[(ai, a["name"]), (bi, b["name"])], field_metadata=[a, b],
+                            quantity=unit_check["quantity"], unit=unit_check["target_unit"])
+                steps = []
+                if all(indexed_table_recipe.supports(source, field) for source, field in ((ar, a), (br, b))):
+                    task["route"] = "indexed_table_recipe"
+                    steps = [[indexed_table_recipe.LINEAR]]
+                elif formats <= windowed_grid_recipe.FORMATS and not approved_summary.get("task_requirements", {}).get("target_grid"):
+                    try:
+                        steps = windowed_grid_recipe.available(scan, task)
+                        task["route"] = "windowed_grid_recipe"
+                    except (EcoDataError, OSError, ValueError, KeyError):
+                        # Let the registered engineering adapters handle other grid supports.
+                        pass
+                if steps:
+                    task["recipe_steps"] = [["units.harmonize", "format.normalize", *align, recipe_trials.FILL, recipe_trials.BLEND]
+                                             for align in steps]
+                    prepared[(cid, action)] = task
+                    row.update(status="通过", next_step="alignment_then_fusion", algorithm_candidates=list(dict.fromkeys(
+                               operation for recipe in steps for operation in recipe)),
+                               reason="字段物理量和单位可对应。留出组的原始数据将执行完整方案并与基线比较。")
+                    continue
             if physical(a)==physical(b)=="precipitation":
                 read_for_check(ai,a)
                 read_for_check(bi,b)
@@ -648,7 +710,7 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                         if action=="align_space":
                             prepared[(cid,action)]=dict(action=action,route="independent_alignment",
                                 fields=[(ai,a["name"]),(bi,b["name"])])
-                            row.update(status="通过",reason="可按共同 UTC 日期转为日累计量，并对齐到较粗网格后分别导出。")
+                            row.update(status="通过",reason="可按共同 UTC 日期范围转为日累计量并保守对齐。未指定目标时比较可行的原生网格。")
                         else:
                             if ar["bytes"]+br["bytes"]>32*1024**2:
                                 raise ValueError("独立格点试跑超出读取预算")
@@ -657,8 +719,10 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                                 raise ValueError("同一产品不作为两个融合来源")
                             prepared[(cid,action)]=dict(action=action,route="independent_grid_search",
                                 fields=[(ai,a["name"]),(bi,b["name"])],methods=["spatial.blend"])
-                            row.update(status="通过",reason="可先做保守网格对齐，再用原版空间变异搜索比较单源与多源。当前仅有格点代理参考。")
+                            row.update(status="通过",reason="先做保守网格对齐，缺测可用备用源补位；满足覆盖条件时用原版空间变异搜索比较单源与多源。")
                         continue
+            if cf_error and unit_check["status"] not in {"equivalent", "convertible"}:
+                raise ValueError(f"降水率与累计量需要明确的单位、时间边界与日界：{cf_error}") from cf_error
             if action=="fusion":
                 if not same_quantity:
                     row["block_code"]="quantity_unknown"

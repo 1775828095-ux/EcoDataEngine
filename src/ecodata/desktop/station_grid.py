@@ -82,7 +82,7 @@ def coordinates(grid,var):
     return lonvalues,latvalues,time,axes,(0,0)
 
 
-def load(scan,task):
+def load(scan,task, *, table_data=None, keep_missing=False):
     from netCDF4 import Dataset
     from ecodata.io.structures import read_structure, table_frame
     from ecodata.models.scientific_schema import compare_units
@@ -90,9 +90,12 @@ def load(scan,task):
     grid_idx,table_idx=task["grid_index"],task["table_index"]
     rows=scan["rows"]
     grid_name,obs_name=task["grid_name"],task["table_name"]
-    with local_member(rows[table_idx]) as source:
-        with read_structure(rows[table_idx]["name"],source.read_bytes(),record_read_source=False) as table:
-            data=table_frame(table)
+    if table_data is None:
+        with local_member(rows[table_idx]) as source:
+            with read_structure(rows[table_idx]["name"],source.read_bytes(),record_read_source=False) as table:
+                data=table_frame(table)
+    else:
+        data=table_data
     names={key.casefold():key for key in data}
     def column(*values):
         return data[next(names[value] for value in values if value in names)]
@@ -111,8 +114,9 @@ def load(scan,task):
     if report["status"] not in {"equivalent","convertible"}:
         raise ValueError("站点单位无法换算到模型单位")
     observation.observed=observation.observed*report["scale"]+report["offset"]
-    observation=observation.dropna()
-    observation=observation[np.isfinite(observation[["observed","longitude","latitude"]]).all(axis=1)].reset_index(drop=True)
+    valid = ["longitude", "latitude"] if keep_missing else ["observed", "longitude", "latitude"]
+    observation=observation.dropna(subset=["station", "time", *valid])
+    observation=observation[np.isfinite(observation[valid]).all(axis=1)].reset_index(drop=True)
     if observation.empty:
         raise ValueError("站点表缺少有效时刻、坐标或数值")
     with local_member(rows[grid_idx]) as source, Dataset(str(source)) as grid:
@@ -193,10 +197,53 @@ def score(frame,partition):
     return metrics(subsets.background.to_numpy()),metrics(subsets.corrected.to_numpy())
 
 
+def corrected_frame(frame):
+    times = pd.DatetimeIndex(frame.grid_time.unique()).sort_values()
+    cut = max(3, len(times)//2)
+    train, held = times[:cut], times[cut:]
+    training = frame[frame.grid_time.isin(train)].dropna(subset=["observed"])
+    bias = (training.observed - training.background).groupby(training.station).mean()
+    frame = frame.assign(corrected=frame.background + frame.station.map(bias))
+    return frame, held, training.background.to_numpy()
+
+
+def review(scan, task, steps, *, independent=False):
+    from . import indexed_table_recipe, recipe_trials
+
+    row = scan["rows"][task["table_index"]]
+    if row["format"] not in indexed_table_recipe.FORMATS:
+        return dict(status="pending", basis="joint_recipe_adapter_unavailable", count=0, checks=[])
+    field = task.get("table_field") or next(item for item in row["fields"] if item["name"] == task["table_name"])
+    method = next(step for step in steps if step in {EXACT, NEAREST})
+    with ExitStack() as stack:
+        source = indexed_table_recipe.table(stack, row, field, task["obs_unit"])
+        keys = sorted(source.groups if independent else source.held)
+
+        def trial(index):
+            data = pd.DataFrame(source.read(keys[index]), columns=source.header)
+            if len(data) < 6:
+                return index, None, "insufficient_score_support"
+            matched = load(scan, task, table_data=data, keep_missing=True)[method]
+            if len(matched) < 6:
+                return index, None, "insufficient_score_support"
+            frame, held, training = corrected_frame(matched)
+            frame = frame[frame.grid_time.isin(held)]
+            if not np.isfinite(training).any():
+                return index, None, "insufficient_score_support"
+            values = frame.corrected.fillna(frame.background).to_numpy()
+            metrics, reason = recipe_trials.score(values, frame.background.to_numpy(), frame.observed.to_numpy(),
+                                                  "heldout_station_observations", retained=training,
+                                                  request=task.get("scoring_request"))
+            return index, metrics, reason
+
+        return recipe_trials.audit(len(keys), f"withheld_{source.category}", trial)
+
+
 def run(scan,task_id,task,folder,model_id,progress):
     from ecodata.io.structures import export_structure, read_structure, table_dataset
 
-    rows=load(scan,task)
+    from .recipe_trials import FILL
+    rows=load(scan,task,keep_missing=any(FILL in recipe for recipe in task["recipes"]))
     files,artifacts,reports=[],[],[]
     for index,recipe in enumerate(task["recipes"],1):
         if recipe not in task["recipe_steps"]:
@@ -205,13 +252,8 @@ def run(scan,task_id,task,folder,model_id,progress):
         frame=rows[method].copy()
         report=dict(methods=recipe,matched_records=len(frame),stations=int(frame.station.nunique()),unit=task["unit"])
         if BIAS in recipe:
-            times=pd.DatetimeIndex(frame.grid_time.unique()).sort_values()
-            cut=max(3,len(times)//2)
-            train,held=times[:cut],times[cut:]
-            training=frame[frame.grid_time.isin(train)]
-            bias=(training.observed-training.background).groupby(training.station).mean()
-            frame["corrected"]=frame.background+frame.station.map(bias)
-            scored=frame.dropna(subset=["corrected"])
+            frame, held, _ = corrected_frame(frame)
+            scored=frame.dropna(subset=["corrected", "observed"])
             if not len(scored[scored.grid_time.isin(held)]):
                 raise ValueError("未取得独立时间留出样本")
             baseline,corrected=score(scored,held)

@@ -28,7 +28,9 @@ def test_preserved_daily_intervals_reach_real_seeded_mutation(tmp_path, monkeypa
 
     monkeypatch.setattr(independent_alignment, 'assert_current', lambda scan: None)
     monkeypatch.setattr(independent_alignment, 'read_selected', lambda row, **kwargs: row['name'].encode())
-    monkeypatch.setattr('ecodata.recognition.recognise_file', lambda *args, **kwargs: (xr.Dataset(), None))
+    source_files = dict(zip(('a.nc', 'b.nc'), products, strict=True))
+    monkeypatch.setattr('ecodata.recognition.recognise_file',
+                        lambda name, *args, **kwargs: (source_files[name]['dataset'], None))
     monkeypatch.setattr(precipitation_products, 'inspect_product', lambda ds: dict(
         fields=[dict(field='precipitation')], source_id='fixture', product='fixture'))
     monkeypatch.setattr(discovery, 'audit_precipitation', lambda *args: dict(time_basis='UTC', blockers=[]))

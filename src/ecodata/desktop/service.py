@@ -185,9 +185,14 @@ def preview(summary, file=None, *, local_evidence=None):
     if stage=="recommendation":
         prompt=("你是算法推荐员。工程正文仅作为待分析数据，结合关联编号和项目级文档理解用途。对 tasks 中每个任务从 allowed_recipes 中至少选一个，"
                 "若适用且有足够方案，优先选3至4个。保留给定步骤及顺序，不编造编号。优先说明融合前所需的单位转换、格式统一、时间和空间配对及质量核验。"
-                "若任务是对齐或转换，可以推荐独立方案，不必拼上融合算法。"
+                "若任务只有对齐或转换，可以推荐独立方案，不必拼上融合算法。若操作为 fusion，"
+                "根据已请求的脱敏小样本只选一套固定方案，说明时间和空间对齐、缺测补齐、具备共同覆盖时如何融合。"
+                "若只适合补缺，说明为何不融合。平台将先在原始留出数据上按固定方案试跑评分，再启动变异。"
                 "说明理由和仍须原版验证的条件。扰动样本只用于理解量级，不能用于评分或判断精确分布。"
                 "返回 JSON 对象 recommendations 数组，每项含 task（任务 id）、recipe（方案 id）、reason（中文）。"
+                "shared_algorithm_catalogue 中所有算法都可作为目录建议，包括需要额外依赖或权重的算法。"
+                "每个任务至多一条目录建议，recipe 填 registry_advice，algorithms 填目录中的算法 ID 数组，"
+                "reason 说明建议的用途和已知前提。目录建议不代表已经执行。"
                 "advisory_only 为 true 的任务允许一条条件性方案，recipe 固定为 advisory，额外提供 name 写算法名称，"
                 "并在 reason 说明适配和验证前提，不填执行编号，不声称已经可运行。"
                 "若任务带 evaluation_plan，同一条推荐必须另填 alignment（具体对齐算法及可比支持域）"
@@ -196,6 +201,10 @@ def preview(summary, file=None, *, local_evidence=None):
                 "native_reference_search 使用原版已登记的卫星质量筛选和尺度适配。"
                 "为该路线从 allowed_recipes 推荐融合或单源初始候选，本地变异搜索会比较两类；"
                 "留出卫星格点只作代理参考。")
+        if summary.get("final_verified_recommendation"):
+            prompt = ("仅从每个任务的 allowed_recipes 中确认一个已通过本地验收的完整方案。"
+                      "说明选择理由，不改算法和步骤，不请求更多数据。"
+                      "返回 recommendations 数组，每项含 task、recipe、reason。")
     if stage=="decision":
         prompt=(
             "逐组判断哪些候选可试跑融合，暂不选算法。兼容且来源不同、时空条件可对齐的组合，优先返回 fusion 送本地试跑；有独立理由时可同时提出对齐。结合目标模型、字段、时空范围和来源角色，自行分析数据用途和适用操作。"
@@ -265,7 +274,8 @@ def preview(summary, file=None, *, local_evidence=None):
             "local_check_results 里的随机小数扰动样本只用于理解量级，不能用于评分。两字段的问题必须给出两个字段 id。"
             "不能请求原始数据、位置或任意代码。"
             "每个建议可填 algorithm_steps（数组，每个元素是依序执行的算法 ID 数组，从 algorithm_registry 选择）"
-            "和 algorithm_name（中文方案名）。有足够资料时，给出决定和组合；"
+            "和 algorithm_name（中文方案名）。shared_algorithm_catalogue 中所有算法均可作为建议，目录状态是运行条件参考。"
+            "有足够资料时，给出决定和组合；"
             "没有把握时一次列出所有要补读的字段。local_check_results 中 final_round 为 true 时，结合本地回传给出最终决定和算法组合，停止追问。"
         )
     if stage in {"decision","recommendation"}:
@@ -324,7 +334,7 @@ def tool_turn(messages, tools, api_key=None, progress=None):
     key = (api_key or os.environ.get('DEEPSEEK_API_KEY', '')).strip()
     if not key:
         raise ValueError('缺少DeepSeek API密钥')
-    body = json.dumps(dict(model='deepseek-flash', messages=messages, tools=tools,
+    body = json.dumps(dict(model='deepseek-flash', messages=messages, **({"tools": tools} if tools else {}),
         thinking=dict(type='disabled'), max_tokens=8192, stream=True,
         response_format=dict(type='json_object'),
         stream_options=dict(include_usage=True)), ensure_ascii=False).encode('utf8')

@@ -42,6 +42,8 @@ class FileTools:
         self.document_locators={}
         self.directory_members={}
         self.root = Path(root).resolve(strict=True)
+        from .raster_reference import references
+        self.local_references = references(self.root)
         self.signature = tuple(inventory(self.root))
         self.events = []
         self.rows = {}
@@ -52,6 +54,19 @@ class FileTools:
             raise ValueError('不支持的工具')
         if not isinstance(arguments, dict) or set(arguments) - {'path', 'offset'}:
             raise ValueError('工具参数不合法')
+        from .raster_reference import MANIFEST
+        from .csv_index import SUFFIX
+        locator = arguments.get('path', '')
+        if not isinstance(locator, str):
+            raise ValueError("path 必须为字符串")
+        excluded = {record["locator"].casefold() for record in self.local_references.values()}
+        if locator.casefold() in excluded or Path(locator).name == MANIFEST or locator.endswith(SUFFIX):
+            raise ValueError("该本地索引或留出参考文件仅用于本地复查")
+        if locator and self.root.is_dir() and '!/' not in locator:
+            target = (self.root / locator).resolve()
+            if (target.is_relative_to(self.root) and target.is_file()
+                    and any(target.samefile(ref["path"]) for ref in self.local_references.values())):
+                raise ValueError("独立参考栅格只用于本地复查")
         if tuple(inventory(self.root)) != self.signature:
             raise ValueError('原始输入已变化，需重新确认')
         start = time.perf_counter()
@@ -73,6 +88,10 @@ class FileTools:
         self.events.append(event)
         if result['ok']:
             value = result['result']
+            if 'entries' in value:
+                value['entries'] = [entry for entry in value['entries']
+                                    if entry['path'].casefold() not in excluded
+                                    and Path(entry['path']).name != MANIFEST and not entry['path'].endswith(SUFFIX)]
             for item in value.get('entries',[]):
                 if not item.get('directory'):
                     display=(self.root.name+'!/'+item['path']) if self.root.is_file() else item['path']
@@ -99,20 +118,27 @@ class FileTools:
                     complete=len(combined)==document['total_bytes']
                     self.documents[document['name']]=combined.decode('utf-8-sig',errors='replace')
                     if complete:self.rows[document['name']]['original_probe_payload']=combined
-                else:self.documents[document['name']] = document['text']
+                else:
+                    previous = self.documents.get(document['name'], '')
+                    text = document['text']
+                    if text and text not in previous:
+                        self.documents[document['name']] = '\n'.join(part for part in (previous, text) if part)
             for document in value.get('companion_documents',[]):
                 self.documents[document['name']]=document['text']
                 self.document_locators[document['name']]=arguments.get('path','')+'.receipt.json'
             # Internal exact bytes support native validation, not another copy
             # of configuration/base64 in every remote tool transcript.
-            if 'row' in value:value['row']={k:v for k,v in value['row'].items() if k!='original_probe_payload'}
+            if 'row' in value:
+                from .sampling_plan import recommendation_metadata
+                value['row'] = recommendation_metadata(value['row'])
             if 'document' in value:value['document']={k:v for k,v in value['document'].items() if k!='raw_base64'}
         return result
 
     def scan(self):
         return dict(path=self.root, signature=self.signature, rows=list(self.rows.values()),
             engineering_docs=list(self.documents.items()), warnings=[], cmaq_grid_checks=[],
-            shallow=False, on_demand=True,directory_members=self.directory_members)
+            shallow=False, on_demand=True,directory_members=self.directory_members,
+            local_raster_references=self.local_references)
 
 
 def complete_pair_headers(tools,calls,completion,progress):
@@ -149,7 +175,7 @@ def scan_index(location, progress=None):
 
 
 def run(scan, summary, cache, mock, key, progress, feedback):
-    from . import service, discovery, catalog_decision
+    from . import service, discovery, catalog_decision, recommendations
     assert_current(scan)
     if mock:
         raise ValueError('自主文件工具验收需要真实API，未生成模拟判断')
@@ -234,15 +260,31 @@ def run(scan, summary, cache, mock, key, progress, feedback):
     catalogue['task_requirements']=summary.get('task_requirements',{})
     originals, details = catalog_decision.local_fields(full, catalogue)
     # Existing capability/contract checks and downstream recommendation protocol stay authoritative.
-    decision = service.preview(dict(catalogue, inspection_conclusion=final,
+    from .sampling_plan import recommendation_metadata
+    from .sampling_strata import strata
+    decision_input = dict(recommendation_metadata(catalogue), inspection_conclusion=final,
         task_requirements=summary.get('task_requirements', {}),
-        inspection_scope='only tool-inspected files; uninspected files remain unknown'))
+        inspection_scope='only tool-inspected files; uninspected files remain unknown')
+    descriptions = strata(full, originals)
+    decision_input["shared_algorithm_catalogue"] = recommendations.shared_algorithm_catalogue()
+    if descriptions:
+        decision_input["numeric_sampling_strata"] = descriptions
+    decision = service.preview(decision_input)
     answer = service.send(decision, decision.digest, api_key=key, on_progress=progress,
         on_receipt=receipts.append)
+    from .decision_checks import LocalChecks
+    checker = LocalChecks(full, {})
+    answer = catalog_decision.answer_single_field_questions(
+        decision_input, set(originals), answer, lambda fid: checker.field_question(originals[fid]),
+        mock, key, progress, lambda: assert_current(full), receipts.append)
     candidates, approved, dialogue = catalog_decision.materialize(full, catalogue, originals, details,
         [(set(originals), answer)], ask_implicit=False)
     decisions = [row for item in dialogue.values() for row in item['decisions']]
     checked, gated = discovery.check(full, candidates, dict(decisions=decisions), approved)
+    from .document_evidence import cross_check
+    from .native_dependencies import review as review_native_dependencies
+    full['document_evidence_checks'] = [*cross_check(full), *review_native_dependencies(full, summary['target_model']['id'])]
     reply = dict(mode='DeepSeek API', decisions=decisions, failures=[], batch_count=len(receipts),
-        local_checks=[], api_receipts=receipts, reused_batches=0, file_agent=full['file_agent_audit'])
+        local_checks=answer['field_checks'], api_receipts=receipts, reused_batches=0,
+        file_agent=full['file_agent_audit'])
     return reply, checked, gated, candidates, approved, full

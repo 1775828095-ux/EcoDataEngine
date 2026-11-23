@@ -130,7 +130,8 @@ def complete_catalogue(scan,summary,kinds):
     consent.pop("max_questions",None)
     return dict(summary,sources=sources,engineering_documents=docs,automatic_local_checks=consent,
                 project_context_document_ids=[doc["id"] for doc in docs if doc["scope"]=="project_context"],
-                algorithm_registry=recommendations.algorithm_registry())
+                algorithm_registry=recommendations.algorithm_registry(),
+                shared_algorithm_catalogue=recommendations.shared_algorithm_catalogue())
 
 
 def questions(scan,responses,catalogue,originals,details):

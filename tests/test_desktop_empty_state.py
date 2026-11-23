@@ -63,7 +63,7 @@ def test_animation_starts_only_when_user_starts_processing(window, monkeypatch):
     assert window.thread is None and art.clock.state() == QAbstractAnimation.State.Stopped
 
 
-def test_results_page_shows_shared_art_until_the_job_returns(window, monkeypatch):
+def test_results_page_shows_shared_art_until_the_job_returns(window, monkeypatch, tmp_path):
     window.show()
     window.tabs.setCurrentIndex(2)
     cards = window.result_cards
@@ -78,9 +78,8 @@ def test_results_page_shows_shared_art_until_the_job_returns(window, monkeypatch
         release.wait(5)
         return result
 
-    window.scan = {'rows': []}
+    window.scan = {'rows': [], 'path': tmp_path, 'signature': ()}
     window.decision_model = 'swat_plus'
-    monkeypatch.setattr('ecodata.desktop.__main__.assert_current', lambda _: None)
     monkeypatch.setattr(window, 'effective_api_key', lambda: '')
     monkeypatch.setattr(service, 'run_original_workbench', generate)
     window.execute_original()

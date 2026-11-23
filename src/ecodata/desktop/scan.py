@@ -225,8 +225,8 @@ def tabular(row, blob, complete):
             samples.append(values)
     for i,title in enumerate(header):
         values = [r[i] for r in samples if r[i].strip()]
-        m = re.fullmatch(r"(.+?)\s*[\[(]([^\])]+)[\])]", title)
-        name, unit = (m[1].strip(),m[2]) if m else (title,"")
+        m = re.fullmatch(r"(.+?)\s*(?:\[([^\]]+)\]|\(([^)]+)\)|（([^）]+)）|【([^】]+)】)", title)
+        name, unit = (m[1].strip(), next(group.strip() for group in m.groups()[1:] if group is not None)) if m else (title,"")
         base = name.casefold().strip()
         typ = "unknown"
         if values:
@@ -603,9 +603,13 @@ def scientific(row, path):
             for i in range(ds.count):
                 name=saved.get("export_variable","value") if ds.count==1 else (ds.descriptions[i] or f"band_{i+1}")
                 attrs=saved.get("variables",{}).get(name,{})
+                band_tags=ds.tags(i+1)
+                semantic={key: attrs.get(key,band_tags.get(key)) for key in
+                          ("data_kind","spatial_semantics","flag_values","flag_meanings","flag_masks")
+                          if attrs.get(key,band_tags.get(key)) is not None}
                 row["fields"].append(dict(name=name,band=i+1,type=ds.dtypes[i],unit=attrs.get("units") or ds.units[i] or "",
                     standard_name=attrs.get("standard_name",""), physical_variable=attrs.get("physical_variable",""),
-                    long_name=attrs.get("long_name",""),axis=False))
+                    long_name=attrs.get("long_name",""),axis=False,**semantic))
             if ds.count>1:
                 row["pending"].append("多波段处理前需核验波段及原版读取器映射")
             row["basis"].append("栅格元数据；未读像元")
@@ -641,8 +645,12 @@ def scientific(row, path):
                 workbook.close()
     elif fmt=="Parquet":
         import pyarrow.parquet as pq
-        row["fields"]=[dict(name=f.name,type=str(f.type),unit="",axis=f.name.casefold() in AXES)
-                       for f in pq.read_schema(path)]
+        row["fields"]=[]
+        for field in pq.read_schema(path):
+            attributes = {name: (field.metadata or {}).get(name.encode(), b"").decode("utf-8", errors="replace")
+                          for name in ("units", "physical_variable", "standard_name", "temporal_semantics")}
+            row["fields"].append(dict(name=field.name, type=str(field.type), unit=attributes.pop("units"),
+                                      axis=field.name.casefold() in AXES, **attributes))
         row["basis"].append("Parquet 页脚 schema；未读数据行")
     elif fmt=="HDF5":
         scan_hdf(row,path)

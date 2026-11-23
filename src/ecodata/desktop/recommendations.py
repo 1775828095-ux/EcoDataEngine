@@ -13,7 +13,8 @@ ENGINEERING = {
     "engineering.port_search": "原版端口变异寻优：工程端口和验证条件满足后运行",
 }
 ALIGNMENT = {
-    "spatial.regrid.conservative": "原版保守重网格：按覆盖面积将单元均值或通量对齐到较粗网格",
+    "spatial.regrid.conservative": "原版保守重网格：按覆盖面积将单元均值或通量对齐到目标网格",
+    "fusion.series_missing_fallback": "保留主源观测，仅在缺测处用同区间的对齐备用源补位",
     "raster_task.spatial.bilinear": "双线性重采样",
     "raster_task.spatial.nearest": "最近邻重采样",
     "temporal.semantic": "原版 SemanticTimeResampler，按时间统计语义重采样",
@@ -45,6 +46,7 @@ ALGORITHM_NAMES = {
     **PREPARATION,
     "spatial.regrid.conservative": "保守重网格",
     "spatial.blend": "加权融合",
+    "fusion.series_missing_fallback": "备用源逐缺口补位",
     "spatial.idw": "反距离权重插值（IDW）",
     "spatial.residual_idw": "残差反距离权重融合",
     "raster_task.spatial.bilinear": "双线性重采样",
@@ -66,7 +68,7 @@ def recipe_name(steps):
 
 
 def attach_samples(scan, pairs):
-    from .sample_values import export_sample, field_sample
+    from .sampling_plan import export_field
 
     samples={}
     for pair in pairs:
@@ -81,14 +83,14 @@ def attach_samples(scan, pairs):
                         raise ValueError("invalid field")
                     row=scan["rows"][index]
                     selected=row["fields"][offset]
-                    values=field_sample(row,selected) if not selected.get("axis") else None
-                    samples[fid]=export_sample(values).get("perturbed_samples",[])[:4]
+                    samples[fid]=export_field(row,selected).get("perturbed_samples",[])[:4]
                 except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
                     samples[fid]=[]
             field["perturbed_samples"]=samples[fid]
 
 
 def make_request(scan, approved, checked, gated, *, local_checks=(), include_samples=True):
+    from .sampling_plan import recommendation_metadata
     assert_current(scan)
     pairs={pair["id"]:pair for pair in approved["candidates"] if isinstance(pair,dict) and isinstance(pair.get("id"),str)}
     documents=approved.get("engineering_documents",[])
@@ -128,7 +130,8 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
         elif task.get("route")=="independent_alignment":
             recipes=[["spatial.regrid.conservative"]]
         elif task.get("route")=="independent_grid_search":
-            recipes=[["spatial.regrid.conservative","spatial.blend"]]
+            recipes=[["spatial.regrid.conservative","fusion.series_missing_fallback","spatial.blend"],
+                     ["spatial.regrid.conservative","fusion.series_missing_fallback"]]
         elif original:
             if approved["target_model"]["id"]=="swat_plus":
                 recipes=[["engineering.precipitation_adaptation","engineering.port_binding","engineering.port_search"]] if action=="fusion" else [["engineering.precipitation_adaptation","engineering.port_binding"]]
@@ -158,14 +161,19 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
                                    validation="仅用实际重叠、统计口径可比的样本，比较单源与融合的误差及偏差",
                                    output="按本地评分决定保留单源或采用融合")
                               if alignment_plan else None),
-                          verified_checks=[record for record in local_checks if record["candidate"]==cid],
+                          verified_checks=[recommendation_metadata(record) for record in local_checks
+                                           if record["candidate"] == cid or (
+                                               record.get("check") == "numeric_samples"
+                                               and record.get("field") == record["candidate"]
+                                               and record["field"] in pair["fields"])],
                           advisory_only=advisory))
     if not tasks:
         raise ValueError("没有通过首页核验的任务")
     # Samples are added only to the candidate-specific recommendation request.
     if include_samples:
         attach_samples(scan,[task["context"] for task in tasks])
-    request=dict(stage="recommendation",target_model=approved["target_model"],tasks=tasks,
+    request=dict(stage="recommendation",target_model=approved["target_model"],tasks=recommendation_metadata(tasks),
+                 shared_algorithm_catalogue=shared_algorithm_catalogue(),
                  task_requirements=approved.get('task_requirements',{}),
                  engineering_documents=documents,
                  project_context_document_ids=approved.get("project_context_document_ids",[]),
@@ -176,6 +184,19 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
 def algorithm_registry():
     return {key: ALGORITHM_NAMES.get(key,value) for key,value in
             {**ALGORITHMS,**ENGINEERING,**ALIGNMENT,**PREPARATION}.items()}
+
+
+def shared_algorithm_catalogue():
+    from ecodata.algorithms.platform_search import platform_registry
+
+    catalogue = {
+        spec.id: dict(name=ALGORITHM_NAMES.get(spec.id, spec.name), status=spec.status,
+                      category=spec.category, input_kinds=list(spec.input_kinds))
+        for spec in platform_registry().specs()
+    }
+    if "fusion.residual" in catalogue:
+        catalogue["fusion.residual"]["station_fit_variants"] = ["linear", "rf"]
+    return catalogue
 
 
 def recommend_plan(plan, decisions, *, mock=False, api_key=None, progress=None, on_request=None):
@@ -202,6 +223,83 @@ def recommend_plan(plan, decisions, *, mock=False, api_key=None, progress=None, 
             row['reason']='线上具体算法推荐未完成，以下为平台已有候选补充，不是DS已验证方案。'+row['reason']
         if progress:progress('线上算法推荐未完成；保留平台可核验候选：'+str(exc))
         return rows,dict(status='PLATFORM_FALLBACK',error=str(exc),api_receipts=receipts)
+
+
+def review_holdouts(scan, approved, plan, recommendations, gated):
+    from .catalog_decision import local_fields
+    from .sampling_plan import recommendation_review
+    from .release_gate import assess
+    from .sampling_risk import attach
+    from . import recipe_trials
+
+    originals, _ = local_fields(scan, approved)
+    tasks = {task["id"]: task for task in plan["tasks"]}
+    cache = {}
+    assert_current(scan)
+    for recommendation in recommendations:
+        if recommendation.get("id") == "registry_advice":
+            continue
+        task = tasks.get(recommendation["task"])
+        if not task:
+            continue
+        refs = [originals[fid] for fid in task["context"]["fields"] if fid in originals]
+        execution = gated.get((task["candidate"], task["operation"]))
+        if recipe_trials.required(execution) or task["operation"] == "fusion":
+            key = ("joint_holdout", task["id"], tuple(recommendation["steps"]))
+            if key not in cache:
+                cache[key] = recipe_trials.review(scan, task["id"], execution, recommendation["steps"],
+                                                  model=plan["target_model"]["id"])
+            report = [dict(cache[key], field=fid) for _, fid, _ in refs]
+        else:
+            report = recommendation_review(scan, recommendation, execution, refs, cache)
+            for (index, _, field), item in zip(refs, report):
+                attach(scan, index, field, item, cache)
+        recommendation["local_holdout_review"] = report
+        recommendation["execution_release"] = assess(scan, recommendation, execution, refs)
+        recommendation["execution_fields"] = [(index, field["name"], fid) for index, fid, field in refs]
+        recommendation["local_recipe_options"] = [dict(option) for option in task["allowed_recipes"]]
+    assert_current(scan)
+
+
+def finalize_recipes(plan, rows, *, mock, api_key, progress):
+    """Ask DeepSeek to confirm only full recipes that passed local acceptance."""
+    passed = {}
+    for row in rows:
+        release = row.get("execution_release", {})
+        reports = row.get("local_holdout_review", ())
+        if release.get("status") == "released" and any(
+                report.get("basis") == "joint_recipe_acceptance_passed" for report in reports):
+            passed[(row["task"], row["id"])] = row
+    if not passed:
+        return None
+    tasks = []
+    for task in plan["tasks"]:
+        recipes = []
+        for option in task["allowed_recipes"]:
+            row = passed.get((task["id"], option["id"]))
+            if row:
+                audit = row["local_holdout_review"][0]["acceptance_sampling"]
+                text = (f"{option['description']}。留出验收 {audit['inspected']} 组，"
+                        f"失败 {audit['failed']} 组，允许 {audit['allowed_failures']} 组。")
+                recipes.append(dict(option, description=text))
+        if recipes:
+            tasks.append(dict(id=task["id"], candidate=task["id"], operation=task["operation"], context={},
+                              allowed_recipes=recipes, engineering_note="仅从通过本地验收的完整方案中确认"))
+    reviewed = dict(stage="recommendation", target_model=plan["target_model"], tasks=tasks,
+                    final_verified_recommendation=True)
+    selected, receipt = recommend_plan(reviewed, [], mock=mock, api_key=api_key, progress=progress)
+    for row in passed.values():
+        row.pop("final_verified_recommendation", None)
+        row.pop("final_recommendation_origin", None)
+    for choice in selected:
+        row = passed[(choice["task"], choice["id"])]
+        row["final_verified_recommendation"] = True
+        row["final_recommendation_origin"] = choice["recommendation_origin"]
+        if receipt["status"] != "PLATFORM_FALLBACK":
+            row["reason"] = choice["reason"]
+            if "explanation" in row:
+                row["explanation"]["reason"] = choice["reason"]
+    return receipt
 
 
 def from_decisions(summary,decisions):
@@ -266,8 +364,20 @@ def explanation(task,reason):
 
 def explanation_text(row):
     detail=row.get('explanation') or {}
+    report = next((item["acceptance_sampling"] for item in row.get("local_holdout_review", ())
+                   if "allowed_failures" in item.get("acceptance_sampling", {})), None)
+    acceptance = []
+    if report:
+        planned = report["sample_size"]
+        acceptance = [f"留出验收总体 {report['population']} 组 · 计划试跑 {planned} 组 · 允许 {report['allowed_failures']} 组失败"
+                      if planned else f"留出验收总体 {report['population']} 组 · 预算内没有满足误判风险的抽检设计",
+                      f"实际试跑 {report['inspected']} 组 · 不合格 {report['failed']} 组 · 缺评分证据 {report.get('unscored', 0)} 组"]
+        if report.get("acceptance_rule") == "zero_failures":
+            acceptance.append(f"真实不合格占比达到 {report['acceptable_share']:.0%} 时，"
+                              f"计划把全漏掉的概率控制在 {report['false_accept_limit']:.0%} 以内。")
     return '\n'.join(['数据依据',*(detail.get('facts') or ['尚无结构化数据依据，不能由推荐文字推断已核实。']),
         '', '推荐理由',row.get('reason') or '未提供', '', '平台检查与前提',detail.get('checks') or '等待契约核验',
+        *acceptance,
         '', '仍需核实',*(detail.get('unknowns') or ['未列出的信息不代表全部已确认；以执行检查记录为准。']),
         '',detail.get('boundary') or '推荐不代表精度提升，必须经过真实评价。'])
 
@@ -276,23 +386,45 @@ def validate(raw, summary):
     entries=raw.get("recommendations")
     if not isinstance(entries,list):
         raise ValueError("DeepSeek 未返回算法推荐列表")
-    options={(task["id"],recipe["id"]):recipe for task in summary["tasks"] for recipe in task["allowed_recipes"]}
+    tasks = {task["id"]: task for task in summary["tasks"]}
+    options={(task["id"],recipe["id"]):recipe for task in tasks.values() for recipe in task["allowed_recipes"]}
     advisory_tasks={task["id"]:task for task in summary["tasks"] if task.get("advisory_only")}
+    catalogue = summary.get("shared_algorithm_catalogue", {})
     recommendations=[]
     seen=set()
+    final = summary.get("final_verified_recommendation")
+    confirmed = set()
     for entry in entries:
         if not isinstance(entry,dict):
             continue
         key=(entry.get("task"),entry.get("recipe"))
         if not all(isinstance(k,str) for k in key) or key in seen:
             continue
+        if final and (key not in options or key[0] in confirmed):
+            continue
         if key in options:
+            if tasks[key[0]].get("operation") == "fusion" and key[0] in confirmed:
+                continue
             seen.add(key)
-            task=next(t for t in summary['tasks'] if t['id']==key[0])
+            confirmed.add(key[0])
+            task=tasks[key[0]]
             quantities={f.get('physical_family') for f in task['context'].get('pair_details',[])}-{None,'UNKNOWN'}
             scope=dict(variable=next(iter(quantities))) if len(quantities)==1 else {}
             reason=str(entry.get('reason',''))[:600]
             recommendations.append(dict(task=key[0],**options[key],scope=scope,reason=reason,explanation=explanation(task,reason)))
+        elif key[0] in tasks and key[1] == "registry_advice":
+            ids = entry.get("algorithms")
+            if not isinstance(ids, list) or not 1 <= len(ids) <= 8:
+                continue
+            if any(not isinstance(algorithm, str) or algorithm not in catalogue for algorithm in ids):
+                continue
+            seen.add(key)
+            methods = [catalogue[algorithm]["name"] for algorithm in dict.fromkeys(ids)]
+            reason = str(entry.get("reason", ""))[:600]
+            recommendations.append(dict(task=key[0], id=key[1], name=" → ".join(methods), steps=[],
+                                        catalogue_algorithms=list(dict.fromkeys(ids)), advisory_only=True,
+                                        description="仓库算法建议 · 供方案参考", reason=reason,
+                                        explanation=explanation(tasks[key[0]], reason)))
         elif key[0] in advisory_tasks and key[1]=="advisory":
             name=str(entry.get("name","")).strip()[:100]
             if not name:

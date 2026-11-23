@@ -14,7 +14,7 @@ if not defined NUMEXPR_NUM_THREADS set NUMEXPR_NUM_THREADS=1
 if not exist ".venv\Scripts\python.exe" goto failed
 set "TEMP=%CD%\.desktop-tmp"
 set "TMP=%TEMP%"
-set "PYTHONPATH=%CD%\integrations\existing_air;%CD%\integrations\local_swat;%PYTHONPATH%"
+set "PYTHONPATH=%CD%\src;%CD%\integrations\existing_air;%CD%\integrations\local_swat;%PYTHONPATH%"
 if not exist "%TEMP%" mkdir "%TEMP%"
 ".venv\Scripts\python.exe" -B -m ecodata.desktop %*
 if errorlevel 1 goto failed

@@ -17,8 +17,22 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         if progress:
             progress(f"正在处理 {index}/{len(tasks)} · {task_id}")
         try:
+            runtime_report = []
+            if task.get("runtime_fields") and route not in {"windowed_grid_recipe", "indexed_table_recipe"}:
+                from .release_gate import runtime
+                steps = [step for recipe in task["recipes"] for step in recipe]
+                target = (task.get("target_unit") if route == "structure_conversion" and
+                          all("units.harmonize" in recipe for recipe in task["recipes"]) else None)
+                runtime_report = runtime(scan, {"fields": task["runtime_fields"], "steps": steps,
+                                                "segmented_table_target": target}, folder)
             if route == "station_grid":
                 result = station_grid.run(scan,task_id,task,stage,model_id,progress)
+            elif route == "windowed_grid_recipe":
+                from .windowed_grid_recipe import run as run_grid_recipe
+                result = run_grid_recipe(scan, task_id, task, stage, model_id, progress)
+            elif route == "indexed_table_recipe":
+                from .indexed_table_recipe import run as run_table_recipe
+                result = run_table_recipe(scan, task_id, task, stage, model_id, progress)
             elif route == "structure_conversion":
                 result = pair_processing.run_conversion(scan,task_id,task,stage,model_id,progress)
             elif route == "statistical_preprocessing":
@@ -42,7 +56,8 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         formats.extend(result["source_formats"])
         outputs.append(result["target_format"])
         notes.append(result["local"]["reason"])
-        reports.append(dict(task=task_id,backend=route or "station_search",report=result["original_report"]))
+        reports.append(dict(task=task_id,backend=route or "station_search",report=result["original_report"],
+                            input_runtime_checks=runtime_report))
         for key, value in (result.get("grid_searches") or result.get("batch_searches") or {}).items():
             searches[key] = dict(value,backend=route or "station_search")
         prefix = f"group-{index}-"
