@@ -10,9 +10,10 @@ def settings():
 
 
 def attach(scan, index, field, report, cache):
-    key = ("acceptance_sampling", index, report["field"])
+    basis, partition = report.get("holdout_basis"), report.get("partition") or {}
+    key = ("acceptance_sampling", index, report["field"], basis, tuple(sorted(partition.items())))
     if key not in cache:
-        cache[key] = review_field(scan["rows"][index], field, **settings())
+        cache[key] = review_field(scan["rows"][index], field, basis=basis, partition=partition, **settings())
     result = cache[key]
     if result is not None:
         report["acceptance_sampling"] = result
@@ -48,15 +49,16 @@ def evaluate(population, unit, test, *, seed=0, defect_share=0.05, detection=0.9
                 status="failed" if failures else "checked", failures=failures[:20])
 
 
-def review_field(row, field, *, defect_share=0.05, detection=0.95):
+def review_field(row, field, *, basis=None, partition=None, defect_share=0.05, detection=0.95):
     """Check uniformly chosen withheld raster blocks or time windows."""
     import numpy as np
     from .scan import local_member
-    from .sampling_plan import member_available, time_dimension
+    from .sampling_plan import member_available, open_netcdf_for_sampling, time_dimension
 
     if not member_available(row) or row.get("original_reader"):
         return None
     options = dict(defect_share=defect_share, detection=detection)
+    partition = partition or {}
     if row["format"] == "GeoTIFF":
         import rasterio
         from rasterio.windows import Window
@@ -78,34 +80,37 @@ def review_field(row, field, *, defect_share=0.05, detection=0.95):
                 return None
             return evaluate(cols * rows, "withheld_spatial_block", test, **options)
     if row["format"] == "NetCDF":
-        import xarray as xr
-        with local_member(row) as path, xr.open_dataset(path, decode_times=False, cache=False) as dataset:
+        with local_member(row) as path, open_netcdf_for_sampling(path) as dataset:
             array = dataset[field["name"]]
             clock = time_dimension(array, dataset)
-            if clock not in dataset.coords or not np.issubdtype(dataset[clock].dtype, np.number):
+            axis = partition.get("axis", clock)
+            if axis not in array.dims:
                 return None
-            size = array.sizes[clock]
+            size = array.sizes[axis]
             if size < 2:
                 return None
-            reserved = max(1, size // 5)
-            start = size - reserved
-            selectors = {dim: (array.sizes[dim] - 1) // 2 for dim in array.dims if dim != clock}
+            start = partition.get("holdout_start", size - max(1, size // 5))
+            temporal = axis == clock
+            numeric_clock = temporal and clock in dataset.coords and np.issubdtype(dataset[clock].dtype, np.number)
+            selectors = {dim: (array.sizes[dim] - 1) // 2 for dim in array.dims if dim != axis}
             def test(index):
                 bounds = slice(start + index*8, min(start + (index+1)*8, size))
-                clock_values = dataset[clock].isel({clock: bounds}).values.astype(float)
-                if not np.isfinite(clock_values).all() or (np.diff(clock_values) <= 0).any():
-                    return dict(unit=index, rule="time_window_coordinates_invalid")
-                values = array.isel({clock: bounds, **selectors}).values
+                if numeric_clock:
+                    clock_values = dataset[clock].isel({clock: bounds}).values.astype(float)
+                    if not np.isfinite(clock_values).all() or (np.diff(clock_values) <= 0).any():
+                        return dict(unit=index, rule="time_window_coordinates_invalid")
+                values = array.isel({axis: bounds, **selectors}).values
                 if not np.isfinite(values).any():
-                    return dict(unit=index, rule="time_window_has_no_valid_values")
+                    return dict(unit=index, rule="holdout_window_has_no_valid_values")
                 return None
-            return evaluate(ceil(reserved / 8), "withheld_time_window", test, **options)
+            return evaluate(ceil((size - start) / 8),
+                            "withheld_time_window" if temporal else "withheld_spatial_window", test, **options)
     if row["format"] in {"CSV", "TSV", "Excel"}:
-        return table_review_field(row, field, **options)
+        return table_review_field(row, field, basis=basis, partition=partition, **options)
     return None
 
 
-def table_review_field(row, field, **options):
+def table_review_field(row, field, *, basis, partition, **options):
     from .csv_index import month
     from .sample_values import numeric
     from .sampling_plan import IDENTIFIERS, PROBE_LIMIT, TIME, normalized, records, station_reserved
@@ -123,26 +128,35 @@ def table_review_field(row, field, **options):
 
     for encoding in ("utf-8-sig", "gb18030"):
         try:
-            with records(row, field, encoding) as (rows, _, __):
+            held_sheet = partition.get("held_sheet")
+            with records(row, field, encoding, held_sheet) as (rows, _, __):
                 header = list(next(rows, ()))
-                column = header.index(field.get("source_column") or field.get("original_header") or field["name"])
+                name = field.get("source_column") or field.get("original_header") or field["name"]
+                if name not in header:
+                    return None
+                column = header.index(name)
                 names = [normalized(name) for name in header]
                 site = next((index for index, name in enumerate(names) if name in IDENTIFIERS - {"id"}), None)
                 clock = next((index for index, name in enumerate(names) if name in TIME), None)
                 prefix = list(islice(rows, PROBE_LIMIT))
                 known_months = sorted({date for record in prefix if clock is not None and len(record) > clock
                                        if (date := month(record[clock]))})
-                reserved = known_months[-1] if len(known_months) > 1 else None
+                reserved = (partition.get("held_month") if basis == "calendar_months"
+                            else known_months[-1] if len(known_months) > 1 else None)
+                use_station = site is not None and basis != "calendar_months" and not held_sheet
+                use_month = clock is not None and not use_station and not held_sheet
                 summary = {}
                 for index, record in enumerate(chain(prefix, rows)):
                     if len(record) <= column:
                         continue
                     stamp = record[clock] if clock is not None and len(record) > clock else None
-                    if site is not None:
-                        key = str(record[site]) if len(record) > site else ""
+                    if held_sheet:
+                        key = held_sheet
+                    elif use_station:
+                        key = str(record[site]).strip() if len(record) > site else ""
                         if not key or not station_reserved(key):
                             continue
-                    elif clock is not None:
+                    elif use_month:
                         key = month(stamp)
                         if reserved is None or key != reserved:
                             continue
@@ -158,9 +172,11 @@ def table_review_field(row, field, **options):
                 if not summary:
                     return None
                 units = list(summary.values())
-                return evaluate(len(units), "withheld_station" if site is not None else
-                                "withheld_month" if clock is not None else "withheld_record_block",
-                                lambda i: None if all(units[i]) else dict(unit=i, rule="tabular_unit_incomplete"), **options)
+                unit = ("withheld_worksheet" if held_sheet else "withheld_station" if use_station
+                        else "withheld_month" if use_month else "withheld_record_block")
+                return evaluate(len(units), unit,
+                                lambda i: None if all(units[i]) else dict(unit=i, rule="tabular_unit_incomplete"),
+                                **options)
         except UnicodeDecodeError:
             if encoding == "gb18030":
                 raise

@@ -46,6 +46,18 @@ def test_netcdf_reserves_later_time_and_separate_space(tmp_path):
         ("README.md", "rain.nc 按 UTC 日累计")]))[-1]["status"] == "checked"
 
 
+def test_netcdf_sampling_does_not_build_eager_coordinate_indexes(tmp_path):
+    from inspect import signature
+
+    if "create_default_indexes" not in signature(xr.open_dataset).parameters:
+        pytest.skip("xarray does not support lazy dimension indexes")
+    path = tmp_path / "clock.nc"
+    xr.Dataset(coords={"time": np.arange(100)}).to_netcdf(path)
+    with sampling_plan.open_netcdf_for_sampling(path) as dataset:
+        assert not dataset.indexes
+        assert dataset.time.isel(time=slice(98, 100)).values.tolist() == [98, 99]
+
+
 def test_raster_recommendation_and_local_blocks_do_not_touch(tmp_path):
     import rasterio
     from rasterio.transform import from_origin
@@ -139,6 +151,24 @@ def test_read_markdown_docx_and_pdf_with_locations(tmp_path, monkeypatch):
     monkeypatch.setattr(document_evidence, "ocr", lambda *_: "Units for rain.nc: mm")
     known = file_tools.inspect(pdf, "read_text", {"path": ""})
     assert known["evidence"][0]["location"].startswith("第 1 页")
+
+
+def test_pdf_walks_nested_outline_then_remaining_pages_without_repeats(tmp_path, monkeypatch):
+    from pypdf import PdfWriter
+
+    path = tmp_path / "outline.pdf"
+    writer = PdfWriter()
+    for _ in range(4):
+        writer.add_blank_page(200, 200)
+    chapter = writer.add_outline_item("Appendix", 0)
+    writer.add_outline_item("Variable units", 2, parent=chapter)
+    writer.write(path)
+    monkeypatch.setattr(document_evidence, "ocr", lambda *_: "Units for rain.nc: mm")
+
+    first = document_evidence.extract(path, ".pdf", 0)
+    second = document_evidence.extract(path, ".pdf", first["next_offset"])
+    pages = [entry["location"].split(" · ")[0] for entry in first["evidence"] + second["evidence"]]
+    assert pages == ["第 3 页", "第 1 页", "第 2 页", "第 4 页"]
 
 
 def test_zip_csv_header_does_not_materialize_member(tmp_path, monkeypatch):

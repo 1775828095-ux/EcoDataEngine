@@ -110,3 +110,56 @@ def test_targeted_supplement_rejects_reserved_station(tmp_path):
     assert fallback_evidence.targeted_table(row, field, {}, ("station", recommended)) == [12]
     with pytest.raises(ValueError, match="留作独立"):
         fallback_evidence.targeted_table(row, field, {}, ("station", held))
+def test_formal_acceptance_checks_the_same_reserved_axis(tmp_path):
+    import numpy as np
+    import xarray as xr
+    from ecodata.desktop.sampling_risk import attach
+
+    path = tmp_path / "grid.nc"
+    values = np.ones((20, 20))
+    values[:, 16:] = np.nan
+    xr.Dataset({"rain": (("time", "x"), values)}, coords={"time": np.arange(20)}).to_netcdf(path)
+    field = {"name": "rain"}
+    row = {"format": "NetCDF", "name": path.name, "bytes": path.stat().st_size,
+           "ref": (path, "", None, None)}
+    scan, cache = {"rows": [row]}, {}
+    for axis, basis, unit, status in [
+        ("time", "time_windows", "withheld_time_window", "checked"),
+        ("x", "spatial_blocks", "withheld_spatial_window", "failed"),
+    ]:
+        report = dict(field="D1.F1", status="checked", holdout_basis=basis,
+                      partition=dict(axis=axis, holdout_start=16, size=20))
+        result = attach(scan, 0, field, report, cache)["acceptance_sampling"]
+        assert (result["unit"], result["status"]) == (unit, status)
+
+
+def test_formal_acceptance_uses_reserved_month_even_with_station_column(tmp_path):
+    from ecodata.desktop.sampling_risk import attach
+
+    path = tmp_path / "stations.csv"
+    path.write_text("station_id,time,rain\nA,2021-01-01,1\nA,2021-02-01,\n", encoding="utf-8")
+    row = {"format": "CSV", "name": path.name, "bytes": path.stat().st_size, "ref": (path, "", None, None)}
+    report = dict(field="D1.F1", status="checked", holdout_basis="calendar_months",
+                  partition=dict(held_month="2021-02"))
+    result = attach({"rows": [row]}, 0, {"name": "rain"}, report, {})["acceptance_sampling"]
+    assert (result["unit"], result["status"]) == ("withheld_month", "failed")
+
+
+def test_formal_acceptance_checks_the_reserved_worksheet(tmp_path):
+    from openpyxl import Workbook
+
+    path = tmp_path / "sheets.xlsx"
+    workbook = Workbook()
+    workbook.active.title = "observations"
+    workbook.active.append(["rain"])
+    workbook.active.append([10])
+    held = workbook.create_sheet("reserved")
+    held.append(["rain"])
+    held.append(["missing"])
+    workbook.save(path)
+    field = dict(name="rain", sheet="observations")
+    report = dict(field="D1.F1", status="checked", holdout_basis="worksheet_groups",
+                  partition=dict(held_sheet="reserved"))
+    scan = {"rows": [source(path, "Excel", [field])]}
+    result = sampling_risk.attach(scan, 0, field, report, {})["acceptance_sampling"]
+    assert (result["unit"], result["status"]) == ("withheld_worksheet", "failed")

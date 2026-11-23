@@ -2,6 +2,8 @@
 
 数值补证按已审核字段取少量样本。多个 NetCDF 文件共同补证时，在本轮预算内轮流覆盖不同文件、物理变量和已声明频率。网格只读选中的块，NetCDF 优先用时间坐标识别不同频率。超长时间轴在首轮只看局部窗口，正式回检时分块核对完整时间坐标和时间区间。保留的后段时间、站点和空间块只用于本地回检。月度回检检查末月内的转换或插值重建，不给未来预测精度评分。
 
+支持 `create_default_indexes` 的 xarray 版本会关闭默认维度索引，避免打开大文件时提前加载完整时间坐标。旧版 xarray 仍可用，建立默认坐标索引时可能读完整时间轴。 [xarray 文件读取](https://docs.xarray.dev/en/stable/generated/xarray.open_dataset.html)
+
 ## 为 CSV 或 TSV 加速定位
 
 没有索引时，推荐阶段只读有限的前段记录。正式回检按站点或月份在预留范围内做分层蓄水池抽样。需要核对最后一个月时，本地回检阶段再顺序扫描，以确认该月没有参与推荐。也可以事先建立持久索引，加速按站点或月份直接读取。
@@ -33,6 +35,8 @@ python -m ecodata.desktop.csv_index 'D:\data\weather.csv'
 
 优先使用本地 Tesseract，Windows 上也可使用系统 OCR 和已安装的识别语言。文本会附页码供核对。识别不清的单位、符号或页码相关证据应回到原页确认。
 
+PDF 优先读取目录中与变量、单位和时间有关的页面，包括嵌套目录。后续每次读取两页，已读目录页会从顺序读取范围排除。手动复查时仍按原始页码定位。
+
 ## 放行和追加证据
 
 推荐卡片会显示本地回检是否放行。降水率积分要用明确的时间区间试算，空间转换要通过留出网格验证，表格数值列要确认单位。执行前校验原始文件签名并分块检查时间、单位、缺失与无数据掩码。工程说明可在推荐页按章节复查，清晰的观测表可以另存为本地 CSV。
@@ -46,6 +50,8 @@ python -m ecodata.desktop.csv_index 'D:\data\weather.csv'
 正式抽检预先固定一轮。默认要求对占留出总体至少 5% 的问题，有 95% 的概率抽到至少一个。可通过 `ECODATA_ACCEPTANCE_DEFECT_SHARE` 和 `ECODATA_ACCEPTANCE_DETECTION` 设置目标。使用 SciPy 的超几何分布计算不放回样本量。千万级简单随机总体中，5% 对应约 59 个抽样单位，1% 对应约 299 个。报告标明实际使用的站点、时间窗口、空间块或记录块。该概率对应抽样规则和当前留出总体。 [NIST 抽样验收手册](https://www.itl.nist.gov/div898/handbook/pmc/section2/pmc232.htm) · [SciPy 超几何分布](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.hypergeom.html)
 
 频率和显式区间变化按边界自动拆分复验。带明确 CF 区间及区间平均降水率定义的数据可以导出原区间累计，或在完整覆盖且区间不跨日时导出 UTC 日累计。CSV 和 Excel 可对逐条显式单位分段换算，按原顺序合并，保留原单位和有效输出单位。运行时使用开源 `ruptures` 对有限窗口的统计摘要检测疑似变点。调整候选后用新提供且未用于此前选择的独立文件再验。 [ruptures 源码](https://github.com/deepcharles/ruptures)
+
+正式抽检沿用候选回检的留出范围。NetCDF 空间留出按保留带上的短窗口抽检，时间留出按后段时间窗抽检。表格按候选锁定的站点、月份或工作表确定抽检总体。
 
 全量兜底只处理采样覆盖不足，优先补选网格窗口、CSV 站点、Excel 工作表或包内成员。若仍不足，批准记录包含副本指纹、字段、条数、字节数、分片数和原因。GeoTIFF 原生副本经单独批准后可通过 Files API 附加上传，超大栅格拆成保留空间坐标及掩码的 TIFF 块。DeepSeek 把 TIFF 作为视觉资料解析，数值复核使用 CSV 分片。分片仅从已登记目录提议方案，取得过半支持才形成新候选，始终要用新增独立数据复验。 [DeepSeek 文件解析说明](https://api-docs.deepseek.com/guides/document_parsing/)
 

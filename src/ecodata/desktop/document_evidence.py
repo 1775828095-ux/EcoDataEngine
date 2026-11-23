@@ -43,6 +43,16 @@ def text_passages(text, markdown=False):
     return passages((f"第 {number} 行", line) for number, line in enumerate(text.splitlines(), 1))
 
 
+def outline_pages(reader, entries):
+    for entry in entries:
+        if isinstance(entry, list):
+            yield from outline_pages(reader, entry)
+        elif KEYWORDS.search(str(entry.get("/Title", ""))):
+            page = reader.get_destination_page_number(entry)
+            if page is not None and 0 <= page < len(reader.pages):
+                yield page
+
+
 def extract(path, suffix, offset, *, prefer_outline=True):
     if suffix == ".docx":
         from docx import Document
@@ -64,14 +74,9 @@ def extract(path, suffix, offset, *, prefer_outline=True):
     reader = PdfReader(path)
     if not reader.pages:
         return document_result([], None, pending="PDF 无可读取页面")
-    pages = []
-    if not offset and prefer_outline:
-        for entry in reader.outline:
-            if not isinstance(entry, list) and KEYWORDS.search(str(entry.get("/Title", ""))):
-                page = reader.get_destination_page_number(entry)
-                if 0 <= page < len(reader.pages) and page not in pages:
-                    pages.append(page)
-    pages = pages[:2] or list(range(offset, min(offset + 2, len(reader.pages))))
+    preferred = tuple(outline_pages(reader, reader.outline)) if prefer_outline else ()
+    ordered = list(dict.fromkeys((*preferred, *range(len(reader.pages)))))
+    pages = ordered[offset:offset + 2]
     items, unresolved = [], []
     for page in pages:
         text = reader.pages[page].extract_text() or ""

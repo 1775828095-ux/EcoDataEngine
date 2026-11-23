@@ -67,11 +67,20 @@ def time_dimension(array, dataset):
                  (dim in dataset.coords and dataset[dim].attrs.get("axis") == "T")), None)
 
 
-def netcdf(row, field, holdout, spatial=False):
-    import numpy as np
+def open_netcdf_for_sampling(path):
+    from inspect import signature
     import xarray as xr
 
-    with local_member(row) as path, xr.open_dataset(path, decode_times=False, cache=False) as dataset:
+    # Older supported xarray releases don't accept this option.
+    supports_lazy_indexes = "create_default_indexes" in signature(xr.open_dataset).parameters
+    options = {"create_default_indexes": False} if supports_lazy_indexes else {}
+    return xr.open_dataset(path, decode_times=False, cache=False, **options)
+
+
+def netcdf(row, field, holdout, spatial=False):
+    import numpy as np
+
+    with local_member(row) as path, open_netcdf_for_sampling(path) as dataset:
         array = dataset[field["name"]]
         if not array.ndim or not all(array.shape):
             return dict(basis="no_disjoint_partition", values=[])
@@ -188,11 +197,10 @@ def frequency_windows(coordinate, axis, start, stop, width):
 def netcdf_time_review(row, field, *, allow_materialization=False):
     """Audit the complete time coordinate locally, with bounded memory and no grid loads."""
     import numpy as np
-    import xarray as xr
 
     if not allow_materialization and not member_available(row):
         return None
-    with local_member(row) as path, xr.open_dataset(path, decode_times=False, cache=False) as dataset:
+    with local_member(row) as path, open_netcdf_for_sampling(path) as dataset:
         dim = time_dimension(dataset[field["name"]], dataset)
         if dim not in dataset.coords or not np.issubdtype(dataset[dim].dtype, np.number):
             return None
@@ -622,7 +630,8 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
                 cache[key] = sample(scan["rows"][index], field, holdout=True, spatial=spatial, future=future)
             held = cache[key]
             values = [v for v in held["values"] if v is not None]
-            report.update(partition=held.get("partition"), basis=held["basis"], count=len(values))
+            report.update(partition=held.get("partition"), holdout_basis=held["basis"],
+                          basis=held["basis"], count=len(values))
             row = scan["rows"][index]
             if (row["format"] == "NetCDF" and held["basis"] == "time_windows"
                     and held["partition"]["size"] > TIME_COORD_LIMIT):
