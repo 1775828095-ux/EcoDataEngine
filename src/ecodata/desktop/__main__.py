@@ -1195,6 +1195,13 @@ class Window(QMainWindow):
                 check.setEnabled(allowed(row))
                 check.setChecked(bool(row.get("final_verified_recommendation") and allowed(row)))
                 layout.addWidget(check)
+            audit = next((item["acceptance_sampling"] for item in row.get("local_holdout_review", ())
+                          if "allowed_failures" in item.get("acceptance_sampling", {})), None)
+            if audit:
+                from .sampling_risk import recipe_summary
+                sampling_label = QLabel(recipe_summary(audit))
+                sampling_label.setWordWrap(True)
+                layout.addWidget(sampling_label)
             if allowed(row) and any(item.get("precipitation_trial") for item in row.get("local_holdout_review", ())):
                 delivery = QPushButton("导出降水累计 NetCDF")
                 delivery.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.deliver_netcdf_precipitation(item)))

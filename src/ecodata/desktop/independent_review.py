@@ -171,7 +171,7 @@ def review_generic_pair(scan, candidate, task, originals, paths, *, model):
         raise ValueError("此方案还缺少独立组合复验入口")
 
     def evidence(stack, row, field):
-        if row["format"] in indexed_table_recipe.FORMATS:
+        if indexed_table_recipe.supports(row, field):
             source = indexed_table_recipe.table(stack, row, field, field["unit"])
             hashes = {sha256(f"{source.category}:{key}".encode()).hexdigest() for key in source.groups}
             return dict(kind="table", category=source.category, groups=sorted(hashes))

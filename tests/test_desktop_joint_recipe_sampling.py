@@ -120,6 +120,82 @@ def test_full_recipe_gate_does_not_accept_individual_column_checks():
     assert assess(scan, recommendation, task, [(0, "D1.F1", field)])["status"] == "pending"
 
 
+def test_calendar_population_includes_unseen_months_and_scores_cf_csv(tmp_path):
+    from contextlib import ExitStack
+    from ecodata.desktop import indexed_table_recipe as tables
+    from ecodata.desktop.sampling_plan import PROBE_LIMIT
+
+    # January fills the outbound prefix; March falls wholly in the CF holdout.
+    dates = np.arange("2024-01-01", "2024-03-02", dtype="datetime64[m]")[::5]
+    cf = tmp_path / "observations.nc"
+    text = tmp_path / "observations.csv"
+    values = np.full(len(dates), 10.)
+    field = dict(name="temperature", unit="K", dimensions=["time"], temporal_semantics="instantaneous")
+    dataset = xr.Dataset({"temperature": ("time", values, dict(units="K", cell_methods="time: point"))},
+                         coords={"time": dates.astype("datetime64[ns]")})
+    dataset.to_netcdf(cf, engine="scipy")
+    assert dates[PROBE_LIMIT].astype("datetime64[M]") == np.datetime64("2024-01")
+    with text.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["time_utc", "temperature"])
+        writer.writerows((str(t), 10.) for t in dates)
+    sources = [row(cf, "NetCDF", field), row(text, "CSV", field)]
+    assert all(tables.supports(source, field) for source in sources)
+    scan = dict(rows=sources)
+    task, steps = task_for("indexed_table_recipe", [field, field], tables.LINEAR)
+    task["unit"] = "K"
+    with ExitStack() as stack:
+        primary, backup = tables.pair(stack, scan, task)
+        assert primary.held == {"2024-03"}
+        assert backup.held == {"2024-02", "2024-03"}
+    review = recipe_trials.review(scan, "C1:fusion", task, steps)
+    assert review["status"] == "checked", review
+    assert review["acceptance_sampling"]["population"] == 1
+    assert tables.run(scan, "C1:fusion", task, tmp_path, "data_only", None)["files"]
+
+
+def test_new_draw_can_be_replayed_and_missing_evidence_cannot_pass():
+    groups = []
+    def inspect(index):
+        groups.append(index)
+        if len(groups) == 1:
+            return dict(unit=index, unscored=True)
+    report = sampling_risk.evaluate_recipe(500, "withheld_station", inspect, **sampling_risk.recipe_settings())
+    assert report["status"] == "pending" and report["unscored"] == 1 and report["failed"] == 0
+    replay = []
+    sampling_risk.evaluate_recipe(500, "withheld_station", replay.append,
+                                  seed=report["sampling_seed"], **sampling_risk.recipe_settings())
+    assert replay == groups and len(set(groups)) == report["sample_size"]
+    assert "1 组缺少评分依据" in sampling_risk.recipe_summary(report)
+
+
+def test_cf_time_only_fields_reach_final_recommendation_by_day(tmp_path):
+    from ecodata.desktop import catalog_decision, discovery, recommendations
+    from ecodata.desktop.scan import Scanner
+
+    dates = np.arange("2024-01-01", "2024-01-21", dtype="datetime64[h]").astype("datetime64[ns]")
+    attributes = dict(units="K", standard_name="air_temperature", cell_methods="time: point")
+    for name in ("first", "second"):
+        xr.Dataset({"tas": ("time", np.full(len(dates), 280.), attributes)},
+                   coords={"time": dates}).to_netcdf(tmp_path / (name + ".nc"), engine="scipy")
+    scan, _ = Scanner().scan(tmp_path)
+    summary, _ = discovery.discover(scan, "data_only")
+    originals, details = catalog_decision.local_fields(scan, summary)
+    sources = [entry for entry in originals.values() if entry[2]["name"] == "tas"]
+    pair, local = discovery.describe_pair(scan, "C1", *sources, "data_only", details)
+    approved = dict(summary, candidates=[pair])
+    checked, gated = discovery.check(scan, {"C1": local},
+                                     {"decisions": [{"candidate": "C1", "action": "fusion"}]}, approved)
+    assert gated["C1", "fusion"]["route"] == "indexed_table_recipe"
+    plan = recommendations.make_request(scan, approved, checked, gated)
+    recipes, _ = recommendations.recommend_plan(plan, [], mock=True)
+    recommendations.review_holdouts(scan, approved, plan, recipes, gated)
+    audit = recipes[0]["local_holdout_review"][0]["acceptance_sampling"]
+    assert (audit["unit"], audit["population"], audit["inspected"]) == ("withheld_day", 4, 4)
+    recommendations.finalize_recipes(plan, recipes, mock=True, api_key=None, progress=None)
+    assert recipes[0]["final_verified_recommendation"]
+
+
 def test_station_grid_preserves_true_mixed_format_holdout(tmp_path):
     from ecodata.desktop import station_grid
     from ecodata.desktop.sampling_plan import station_reserved

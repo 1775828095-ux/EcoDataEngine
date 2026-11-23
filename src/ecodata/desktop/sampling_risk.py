@@ -2,6 +2,7 @@
 from fractions import Fraction
 from math import ceil, floor
 from random import Random
+from secrets import randbits
 
 
 def settings():
@@ -100,15 +101,18 @@ def recipe_settings():
                 strict_boundary=good_quality is not None, zero_failures=good_quality is None)
 
 
-def evaluate_recipe(population, unit, test, *, seed=0, **policy):
+def evaluate_recipe(population, unit, test, *, seed=None, **policy):
     design = recipe_plan(population, **policy)
     size, allowed = design["sample_size"], design["allowed_failures"]
     if size is None:
         return dict(design, status="pending", unit=unit, inspected=0, failed=0, failures=[], unscored=0)
+    # Draw only after the recipe is frozen. Store the seed for local replay.
+    if seed is None:
+        seed = randbits(64)
     failures = []
     unscored = []
     def result(status, inspected):
-        return dict(design, status=status, unit=unit, inspected=inspected,
+        return dict(design, status=status, unit=unit, inspected=inspected, sampling_seed=seed,
                     failed=len(failures), failures=failures[:20], unscored=len(unscored),
                     unscored_units=unscored[:20])
     for inspected, index in enumerate(Random(seed).sample(range(population), size), 1):
@@ -120,6 +124,18 @@ def evaluate_recipe(population, unit, test, *, seed=0, **policy):
             if len(failures) > allowed:
                 return result("failed", inspected)
     return result("pending" if unscored else "checked", size)
+
+
+def recipe_summary(audit):
+    units = {"withheld_spatial_block": "空间块", "withheld_time_and_spatial_block": "时空块",
+             "withheld_station": "个站点", "withheld_month": "个月", "withheld_utc_day": "个 UTC 日",
+             "withheld_day": "天"}
+    unit = units.get(audit["unit"], "组")
+    if audit["sample_size"] is None:
+        return f"可抽 {audit['population']} {unit}。当前试跑预算不足以满足设定的误判风险。"
+    return (f"可抽 {audit['population']} {unit}，计划试跑 {audit['sample_size']} 组，"
+            f"最多允许 {audit['allowed_failures']} 组不合格。已查 {audit['inspected']} 组，"
+            f"其中 {audit['failed']} 组不合格，{audit.get('unscored', 0)} 组缺少评分依据。")
 
 
 def review_field(row, field, *, basis=None, partition=None, defect_share=0.05, detection=0.95):

@@ -90,7 +90,11 @@ def load(row, encoding, headers):
         document = json.loads(index.read_text(encoding="utf-8"))
         if (document["source"] == identity(path) and document["encoding"] == encoding
                 and document["headers"] == headers):
-            return document["groups"]
+            groups = document["groups"]
+            # Older sidecars did not index the USGS site_no spelling.
+            if not groups.get("station") and any(str(h).strip().casefold() == "site_no" for h in headers):
+                return None
+            return groups
     except (OSError, ValueError, TypeError, KeyError):
         pass
     return None

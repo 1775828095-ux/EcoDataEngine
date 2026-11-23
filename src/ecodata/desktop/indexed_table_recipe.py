@@ -15,7 +15,7 @@ from .scan import local_member
 FORMATS = {"CSV", "TSV", "Excel", "Parquet"}
 LINEAR = "temporal.wide_table_interpolation"
 TIME_NAMES = TIME | {"time_utc"}
-STATION_NAMES = (IDENTIFIERS - {"id"}) | {"site_no"}
+STATION_NAMES = IDENTIFIERS - {"id"}
 
 
 class IndexRequired(ValueError):
@@ -34,6 +34,48 @@ class Table:
     station: int | None
     scale: float
     offset: float
+
+
+def supports(row, field):
+    if row["format"] in FORMATS:
+        return True
+    dims = field.get("dimensions", ())
+    return (row["format"] in {"NetCDF", "HDF5"} and len(dims) == 1
+            and normalized(dims[0]) in TIME and not row.get("original_reader"))
+
+
+def cf_series(stack, row, field, unit, *, short_windows=False):
+    """Index complete holdout groups using coordinates, then slice requested values."""
+    from .time_metadata import cell_methods
+    path = stack.enter_context(local_member(row))
+    ds = stack.enter_context(xr.open_dataset(path, cache=False))
+    array = ds[field["name"]]
+    axis, = array.dims
+    clock = ds.coords[axis]
+    operations = cell_methods(array.attrs.get("cell_methods", ""), {axis, "time"})
+    semantics = array.attrs.get("temporal_semantics") or ("instantaneous" if operations == ["point"] else None)
+    if (not np.issubdtype(clock.dtype, np.datetime64)
+            or clock.attrs.get("bounds") or semantics != "instantaneous"
+            or array.attrs.get("flag_values") is not None or array.attrs.get("flag_meanings")
+            or array.attrs.get("data_kind") == "categorical"
+            or any(operation != "point" for operation in operations)):
+        raise ValueError("一维时间序列插值需要明确的瞬时连续观测；区间统计量或分类变量需要对应的评分规则")
+    stamps = np.asarray(clock)
+    if not len(stamps) or np.isnat(stamps).any() or (stamps[1:] <= stamps[:-1]).any():
+        raise ValueError("时间坐标为空、无效、重复或乱序")
+    by_day = short_windows and len(stamps) > 1 and np.median(np.diff(stamps)) <= np.timedelta64(6, "h")
+    periods = stamps.astype("datetime64[D]" if by_day else "datetime64[M]")
+    starts = np.r_[0, np.flatnonzero(periods[1:] != periods[:-1]) + 1]
+    groups = {str(periods[i]): slice(int(i), int(j)) for i, j in zip(starts, [*starts[1:], len(stamps)])}
+    boundary = len(stamps) - max(1, len(stamps) // 5)
+    held = {key for key, span in groups.items() if span.start >= boundary}
+
+    def read(key):
+        span = groups[key]
+        return zip(stamps[span], array.isel({axis: span}).values, strict=True)
+
+    scale, offset = UnitEngine().affine(array.attrs["units"], unit)
+    return Table([axis, field["name"]], groups, "day" if by_day else "month", held, read, 1, 0, None, scale, offset)
 
 
 def columns(header, field):
@@ -143,6 +185,8 @@ def parquet_frame(stack, row, field):
 
 
 def table(stack, row, field, unit):
+    if row["format"] in {"NetCDF", "HDF5"}:
+        return cf_series(stack, row, field, unit)
     scale, offset = UnitEngine().affine(field.get("unit"), unit)
     if row["format"] == "Excel":
         header, groups, months, read = workbook_frame(stack, row, field)
@@ -154,7 +198,11 @@ def table(stack, row, field, unit):
     if row["format"] == "Parquet":
         held = withheld
     elif station is None:
-        held = {months[-1]} if len(months) >= 2 else set()
+        # With an index, months lists the whole file; without one, only the
+        # bounded outbound prefix was available. Later unseen months are local.
+        held = set(groups).difference(months)
+        if len(months) >= 2 and not row.get("original_reader"):
+            held.add(months[-1])
     elif normalized(header[station]) in IDENTIFIERS - {"id"}:
         held = {key for key in groups if station_reserved(key)}
     else:
@@ -170,7 +218,12 @@ def rows_for(source, group):
             raise ValueError("索引指向的观测记录缺少键或数值列")
         station = str(row[source.station]).strip() if source.station is not None else ""
         raw = row[source.time]
-        key = station if source.station is not None else csv_index.month(raw)
+        if source.station is not None:
+            key = station
+        elif source.category == "day":
+            key = str(np.datetime64(raw, "D"))
+        else:
+            key = csv_index.month(raw)
         if key != group:
             raise ValueError("索引分组与原始记录不一致")
         records.append((station, raw, row[source.value]))
@@ -186,9 +239,19 @@ def pair(stack, scan, task):
     rows = [scan["rows"][index] for index, _ in task["fields"]]
     if rows[0]["ref"] == rows[1]["ref"] and rows[0].get("containers") == rows[1].get("containers"):
         raise ValueError("同一输入不能组成两个独立来源")
-    if any(field.get("temporal_semantics") not in {None, "instantaneous"} for field in task["field_metadata"]):
+    if any(field.get("temporal_semantics") not in {None, "", "instantaneous"} for field in task["field_metadata"]):
         raise ValueError("累计或区间平均的表格需与可核对的区间支持配对")
-    sources = [table(stack, row, field, task["unit"]) for row, field in zip(rows, task["field_metadata"], strict=True)]
+    timed_arrays = all(row["format"] in {"NetCDF", "HDF5"} for row in rows)
+    sources = []
+    for row, field in zip(rows, task["field_metadata"], strict=True):
+        if timed_arrays:
+            sources.append(cf_series(stack, row, field, task["unit"], short_windows=True))
+        else:
+            sources.append(table(stack, row, field, task["unit"]))
+    if timed_arrays and sources[0].category != sources[1].category:
+        for i, source in enumerate(sources):
+            if source.category == "day":
+                sources[i] = cf_series(stack, rows[i], task["field_metadata"][i], task["unit"])
     if sources[0].category != sources[1].category:
         raise ValueError("两张表需使用同一种可对应的站点或月份分组键")
     return sources

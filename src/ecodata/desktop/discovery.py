@@ -667,7 +667,7 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                 task = dict(action=action, fields=[(ai, a["name"]), (bi, b["name"])], field_metadata=[a, b],
                             quantity=unit_check["quantity"], unit=unit_check["target_unit"])
                 steps = []
-                if formats <= indexed_table_recipe.FORMATS:
+                if all(indexed_table_recipe.supports(source, field) for source, field in ((ar, a), (br, b))):
                     task["route"] = "indexed_table_recipe"
                     steps = [[indexed_table_recipe.LINEAR]]
                 elif formats <= windowed_grid_recipe.FORMATS and not approved_summary.get("task_requirements", {}).get("target_grid"):

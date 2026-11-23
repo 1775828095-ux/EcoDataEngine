@@ -9,7 +9,7 @@ from itertools import chain, islice, zip_longest
 from .scan import AXES, local_member, open_tabular_member
 
 SUPPORTED = {"NetCDF", "HDF5", "GeoTIFF", "CSV", "TSV", "Excel"}
-IDENTIFIERS = {"station_id", "station", "site_id", "site", "sensor_id", "object_id", "id", "站点", "站点编号"}
+IDENTIFIERS = {"station_id", "station", "site_id", "site", "site_no", "sensor_id", "object_id", "id", "站点", "站点编号"}
 TIME = {"time", "tstep", "date", "datetime", "timestamp", "time_utc", "时间", "日期"}
 PROBE_LIMIT = 4096
 VALUE_LIMIT = 64
