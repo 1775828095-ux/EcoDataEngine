@@ -11,7 +11,7 @@ from .scan import AXES, assert_current, local_member, safe
 from .sampling_plan import IDENTIFIERS, TIME, normalized, records
 
 PART_BYTES = 48 * 1024
-SUPPORTED = {"NetCDF", "GeoTIFF", "CSV", "TSV", "Excel"}
+SUPPORTED = {"NetCDF", "HDF5", "GeoTIFF", "CSV", "TSV", "Excel", "Parquet"}
 
 
 def approved_fields(scan, recommendation):
@@ -81,7 +81,7 @@ def metadata(row, field):
             info.update(shape=[dataset.height, dataset.width], crs=str(dataset.crs),
                         transform=list(dataset.transform)[:6], nodata=missing if missing is None or math.isfinite(missing) else str(missing),
                         band=field["band"], columns=["row", "column", "perturbed_value"])
-    elif row["format"] == "NetCDF":
+    elif row["format"] in {"NetCDF", "HDF5"}:
         import xarray as xr
         with local_member(row) as path, xr.open_dataset(path, decode_times=False, cache=False) as dataset:
             value = dataset[field["name"]]
@@ -125,7 +125,7 @@ def numerical_rows(row, field):
                     yield [int(window.row_off) + i, int(window.col_off) + j,
                            (cell.item() if field.get("approved_classification") else value(cell))
                            if not getattr(cell, "mask", False) else ""]
-    elif row["format"] == "NetCDF":
+    elif row["format"] in {"NetCDF", "HDF5"}:
         import numpy as np
         import xarray as xr
         with local_member(row) as path, xr.open_dataset(path, decode_times=False, cache=False) as dataset:
@@ -150,6 +150,16 @@ def numerical_rows(row, field):
                     if edges is not None and edges.ndim == 2 and edges.shape[1] == 2:
                         indexes.extend(edges[position[array.dims.index(clock)]].tolist())
                     yield [*indexes, value(block[position])]
+    elif row["format"] == "Parquet":
+        from pyarrow.parquet import ParquetFile
+
+        with local_member(row) as path, path.open("rb") as stream:
+            source = ParquetFile(stream)
+            index = 0
+            for batch in source.iter_batches(columns=[field["name"]], batch_size=4096):
+                for cell in batch.column(0).to_pylist():
+                    index += 1
+                    yield [index, value(cell)]
     else:
         # Inspect before yielding, so an encoding retry can never duplicate emitted rows.
         with local_member(row) as path:

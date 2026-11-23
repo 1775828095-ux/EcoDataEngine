@@ -645,8 +645,12 @@ def scientific(row, path):
                 workbook.close()
     elif fmt=="Parquet":
         import pyarrow.parquet as pq
-        row["fields"]=[dict(name=f.name,type=str(f.type),unit="",axis=f.name.casefold() in AXES)
-                       for f in pq.read_schema(path)]
+        row["fields"]=[]
+        for field in pq.read_schema(path):
+            attributes = {name: (field.metadata or {}).get(name.encode(), b"").decode("utf-8", errors="replace")
+                          for name in ("units", "physical_variable", "standard_name", "temporal_semantics")}
+            row["fields"].append(dict(name=field.name, type=str(field.type), unit=attributes.pop("units"),
+                                      axis=field.name.casefold() in AXES, **attributes))
         row["basis"].append("Parquet 页脚 schema；未读数据行")
     elif fmt=="HDF5":
         scan_hdf(row,path)

@@ -195,9 +195,10 @@ def fill(aligned, primary, variable):
     return dataset, dict(output.report, unresolved=int((availability == 0).sum()), fused=False)
 
 
-def trial_recipe(aligned, primary, steps, variable="precipitation"):
+def trial_recipe(aligned, primary, steps, variable="precipitation", *, scoring_request=None):
     """Run the frozen recipe and score a fixed reduced-grid reconstruction proxy."""
     from ecodata.algorithms.spatial_fusion_task import blend_fields
+    from .recipe_trials import score
 
     output, evidence = fill(aligned, primary, variable)
     if evidence["unresolved"]:
@@ -230,11 +231,8 @@ def trial_recipe(aligned, primary, steps, variable="precipitation"):
     if not bool(mask.any()):
         return output, evidence, None, "insufficient_score_support"
     truth = truth.where(mask)
-    single = [asdict(fidelity_metrics(estimate.where(mask), truth)) for estimate in estimates]
-    baseline = min(single, key=lambda score: (score["rmse"], score["mae"]))
-    candidate = asdict(fidelity_metrics(blend_fields(*estimates, .5).where(mask), truth))
-    metrics = dict(candidate=candidate, baseline=baseline, count=int(mask.sum()),
-                   reference="REDUCED_SCALE_PRODUCT_RECONSTRUCTION_PROXY")
-    # The desktop independent raster check uses these same paired error limits.
-    failed = any(candidate[key] > baseline[key] + 1e-9 for key in ("rmse", "mae"))
-    return output, evidence, metrics, "recipe_score_below_single_source" if failed else None
+    baseline = min(estimates, key=lambda estimate: fidelity_metrics(estimate.where(mask), truth).rmse)
+    metrics, failure = score(blend_fields(*estimates, .5).values, baseline.values, truth.values,
+                             "REDUCED_SCALE_PRODUCT_RECONSTRUCTION_PROXY", retained=np.stack(estimates),
+                             request=scoring_request)
+    return output, evidence, metrics, failure

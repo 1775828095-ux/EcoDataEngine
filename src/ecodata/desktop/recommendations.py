@@ -227,6 +227,7 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
     from .sampling_plan import recommendation_review
     from .release_gate import assess
     from .sampling_risk import attach
+    from . import recipe_trials
 
     originals, _ = local_fields(scan, approved)
     tasks = {task["id"]: task for task in plan["tasks"]}
@@ -240,16 +241,11 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
             continue
         refs = [originals[fid] for fid in task["context"]["fields"] if fid in originals]
         execution = gated.get((task["candidate"], task["operation"]))
-        if execution and execution.get("route") == "independent_grid_search":
-            from .independent_alignment import review
-
-            key = ("joint_grid_holdout", task["id"], tuple(recommendation["steps"]))
+        if recipe_trials.required(execution) or task["operation"] == "fusion":
+            key = ("joint_holdout", task["id"], tuple(recommendation["steps"]))
             if key not in cache:
-                try:
-                    cache[key] = review(scan, task["id"], execution, recommendation["steps"])
-                except (EcoDataError, OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
-                    cache[key] = dict(status="pending", basis="joint_grid_holdout_unavailable",
-                                      count=0, checks=[], reason=str(error))
+                cache[key] = recipe_trials.review(scan, task["id"], execution, recommendation["steps"],
+                                                  model=plan["target_model"]["id"])
             report = [dict(cache[key], field=fid) for _, fid, _ in refs]
         else:
             report = recommendation_review(scan, recommendation, execution, refs, cache)
@@ -366,13 +362,16 @@ def explanation(task,reason):
 def explanation_text(row):
     detail=row.get('explanation') or {}
     report = next((item["acceptance_sampling"] for item in row.get("local_holdout_review", ())
-                   if item.get("acceptance_sampling", {}).get("unit") == "withheld_utc_day"), None)
+                   if "allowed_failures" in item.get("acceptance_sampling", {})), None)
     acceptance = []
     if report:
         planned = report["sample_size"]
         acceptance = [f"留出验收总体 {report['population']} 组 · 计划试跑 {planned} 组 · 允许 {report['allowed_failures']} 组失败"
                       if planned else f"留出验收总体 {report['population']} 组 · 预算内没有满足误判风险的抽检设计",
                       f"实际试跑 {report['inspected']} 组 · 不合格 {report['failed']} 组 · 缺评分证据 {report.get('unscored', 0)} 组"]
+        if report.get("acceptance_rule") == "zero_failures":
+            acceptance.append(f"真实不合格占比达到 {report['acceptable_share']:.0%} 时，"
+                              f"计划把全漏掉的概率控制在 {report['false_accept_limit']:.0%} 以内。")
     return '\n'.join(['数据依据',*(detail.get('facts') or ['尚无结构化数据依据，不能由推荐文字推断已核实。']),
         '', '推荐理由',row.get('reason') or '未提供', '', '平台检查与前提',detail.get('checks') or '等待契约核验',
         *acceptance,
@@ -401,7 +400,7 @@ def validate(raw, summary):
         if final and (key not in options or key[0] in confirmed):
             continue
         if key in options:
-            if tasks[key[0]].get("route") == "independent_grid_search" and key[0] in confirmed:
+            if tasks[key[0]].get("operation") == "fusion" and key[0] in confirmed:
                 continue
             seen.add(key)
             confirmed.add(key[0])

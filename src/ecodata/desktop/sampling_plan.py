@@ -8,7 +8,7 @@ from itertools import chain, islice, zip_longest
 
 from .scan import AXES, local_member, open_tabular_member
 
-SUPPORTED = {"NetCDF", "GeoTIFF", "CSV", "TSV", "Excel"}
+SUPPORTED = {"NetCDF", "HDF5", "GeoTIFF", "CSV", "TSV", "Excel"}
 IDENTIFIERS = {"station_id", "station", "site_id", "site", "sensor_id", "object_id", "id", "站点", "站点编号"}
 TIME = {"time", "tstep", "date", "datetime", "timestamp", "time_utc", "时间", "日期"}
 PROBE_LIMIT = 4096
@@ -51,7 +51,7 @@ def sample(row, field, *, holdout=False, spatial=False, future=False):
     name = normalized(field.get("source_column") or field["name"])
     if field.get("axis") or name in AXES or name in IDENTIFIERS or name in TIME:
         return dict(status="pending", basis="non_observation_field", values=[])
-    if row["format"] == "NetCDF":
+    if row["format"] in {"NetCDF", "HDF5"}:
         record = netcdf(row, field, holdout, spatial)
     elif row["format"] == "GeoTIFF":
         record = raster(row, field, holdout)

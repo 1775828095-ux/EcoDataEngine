@@ -231,10 +231,10 @@ def test_fixed_grid_recipe_scores_candidate_and_source_on_same_support():
     steps = ["spatial.regrid.conservative", "fusion.series_missing_fallback", "spatial.blend"]
     _, _, matched, failure = trial_recipe([dataset(12.), dataset(12.)], 0, steps)
     assert failure is None and matched["count"] > 0
-    assert matched["candidate"]["rmse"] == matched["baseline"]["rmse"]
+    assert matched["candidate"]["RMSE"] == matched["baseline"]["RMSE"]
     _, _, biased, failure = trial_recipe([dataset(12.), dataset(30.)], 0, steps)
     assert failure == "recipe_score_below_single_source"
-    assert biased["candidate"]["mae"] > biased["baseline"]["mae"]
+    assert biased["candidate"]["MAE"] > biased["baseline"]["MAE"]
 
 
 def test_precipitation_rejects_duplicate_time_without_replacing_output(tmp_path):

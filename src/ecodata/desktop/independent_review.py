@@ -87,7 +87,7 @@ def apply_many(scan, candidate, task, reports):
     candidate["execution_release"] = assess(scan, candidate, task, fields(scan, candidate))
 
 
-def review_pair(scan, candidate, task, paths):
+def review_pair(scan, candidate, task, paths, *, model=None):
     """Test a complete recipe on a new pair with disjoint observation dates."""
     import numpy as np
     import xarray as xr
@@ -96,9 +96,11 @@ def review_pair(scan, candidate, task, paths):
     from .fallback_evidence import digest_file
 
     assert_current(scan)
-    source_fields = fields(scan, candidate)
+    source_fields = ordered_fields(scan, candidate, task)
     if len(source_fields) != 2 or len(paths) != 2:
-        raise ValueError("整套方案需要分别为两个来源提供独立 NetCDF 数据")
+        raise ValueError("整套方案需要分别为两个来源提供独立数据")
+    if task.get("route") != "independent_grid_search":
+        return review_generic_pair(scan, candidate, task, source_fields, paths, model=model)
 
     def support(path):
         with xr.open_dataset(path, cache=False) as dataset:
@@ -138,14 +140,95 @@ def review_pair(scan, candidate, task, paths):
 
     validation = dict(task, cf_daily=True, fields=[(index, field["name"])
                       for index, (_, _, field) in enumerate(source_fields)])
-    report = independent_alignment.review({"rows": rows}, candidate["task"], validation,
-                                          candidate["steps"], independent=True)
+    from .recipe_trials import review as trial
+    report = trial({"rows": rows}, candidate["task"], validation, candidate["steps"], model=model, independent=True)
     if any(digest_file(path) != checksum for path, _, checksum, _ in checks):
         raise ValueError("复验文件在检查期间已变化")
     assert_current(scan)
     return [dict(report, field=fid, independent=True, independent_file=path.name,
                  independent_sha256=checksum, independent_period=period)
             for path, fid, checksum, period in checks]
+
+
+def ordered_fields(scan, candidate, task):
+    values = {(index, field["name"]): (index, fid, field) for index, fid, field in fields(scan, candidate)}
+    order = [(index, name) for index, name, _ in task_fields(task)]
+    return [values[key] for key in order if key in values] if order else list(values.values())
+
+
+def review_generic_pair(scan, candidate, task, originals, paths, *, model):
+    from contextlib import ExitStack
+    from hashlib import sha256
+    import numpy as np
+    from rasterio.warp import transform_bounds
+    from rasterio.windows import bounds
+
+    from . import file_tools, indexed_table_recipe, recipe_trials, windowed_grid_recipe
+    from .fallback_evidence import digest_file
+
+    route = task.get("route")
+    if route not in recipe_trials.ARRAY_ROUTES | {"station_grid"}:
+        raise ValueError("此方案还缺少独立组合复验入口")
+
+    def evidence(stack, row, field):
+        if row["format"] in indexed_table_recipe.FORMATS:
+            source = indexed_table_recipe.table(stack, row, field, field["unit"])
+            hashes = {sha256(f"{source.category}:{key}".encode()).hexdigest() for key in source.groups}
+            return dict(kind="table", category=source.category, groups=sorted(hashes))
+        grid = windowed_grid_recipe.source(stack, row, field, field["unit"])
+        if grid.times is not None:
+            start, end = ((grid.times[0], grid.times[-1]+np.timedelta64(1, "ns")) if grid.interval is None else
+                          (grid.interval[0, 0], grid.interval[-1, 1]))
+            return dict(kind="time", start=str(start), end=str(end))
+        return dict(kind="space", crs=grid.crs.to_string(), extent=list(bounds(grid.whole, grid.transform)))
+
+    def overlaps(old, new):
+        if old["kind"] != new["kind"]:
+            return False
+        if new["kind"] == "time":
+            return np.datetime64(new["start"]) < np.datetime64(old["end"]) and np.datetime64(old["start"]) < np.datetime64(new["end"])
+        if new["kind"] == "table":
+            return old["category"] != new["category"] or not set(old["groups"]).isdisjoint(new["groups"])
+        a, b, c, d = transform_bounds(old["crs"], new["crs"], *old["extent"])
+        x, y, xx, yy = new["extent"]
+        return a < xx and x < c and b < yy and y < d
+
+    with ExitStack() as stack:
+        previous = list(candidate.get("previous_independent_supports", ()))
+        previous.extend(evidence(stack, scan["rows"][index], field) for index, _, field in originals)
+        rows, fields_meta, records = [], [], []
+        for original, path in zip(originals, paths, strict=True):
+            index, fid, field = original
+            path = Path(path).resolve(strict=True)
+            checksum = digest_file(path)
+            if checksum in candidate.get("previous_independent_hashes", ()) or any(checksum == item[2] for item in records):
+                raise ValueError("复验文件重复或已用于上一轮调整")
+            row = file_tools.inspect(path, "read_header", {"path": ""})["row"]
+            if row["format"] != scan["rows"][index]["format"]:
+                raise ValueError("复验需保持对应来源的文件格式")
+            matching = [item for item in row["fields"] if item["name"] == field["name"]
+                        and (not field.get("sheet") or item.get("sheet") == field["sheet"])]
+            if len(matching) != 1 or not matching[0].get("unit"):
+                raise ValueError("独立文件缺少对应字段或单位")
+            proof = evidence(stack, row, matching[0])
+            if any(overlaps(old, proof) for old in previous):
+                raise ValueError("新增数据和原数据或旧复验的观测范围重叠，请提供独立分组")
+            rows.append(row)
+            fields_meta.append(matching[0])
+            records.append((path, fid, checksum, proof))
+        validation = dict(task, fields=[(index, field["name"]) for index, field in enumerate(fields_meta)],
+                          field_metadata=fields_meta)
+        if route == "station_grid":
+            indexes = {original[0]: i for i, original in enumerate(originals)}
+            validation.update(grid_index=indexes[task["grid_index"]], table_index=indexes[task["table_index"]],
+                              table_field=fields_meta[indexes[task["table_index"]]])
+        report = recipe_trials.review({"rows": rows}, candidate["task"], validation, candidate["steps"],
+                                      model=model, independent=True)
+    if any(digest_file(path) != checksum for path, _, checksum, _ in records):
+        raise ValueError("复验文件在检查期间已变化")
+    assert_current(scan)
+    return [dict(report, field=fid, independent=True, independent_file=path.name,
+                 independent_sha256=checksum, independent_support=proof) for path, fid, checksum, proof in records]
 
 
 def invalidate(scan, candidate, task):

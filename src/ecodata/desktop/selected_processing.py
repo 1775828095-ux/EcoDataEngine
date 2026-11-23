@@ -18,7 +18,7 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
             progress(f"正在处理 {index}/{len(tasks)} · {task_id}")
         try:
             runtime_report = []
-            if task.get("runtime_fields"):
+            if task.get("runtime_fields") and route not in {"windowed_grid_recipe", "indexed_table_recipe"}:
                 from .release_gate import runtime
                 steps = [step for recipe in task["recipes"] for step in recipe]
                 target = (task.get("target_unit") if route == "structure_conversion" and
@@ -27,6 +27,12 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
                                                 "segmented_table_target": target}, folder)
             if route == "station_grid":
                 result = station_grid.run(scan,task_id,task,stage,model_id,progress)
+            elif route == "windowed_grid_recipe":
+                from .windowed_grid_recipe import run as run_grid_recipe
+                result = run_grid_recipe(scan, task_id, task, stage, model_id, progress)
+            elif route == "indexed_table_recipe":
+                from .indexed_table_recipe import run as run_table_recipe
+                result = run_table_recipe(scan, task_id, task, stage, model_id, progress)
             elif route == "structure_conversion":
                 result = pair_processing.run_conversion(scan,task_id,task,stage,model_id,progress)
             elif route == "statistical_preprocessing":

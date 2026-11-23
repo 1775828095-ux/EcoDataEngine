@@ -1505,7 +1505,8 @@ class Window(QMainWindow):
         self.work(run, lambda groups: self.show_progress(f"已导出 {groups} 个累计时间区间 · {destination.name}"))
 
     def review_new_independent_data(self, candidate):
-        from .independent_review import apply, apply_many, fields, review, review_pair
+        from .independent_review import apply, apply_many, fields, ordered_fields, review, review_pair
+        from .recipe_trials import required
 
         scan = self.scan
         task = self.gated.get(tuple(candidate["task"].split(":", 1)))
@@ -1513,10 +1514,11 @@ class Window(QMainWindow):
                    for index, fid, field in fields(scan, candidate)}
         if not entries:
             raise ValueError("该候选没有可复验的字段")
-        if task and task.get("route") == "independent_grid_search":
+        if required(task):
             paths = []
-            for label in entries:
-                name, _ = QFileDialog.getOpenFileName(self, f"为 {label} 选择未外发的新时段", "", "NetCDF (*.nc *.nc4)")
+            for index, fid, field in ordered_fields(scan, candidate, task):
+                label = f"{scan['rows'][index]['name']} · {field['name']}"
+                name, _ = QFileDialog.getOpenFileName(self, f"为 {label} 选择未外发的独立数据")
                 if not name:
                     return
                 paths.append(name)
@@ -1530,7 +1532,7 @@ class Window(QMainWindow):
 
             def validate_pair(log):
                 trial = dict(candidate, local_holdout_review=[])
-                reports = review_pair(scan, trial, task, paths)
+                reports = review_pair(scan, trial, task, paths, model=model["id"])
                 apply_many(scan, trial, task, reports)
                 plan = dict(target_model=model, tasks=[dict(id=trial["task"], operation=task["action"],
                             allowed_recipes=trial["local_recipe_options"])])
@@ -1592,6 +1594,9 @@ class Window(QMainWindow):
                                if item.get("independent_period"))])))
         candidate.pop("final_verified_recommendation", None)
         candidate.pop("final_recommendation_origin", None)
+        candidate["previous_independent_supports"] = [*previous.get("previous_independent_supports", ()),
+            *(item["independent_support"] for item in previous.get("local_holdout_review", ())
+              if item.get("independent_support"))]
         task = self.gated.get(tuple(candidate["task"].split(":", 1)))
         candidate["execution_release"] = assess(self.scan, candidate, task, fields(self.scan, candidate))
         rows = [candidate if row is previous else row for row in self.recommendation_rows]

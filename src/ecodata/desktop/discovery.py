@@ -623,11 +623,20 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                 row.update(status="通过",reason="可独立转换字段并回读核对，供后续配对和融合使用。")
                 continue
             if "compare_station_grid" in detected and action in {"compare_station_grid","align_time","align_space","fusion"}:
-                from .station_grid import load, plan, task_for
+                from .station_grid import BIAS, EXACT, FORMAT_STEP, MATCH, NEAREST, UNIT_STEP, load, plan, task_for
                 if unit_check["status"] not in {"equivalent","convertible"}:
                     row["block_code"]="quantity_unknown"
                     raise ValueError("请识别共同物理量并检查单位后进行站点配对")
                 task=task_for(scan,(left,right),action,unit_check)
+                if action == "fusion":
+                    from .recipe_trials import FILL
+
+                    task["fields"] = [(ai, a["name"]), (bi, b["name"])]
+                    task["recipe_steps"] = [[UNIT_STEP, FORMAT_STEP, method, MATCH, FILL, BIAS]
+                                            for method in (EXACT, NEAREST)]
+                    prepared[(cid,action)] = task
+                    row.update(status="通过", reason="按表格索引留出站点或月份，在实际网格位置和时间上试跑订正与补位。")
+                    continue
                 evidence_key=tuple(item[1] for item in (left,right)),unit_check["quantity"]
                 if evidence_key not in station_matches:
                     station_matches[evidence_key]=load(scan,task)
@@ -650,6 +659,31 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                         fields=selections)
                     row.update(status="通过", next_step="alignment_then_fusion",
                                reason="已核对 UTC 区间语义、单位和共同网格范围。完整日对齐，不完整日留待补位试跑。")
+                    continue
+            if action == "fusion" and unit_check["status"] in {"equivalent", "convertible"}:
+                from . import indexed_table_recipe, recipe_trials, windowed_grid_recipe
+
+                formats = {ar["format"], br["format"]}
+                task = dict(action=action, fields=[(ai, a["name"]), (bi, b["name"])], field_metadata=[a, b],
+                            quantity=unit_check["quantity"], unit=unit_check["target_unit"])
+                steps = []
+                if formats <= indexed_table_recipe.FORMATS:
+                    task["route"] = "indexed_table_recipe"
+                    steps = [[indexed_table_recipe.LINEAR]]
+                elif formats <= windowed_grid_recipe.FORMATS and not approved_summary.get("task_requirements", {}).get("target_grid"):
+                    try:
+                        steps = windowed_grid_recipe.available(scan, task)
+                        task["route"] = "windowed_grid_recipe"
+                    except (EcoDataError, OSError, ValueError, KeyError):
+                        # Let the registered engineering adapters handle other grid supports.
+                        pass
+                if steps:
+                    task["recipe_steps"] = [["units.harmonize", "format.normalize", *align, recipe_trials.FILL, recipe_trials.BLEND]
+                                             for align in steps]
+                    prepared[(cid, action)] = task
+                    row.update(status="通过", next_step="alignment_then_fusion", algorithm_candidates=list(dict.fromkeys(
+                               operation for recipe in steps for operation in recipe)),
+                               reason="字段物理量和单位可对应。留出组的原始数据将执行完整方案并与基线比较。")
                     continue
             if physical(a)==physical(b)=="precipitation":
                 read_for_check(ai,a)

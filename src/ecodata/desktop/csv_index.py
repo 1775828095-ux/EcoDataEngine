@@ -24,8 +24,9 @@ def lines(stream, encoding):
         yield line.decode(encoding)
 
 
-def build(path, *, encoding="utf-8-sig"):
+def scan_index(path, *, encoding="utf-8-sig"):
     from .sampling_plan import IDENTIFIERS, TIME, normalized
+    from .sample_values import PROBE_ROWS
 
     path = Path(path).resolve(strict=True)
     delimiter = "\t" if path.suffix.lower() == ".tsv" else ","
@@ -37,6 +38,8 @@ def build(path, *, encoding="utf-8-sig"):
         station = next((i for i, name in enumerate(names) if name in IDENTIFIERS - {"id"}), None)
         time = next((i for i, name in enumerate(names) if name in TIME), None)
         groups = {name: defaultdict(list) for name in ("station", "month")}
+        prefix_months = set()
+        record_index = 0
         while True:
             offset = stream.tell()
             try:
@@ -44,12 +47,15 @@ def build(path, *, encoding="utf-8-sig"):
             except StopIteration:
                 break
             end = stream.tell()
+            record_index += 1
             for category, index in (("station", station), ("month", time)):
                 if index is None or index >= len(row):
                     continue
                 key = month(row[index]) if category == "month" else row[index].strip()
                 if not key:
                     continue
+                if category == "month" and record_index <= PROBE_ROWS:
+                    prefix_months.add(key)
                 spans = groups[category][key]
                 if spans and spans[-1][1] == offset:
                     spans[-1][1] = end
@@ -57,9 +63,16 @@ def build(path, *, encoding="utf-8-sig"):
                     spans.append([offset, end])
     if identity(path) != stamp:
         raise ValueError("CSV 在建索引期间已变化")
+    return dict(source=stamp, encoding=encoding, headers=headers, groups=groups,
+                prefix_months=sorted(prefix_months))
+
+
+def build(path, *, encoding="utf-8-sig"):
+    path = Path(path).resolve(strict=True)
+    document = scan_index(path, encoding=encoding)
     target = path.with_name(path.name + SUFFIX)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as temporary:
-        json.dump(dict(source=stamp, encoding=encoding, headers=headers, groups=groups), temporary,
+        json.dump(document, temporary,
                   ensure_ascii=False, separators=(",", ":"))
     Path(temporary.name).replace(target)
     return target

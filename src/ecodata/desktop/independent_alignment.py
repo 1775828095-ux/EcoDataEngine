@@ -211,21 +211,22 @@ def review(scan, task_id, task, steps=(), *, independent=False):
                 return [ds.sel(time=[date]) for ds in aligned]
         if not len(reserved):
             return dict(status="pending", basis="recipe_coverage_budget_insufficient", count=0, checks=[])
-        return review_recipe(reserved, read_aligned, primary, alignment, steps)
+        return review_recipe(reserved, read_aligned, primary, alignment, steps,
+                             scoring_request=task.get("scoring_request"))
 
 
-def review_recipe(reserved, read_aligned, primary, alignment, steps):
+def review_recipe(reserved, read_aligned, primary, alignment, steps, *, scoring_request=None):
     import numpy as np
-    from os import environ
     from .grid_preparation import trial_recipe
-    from .sampling_risk import evaluate_recipe
+    from .sampling_risk import evaluate_recipe, recipe_settings
 
     count = filled = unresolved = 0
     scores = []
     def check_day(index):
         nonlocal count, filled, unresolved
         date = reserved[index]
-        output, evidence, metrics, failure = trial_recipe(read_aligned(date), primary, steps)
+        output, evidence, metrics, failure = trial_recipe(read_aligned(date), primary, steps,
+                                                          scoring_request=scoring_request)
         count += int(np.isfinite(output.precipitation).sum())
         filled += evidence["filled"]
         unresolved += evidence["unresolved"]
@@ -235,12 +236,7 @@ def review_recipe(reserved, read_aligned, primary, alignment, steps):
             return dict(unit=str(date), rule=failure, unscored=failure == "insufficient_score_support")
         return None
 
-    report = evaluate_recipe(len(reserved), "withheld_utc_day", check_day,
-        acceptable=float(environ.get("ECODATA_RECIPE_ACCEPTABLE_SHARE", "0.05")),
-        rejectable=float(environ.get("ECODATA_RECIPE_REJECTABLE_SHARE", "0.10")),
-        false_reject=float(environ.get("ECODATA_RECIPE_FALSE_REJECT", "0.05")),
-        false_accept=float(environ.get("ECODATA_RECIPE_FALSE_ACCEPT", "0.05")),
-        budget=int(environ.get("ECODATA_RECIPE_TRIAL_BUDGET", "512")))
+    report = evaluate_recipe(len(reserved), "withheld_utc_day", check_day, **recipe_settings())
     failures = {row["rule"] for row in report["failures"]}
     if report["status"] == "checked" and "spatial.blend" in steps and not scores:
         basis = "recipe_coverage_budget_insufficient"

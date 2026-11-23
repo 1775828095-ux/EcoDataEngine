@@ -5,21 +5,24 @@ from .scan import assert_current, local_member
 
 
 def assess(scan, recommendation, task, fields):
+    from .recipe_trials import required
+
     reviews = {item["field"]: item for item in recommendation.get("local_holdout_review", ())}
     steps = tuple(recommendation.get("steps", ()))
+    joint = required(task) or recommendation.get("task", "").endswith(":fusion")
     checks = []
     for index, fid, field in fields:
         source = scan["rows"][index]
         review = reviews.get(fid, {})
         status, reason = review.get("status", "pending"), review.get("basis", "holdout_not_reviewed")
         supported = source["format"] in {"NetCDF", "GeoTIFF", "CSV", "TSV", "Excel"}
-        if not supported:
+        if not supported and not joint:
             continue
         if recommendation.get("independent_required") and not review.get("independent"):
             status, reason = "pending", "new_independent_evidence_required"
         elif status == "failed":
             pass
-        elif task and task.get("route") == "independent_grid_search":
+        elif joint:
             if reason != "joint_recipe_acceptance_passed":
                 status = "pending"
                 if review.get("independent"):
@@ -60,6 +63,8 @@ def assess(scan, recommendation, task, fields):
                 checks.append(dict(source=check["document"], status=check["status"],
                                    reason=check.get("basis", "missing_engineering_reference")))
     blocked = [entry for entry in checks if entry["status"] != "checked"]
+    if joint and not checks:
+        blocked.append(dict(status="pending", reason="joint_recipe_adapter_unavailable"))
     if recommendation.get("advisory_only") or not steps:
         status = "pending"
     elif any(entry["status"] in {"failed", "conflict"} for entry in blocked):
@@ -128,6 +133,9 @@ def explanation(release):
         "recipe_coverage_budget_insufficient": "留出数据或读取预算不足以完成整套方案评分",
         "recipe_numeric_rejected": "整套方案的留出试跑失败次数超过允许值",
         "paired_independent_recipe_required": "需提供两份未外发的独立数据复验整套方案",
+        "joint_recipe_adapter_unavailable": "此组合需要能试跑完整方案的本地适配器及评分参考",
+        "joint_recipe_index_required": "缺少可按站点或月份读取的本地表格索引",
+        "joint_grid_holdout_unavailable": "无法建立独立留出窗口，或时空、单位证据仍需核对",
     }
     reasons = [labels.get(item["reason"], "请补充字段定义、工程证据或留出回检")
                for item in release.get("blockers", ())]

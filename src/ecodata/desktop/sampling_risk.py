@@ -1,4 +1,5 @@
 """Preplanned finite-population acceptance sampling on reserved units."""
+from fractions import Fraction
 from math import ceil, floor
 from random import Random
 
@@ -27,7 +28,7 @@ def plan(population, *, defect_share=0.05, detection=0.95):
 
     if population < 1 or not 0 < defect_share <= 1 or not 0 < detection < 1:
         raise ValueError("抽检总体、目标问题占比或检出概率无效")
-    defects = max(1, ceil(population * defect_share))
+    defects = max(1, ceil(population * Fraction(str(defect_share))))
     low, high = 1, population
     while low < high:
         middle = (low + high) // 2
@@ -50,7 +51,7 @@ def evaluate(population, unit, test, *, seed=0, defect_share=0.05, detection=0.9
 
 
 def recipe_plan(population, *, acceptable=0.05, rejectable=0.10, false_reject=0.05,
-                false_accept=0.05, budget=512):
+                false_accept=0.05, budget=512, strict_boundary=False, zero_failures=False):
     """Find the smallest finite-population plan satisfying both risk bounds."""
     from scipy.stats import hypergeom
 
@@ -58,15 +59,26 @@ def recipe_plan(population, *, acceptable=0.05, rejectable=0.10, false_reject=0.
             or not 0 < false_reject < 1 or not 0 < false_accept < 1
             or false_reject + false_accept >= 1):
         raise ValueError("验收总体或风险设置无效")
-    from fractions import Fraction
     good = floor(population * Fraction(str(acceptable)))
-    bad = max(good + 1, ceil(population * Fraction(str(rejectable))))
+    boundary = population * Fraction(str(rejectable))
+    bad = max(good + 1, floor(boundary) + 1 if strict_boundary else ceil(boundary))
+    if zero_failures:
+        bad = max(1, ceil(boundary))
     if bad > population:
         raise ValueError("可接受质量与应驳回质量没有可区分的总体")
     limit = min(population, budget)
-    design = dict(population=population, acceptable_share=acceptable, rejectable_share=rejectable,
+    design = dict(population=population, design_good_share=acceptable, acceptable_share=rejectable if strict_boundary else acceptable,
+                  rejectable_share=rejectable, strict_boundary=strict_boundary,
                   good_failures=good, bad_failures=bad, false_reject_limit=false_reject,
                   false_accept_limit=false_accept, budget=limit, rounds=1)
+    if zero_failures:
+        design.update(acceptance_rule="zero_failures", acceptable_share=rejectable,
+                      design_good_share=None, good_failures=None, false_reject_limit=None)
+        n = plan(population, defect_share=rejectable, detection=1 - false_accept)["sample_size"]
+        if n <= limit:
+            return dict(design, sample_size=n, allowed_failures=0,
+                        false_accept_risk=float(hypergeom.pmf(0, population, bad, n)))
+        return dict(design, sample_size=None, allowed_failures=None)
     for size in range(1, limit + 1):
         allowed = int(hypergeom.ppf(1 - false_reject, population, good, size))
         miss = float(hypergeom.cdf(allowed, population, bad, size))
@@ -74,6 +86,18 @@ def recipe_plan(population, *, acceptable=0.05, rejectable=0.10, false_reject=0.
             return dict(design, sample_size=size, allowed_failures=allowed, false_accept_risk=miss,
                         false_reject_risk=float(hypergeom.sf(allowed, population, good, size)))
     return dict(design, sample_size=None, allowed_failures=None)
+
+
+def recipe_settings():
+    from os import environ
+
+    good_quality = environ.get("ECODATA_RECIPE_ACCEPTABLE_SHARE")
+    return dict(acceptable=float(good_quality if good_quality is not None else "0.01"),
+                rejectable=float(environ.get("ECODATA_RECIPE_REJECTABLE_SHARE", "0.05")),
+                false_reject=float(environ.get("ECODATA_RECIPE_FALSE_REJECT", "0.05")),
+                false_accept=float(environ.get("ECODATA_RECIPE_FALSE_ACCEPT", "0.05")),
+                budget=int(environ.get("ECODATA_RECIPE_TRIAL_BUDGET", "512")),
+                strict_boundary=good_quality is not None, zero_failures=good_quality is None)
 
 
 def evaluate_recipe(population, unit, test, *, seed=0, **policy):
