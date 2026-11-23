@@ -254,6 +254,26 @@ def cards(result, check):
                               reason=(benefit + "。" if benefit else "") + check["conversion_reason"]))
     for entry in result.get("original_report", []) if result.get("mode")=="selected_operations" else []:
         for report in entry["report"] if isinstance(entry["report"],list) else []:
+            if entry.get("backend") in {"independent_grid_search", "independent_alignment"} and "alignment" in report:
+                alignment = report["alignment"]
+                for grid in alignment.get("candidates", ()):
+                    resolution = f"{grid['latitude_step']:g}° × {grid['longitude_step']:g}°"
+                    items.append(dict(task=entry["task"], title=f"保守重网格 · {resolution}",
+                        family=f"来源 {grid['source_grid']} 网格",
+                        selected=grid["source_grid"] == alignment["selected_source_grid"],
+                        metrics=dict(RMSE=grid["rmse"], MAE=grid["mae"], count=grid["n"]),
+                        methods=[], parameters="", proxy=True, format_line=format_line,
+                        reason="在共同留出日期和相同原生参考格点上比较对齐结果。"))
+                if not alignment.get("candidates"):
+                    items.append(dict(task=entry["task"], title="保守重网格", selected=True, metrics={},
+                        methods=[], parameters="", proxy=False, format_line=format_line,
+                        reason=("按声明的目标网格执行。" if alignment["selection_basis"] == "DECLARED_TARGET_GRID"
+                                else "可比评分证据不足，采用共同覆盖内的原生工作网格。")))
+                if gap := report.get("gap_filling"):
+                    items.append(dict(task=entry["task"], title="备用源逐缺口补位", selected=True, metrics={},
+                        methods=[], parameters="", proxy=False, format_line=format_line,
+                        reason=f"补位 {gap['filled']} 个像元记录，剩余缺测 {gap['unresolved']} 个。"))
+                continue
             if entry.get("backend")=="station_grid":
                 methods=report["methods"]
                 title=recipe_name(methods)

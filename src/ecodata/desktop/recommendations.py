@@ -13,7 +13,8 @@ ENGINEERING = {
     "engineering.port_search": "原版端口变异寻优：工程端口和验证条件满足后运行",
 }
 ALIGNMENT = {
-    "spatial.regrid.conservative": "原版保守重网格：按覆盖面积将单元均值或通量对齐到较粗网格",
+    "spatial.regrid.conservative": "原版保守重网格：按覆盖面积将单元均值或通量对齐到目标网格",
+    "fusion.series_missing_fallback": "保留主源观测，仅在缺测处用同区间的对齐备用源补位",
     "raster_task.spatial.bilinear": "双线性重采样",
     "raster_task.spatial.nearest": "最近邻重采样",
     "temporal.semantic": "原版 SemanticTimeResampler，按时间统计语义重采样",
@@ -44,6 +45,7 @@ ALGORITHM_NAMES = {
     **PREPARATION,
     "spatial.regrid.conservative": "保守重网格",
     "spatial.blend": "加权融合",
+    "fusion.series_missing_fallback": "备用源逐缺口补位",
     "spatial.idw": "反距离权重插值（IDW）",
     "spatial.residual_idw": "残差反距离权重融合",
     "raster_task.spatial.bilinear": "双线性重采样",
@@ -127,7 +129,8 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
         elif task.get("route")=="independent_alignment":
             recipes=[["spatial.regrid.conservative"]]
         elif task.get("route")=="independent_grid_search":
-            recipes=[["spatial.regrid.conservative","spatial.blend"]]
+            recipes=[["spatial.regrid.conservative","spatial.blend"],
+                     ["spatial.regrid.conservative","fusion.series_missing_fallback"]]
         elif original:
             if approved["target_model"]["id"]=="swat_plus":
                 recipes=[["engineering.precipitation_adaptation","engineering.port_binding","engineering.port_search"]] if action=="fusion" else [["engineering.precipitation_adaptation","engineering.port_binding"]]
@@ -237,9 +240,21 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
             continue
         refs = [originals[fid] for fid in task["context"]["fields"] if fid in originals]
         execution = gated.get((task["candidate"], task["operation"]))
-        report = recommendation_review(scan, recommendation, execution, refs, cache)
-        for (index, _, field), item in zip(refs, report):
-            attach(scan, index, field, item, cache)
+        if execution and execution.get("route") == "independent_grid_search":
+            from .independent_alignment import review
+
+            key = ("joint_grid_holdout", task["id"])
+            if key not in cache:
+                try:
+                    cache[key] = review(scan, task["id"], execution)
+                except (EcoDataError, OSError, RuntimeError, ValueError) as error:
+                    cache[key] = dict(status="pending", basis="joint_grid_holdout_unavailable",
+                                      count=0, checks=[], reason=str(error))
+            report = [dict(cache[key], field=fid) for _, fid, _ in refs]
+        else:
+            report = recommendation_review(scan, recommendation, execution, refs, cache)
+            for (index, _, field), item in zip(refs, report):
+                attach(scan, index, field, item, cache)
         recommendation["local_holdout_review"] = report
         recommendation["execution_release"] = assess(scan, recommendation, execution, refs)
         recommendation["execution_fields"] = [(index, field["name"], fid) for index, fid, field in refs]

@@ -117,6 +117,79 @@ def test_mixed_frequency_exports_exact_intervals_or_complete_utc_days(tmp_path):
     assert fallback_evidence.digest_file(path) == original
 
 
+@pytest.mark.parametrize("scenario", ["fallback", "fusion", "declared"])
+def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(tmp_path, scenario):
+    import pandas as pd
+    from ecodata.desktop import catalog_decision, discovery, output_review, recommendations, selected_processing
+    from ecodata.desktop.scan import Scanner
+
+    dates = pd.date_range("2021-01-01", periods=14)
+    hours = pd.date_range(dates[0], periods=14 * 24, freq="h")
+    hours = hours.delete(np.arange(-7, -3) + len(hours))
+    for name, times, step, axis, value, unit, semantic in (
+        ("hourly.nc", hours, "1h", np.arange(1., 5.), 1., "mm/h", "interval_mean"),
+        ("daily.nc", dates, "1D", np.arange(.75, 4.5, .5), 20., "mm", "accumulation"),
+    ):
+        units = "seconds since 1970-01-01"
+        bounds = np.column_stack((times.values, (times + pd.Timedelta(step)).values))
+        attrs = dict(units=unit, physical_variable="precipitation", spatial_semantics="cell_mean",
+                     temporal_semantics=semantic, data_kind="continuous")
+        ds = xr.Dataset(
+            {"rain": (("time", "lat", "lon"), np.full((len(times), len(axis), len(axis)), value), attrs),
+             "time_bounds": (("time", "nv"), bounds)},
+            coords=dict(time=times, lat=axis, lon=axis), attrs=dict(crs="EPSG:4326", time_basis="UTC"),
+        )
+        ds.time.attrs["bounds"] = "time_bounds"
+        ds.time.encoding["units"] = ds.time_bounds.encoding["units"] = units
+        ds.to_netcdf(tmp_path / name, engine="scipy")
+    scan, _ = Scanner().scan(tmp_path)
+    summary, _ = discovery.discover(scan, "data_only")
+    originals, details = catalog_decision.local_fields(scan, summary)
+    fields = [item for item in originals.values() if item[2]["name"] == "rain"]
+    pair, local = discovery.describe_pair(scan, "C1", *fields, "data_only", details)
+    approved = dict(summary, candidates=[pair])
+    if scenario == "declared":
+        approved["task_requirements"] = dict(target_grid=dict(crs="EPSG:4326", latitude_step=.5,
+                                                             longitude_step=.5, extent="intersection"))
+    result, gated = discovery.check(scan, {"C1": local},
+        {"decisions": [{"candidate": "C1", "action": "fusion"}]}, approved)
+    task = gated["C1", "fusion"]
+    assert task["cf_daily"]
+    plan = recommendations.make_request(scan, approved, result, gated, include_samples=False)
+    options = plan["tasks"][0]["allowed_recipes"]
+    method = "spatial.blend" if scenario == "fusion" else "fusion.series_missing_fallback"
+    picked = next(option for option in options if option["steps"][-1] == method)
+    rec = recommendations.validate({"recommendations": [dict(task="C1:fusion", recipe=picked["id"])]}, plan)
+    recommendations.review_holdouts(scan, approved, plan, rec, gated)
+    assert rec[0]["execution_release"]["status"] == "released"
+    assert rec[0]["local_holdout_review"][0]["acceptance_sampling"]["rounds"] == 1
+    selected = dict(task, recipes=[picked["steps"]], runtime_fields=rec[0]["execution_fields"])
+    result = selected_processing.run(scan, [("C1:fusion", selected)],
+                                     tmp_path.parent / f"grid-pair-output-{scenario}", model_id="data_only")
+    group, = result["original_report"]
+    report, = group["report"]
+    if scenario == "declared":
+        assert report["alignment"]["selection_basis"] == "DECLARED_TARGET_GRID"
+    else:
+        assert report["alignment"]["selection_basis"] == "HELDOUT_NATIVE_SOURCE_PROXY"
+        assert len(report["alignment"]["candidates"]) == 2
+    assert report["gap_filling"]["filled"] > 0
+    if scenario == "fusion":
+        assert report["fusion_executed"] or report["gap_filling"]["fusion_status"]
+    else:
+        assert not report["fusion_executed"]
+    raw = next(raw for name, raw in result["files"] if name.endswith(".nc"))
+    with xr.open_dataset(io.BytesIO(raw), engine="scipy") as ds:
+        if not report["fusion_executed"]:
+            np.testing.assert_allclose(ds.precipitation.isel(time=0), 24.)
+        np.testing.assert_allclose(ds.precipitation.isel(time=-1), 20.)
+        assert np.all(ds.source_availability.isel(time=-1) != 3)
+        if scenario == "declared":
+            np.testing.assert_allclose(np.diff(ds.lat), .5)
+    cards = output_review.cards(result, output_review.describe_output(result, None))
+    assert any(card["title"] == "备用源逐缺口补位" for card in cards)
+
+
 def test_precipitation_rejects_duplicate_time_without_replacing_output(tmp_path):
     path = tmp_path / "duplicate.nc"
     xr.Dataset(
