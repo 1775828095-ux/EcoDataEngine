@@ -1115,6 +1115,10 @@ class Window(QMainWindow):
                 recommendations.review_holdouts(full_scan,approved,plan,rows,gated)
                 reply['algorithm_recommendation']=receipt
                 reply['api_receipts']=[*reply.get('api_receipts',[]),*receipt['api_receipts']]
+                final_receipt = recommendations.finalize_recipes(plan, rows, mock=mock, api_key=key, progress=log)
+                if final_receipt:
+                    reply["final_algorithm_recommendation"] = final_receipt
+                    reply["api_receipts"].extend(final_receipt["api_receipts"])
                 reply['batch_count']=len(reply['api_receipts'])
                 (Path(self.task.name)/'algorithm-recommendation.json').write_text(s.dump(dict(plan=plan,receipt=receipt,rows=rows)),encoding='utf8')
             return reply,checked,gated,candidates,rows,full_scan
@@ -1184,8 +1188,12 @@ class Window(QMainWindow):
                 layout.addWidget(QLabel(f"{row['task']} · 对齐与融合评估方案"))
                 check=None
             else:
-                check=QCheckBox(f"{row['task']} · 执行待核验" if advisory else f"{row['task']} · 加入本地寻优")
+                label = ("DeepSeek 最终推荐，可加入本地寻优" if row.get("final_recommendation_origin") == "deepseek" else
+                         "本地验收通过，可加入本地寻优" if row.get("final_verified_recommendation") else
+                         "加入本地寻优" if allowed(row) else "执行待核验")
+                check=QCheckBox(f"{row['task']} · {label}")
                 check.setEnabled(allowed(row))
+                check.setChecked(bool(row.get("final_verified_recommendation") and allowed(row)))
                 layout.addWidget(check)
             if allowed(row) and any(item.get("precipitation_trial") for item in row.get("local_holdout_review", ())):
                 delivery = QPushButton("导出降水累计 NetCDF")
@@ -1199,7 +1207,8 @@ class Window(QMainWindow):
                 gate.setTextFormat(Qt.TextFormat.PlainText)
                 layout.addWidget(gate)
                 if eligible(row) and self.scan and approved_fields(self.scan, row):
-                    button = QPushButton("补充样本或审核全量副本")
+                    button = QPushButton("审核全量扰动副本" if row["execution_release"]["status"] == "failed"
+                                         else "补充样本或审核全量副本")
                     button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_full_fallback(item)))
                     layout.addWidget(button)
                 if row.get("independent_required"):
@@ -1219,7 +1228,8 @@ class Window(QMainWindow):
                     runtime_button = QPushButton("核对运行时依赖清单")
                     runtime_button.clicked.connect(lambda: self.safe(self.review_runtime_dependencies))
                     layout.addWidget(runtime_button)
-            reason=QLabel("推荐理由：" + (row["reason"].strip() or "DeepSeek 未提供理由。"))
+            prefix = "候选说明：" if row.get("execution_release") and not allowed(row) else "推荐理由："
+            reason=QLabel(prefix + (row["reason"].strip() or "DeepSeek 未提供理由。"))
             reason.setTextFormat(Qt.TextFormat.PlainText)
             reason.setWordWrap(True)
             layout.addWidget(reason)
@@ -1364,7 +1374,7 @@ class Window(QMainWindow):
                     invalidate(scan, item, existing_task(item))
             self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="已批准外发范围"))
             archive.with_suffix(".approval.json").write_text(s.dump(dict(
-                digest=digest, fields=entries, trigger="补样覆盖不足", records=count,
+                digest=digest, fields=entries, trigger=fallback.trigger(recommendation), records=count,
                 bytes=size, requests=batches, approved=True, native_geotiff=native_approved)), encoding="utf8")
 
             def transmit(log):
@@ -1432,7 +1442,10 @@ class Window(QMainWindow):
 
             self.work(send_supplement, reviewed)
 
-        self.work(lambda _: fallback.supplement(scan, fields, targets), consider)
+        if recommendation["execution_release"]["status"] == "failed":
+            build_copy()
+        else:
+            self.work(lambda _: fallback.supplement(scan, fields, targets), consider)
 
     def check_deepseek_connection(self):
         from .deepseek_self_check import check
@@ -1492,13 +1505,49 @@ class Window(QMainWindow):
         self.work(run, lambda groups: self.show_progress(f"已导出 {groups} 个累计时间区间 · {destination.name}"))
 
     def review_new_independent_data(self, candidate):
-        from .independent_review import apply, fields, review
+        from .independent_review import apply, apply_many, fields, review, review_pair
 
         scan = self.scan
+        task = self.gated.get(tuple(candidate["task"].split(":", 1)))
         entries = {f"{fid} · {scan['rows'][index]['name']} · {field['name']}": fid
                    for index, fid, field in fields(scan, candidate)}
         if not entries:
             raise ValueError("该候选没有可复验的字段")
+        if task and task.get("route") == "independent_grid_search":
+            paths = []
+            for label in entries:
+                name, _ = QFileDialog.getOpenFileName(self, f"为 {label} 选择未外发的新时段", "", "NetCDF (*.nc *.nc4)")
+                if not name:
+                    return
+                paths.append(name)
+            answer = QMessageBox.question(self, "确认独立观测",
+                "这两份新文件仅用于本地复验。验收通过后，仅发送方案编号和验收统计供 DeepSeek 确认。继续？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            mock, key = self.mock.isChecked(), self.api_key.text().strip()
+            model = dict(id=self.decision_model, name=discovery.MODELS[self.decision_model])
+
+            def validate_pair(log):
+                trial = dict(candidate, local_holdout_review=[])
+                reports = review_pair(scan, trial, task, paths)
+                apply_many(scan, trial, task, reports)
+                plan = dict(target_model=model, tasks=[dict(id=trial["task"], operation=task["action"],
+                            allowed_recipes=trial["local_recipe_options"])])
+                receipt = recommendations.finalize_recipes(plan, [trial], mock=mock, api_key=key, progress=log)
+                return trial, receipt
+
+            def reviewed_pair(result):
+                if self.scan is not scan:
+                    return
+                trial, receipt = result
+                candidate.update(trial)
+                self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="双源独立复验"))
+                self.detail.appendPlainText(s.dump(dict(独立复验=trial["local_holdout_review"],
+                                                        放行=trial["execution_release"], 最终推荐回执=receipt)))
+
+            self.work(validate_pair, reviewed_pair)
+            return
         entry, accepted = QInputDialog.getItem(self, "独立复验", "选择要复验的字段", list(entries), 0, False)
         if not accepted:
             return
@@ -1510,8 +1559,6 @@ class Window(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
             return
-        task = self.gated.get(tuple(candidate["task"].split(":", 1)))
-
         def reviewed(report):
             if self.scan is not scan:
                 return
@@ -1538,7 +1585,13 @@ class Window(QMainWindow):
                          previous_independent_hashes=list(dict.fromkeys([
                              *previous.get("previous_independent_hashes", ()),
                              *(item["independent_sha256"] for item in previous.get("local_holdout_review", ())
-                               if item.get("independent_sha256"))])))
+                               if item.get("independent_sha256"))])),
+                         previous_independent_periods=list(dict.fromkeys([
+                             *(tuple(period) for period in previous.get("previous_independent_periods", ())),
+                             *(tuple(item["independent_period"]) for item in previous.get("local_holdout_review", ())
+                               if item.get("independent_period"))])))
+        candidate.pop("final_verified_recommendation", None)
+        candidate.pop("final_recommendation_origin", None)
         task = self.gated.get(tuple(candidate["task"].split(":", 1)))
         candidate["execution_release"] = assess(self.scan, candidate, task, fields(self.scan, candidate))
         rows = [candidate if row is previous else row for row in self.recommendation_rows]
@@ -1915,9 +1968,15 @@ class Window(QMainWindow):
         self.alg.hide()
         self.execute_button.hide()
         recipes={}
+        verified_alignments={}
         for row in self.selected_recommendations:
             recipes.setdefault(row["task"],[]).append(row["steps"])
+            for report in row.get("local_holdout_review", ()):
+                if report.get("basis") == "joint_recipe_acceptance_passed":
+                    verified_alignments[row["task"]] = report["alignment"]
+                    break
         tasks=[(task_id,dict(self.gated[tuple(task_id.split(":",1))],recipes=steps,
+                             verified_recipe_alignment=verified_alignments.get(task_id),
                              runtime_fields=list(dict.fromkeys(
                                  field for row in self.selected_recommendations if row["task"] == task_id
                                  for field in row.get("execution_fields", ())))))

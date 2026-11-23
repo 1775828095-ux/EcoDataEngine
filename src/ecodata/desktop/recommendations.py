@@ -129,7 +129,7 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
         elif task.get("route")=="independent_alignment":
             recipes=[["spatial.regrid.conservative"]]
         elif task.get("route")=="independent_grid_search":
-            recipes=[["spatial.regrid.conservative","spatial.blend"],
+            recipes=[["spatial.regrid.conservative","fusion.series_missing_fallback","spatial.blend"],
                      ["spatial.regrid.conservative","fusion.series_missing_fallback"]]
         elif original:
             if approved["target_model"]["id"]=="swat_plus":
@@ -243,11 +243,11 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
         if execution and execution.get("route") == "independent_grid_search":
             from .independent_alignment import review
 
-            key = ("joint_grid_holdout", task["id"])
+            key = ("joint_grid_holdout", task["id"], tuple(recommendation["steps"]))
             if key not in cache:
                 try:
-                    cache[key] = review(scan, task["id"], execution)
-                except (EcoDataError, OSError, RuntimeError, ValueError) as error:
+                    cache[key] = review(scan, task["id"], execution, recommendation["steps"])
+                except (EcoDataError, OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
                     cache[key] = dict(status="pending", basis="joint_grid_holdout_unavailable",
                                       count=0, checks=[], reason=str(error))
             report = [dict(cache[key], field=fid) for _, fid, _ in refs]
@@ -260,6 +260,47 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
         recommendation["execution_fields"] = [(index, field["name"], fid) for index, fid, field in refs]
         recommendation["local_recipe_options"] = [dict(option) for option in task["allowed_recipes"]]
     assert_current(scan)
+
+
+def finalize_recipes(plan, rows, *, mock, api_key, progress):
+    """Ask DeepSeek to confirm only full recipes that passed local acceptance."""
+    passed = {}
+    for row in rows:
+        release = row.get("execution_release", {})
+        reports = row.get("local_holdout_review", ())
+        if release.get("status") == "released" and any(
+                report.get("basis") == "joint_recipe_acceptance_passed" for report in reports):
+            passed[(row["task"], row["id"])] = row
+    if not passed:
+        return None
+    tasks = []
+    for task in plan["tasks"]:
+        recipes = []
+        for option in task["allowed_recipes"]:
+            row = passed.get((task["id"], option["id"]))
+            if row:
+                audit = row["local_holdout_review"][0]["acceptance_sampling"]
+                text = (f"{option['description']}。留出验收 {audit['inspected']} 组，"
+                        f"失败 {audit['failed']} 组，允许 {audit['allowed_failures']} 组。")
+                recipes.append(dict(option, description=text))
+        if recipes:
+            tasks.append(dict(id=task["id"], candidate=task["id"], operation=task["operation"], context={},
+                              allowed_recipes=recipes, engineering_note="仅从通过本地验收的完整方案中确认"))
+    reviewed = dict(stage="recommendation", target_model=plan["target_model"], tasks=tasks,
+                    final_verified_recommendation=True)
+    selected, receipt = recommend_plan(reviewed, [], mock=mock, api_key=api_key, progress=progress)
+    for row in passed.values():
+        row.pop("final_verified_recommendation", None)
+        row.pop("final_recommendation_origin", None)
+    for choice in selected:
+        row = passed[(choice["task"], choice["id"])]
+        row["final_verified_recommendation"] = True
+        row["final_recommendation_origin"] = choice["recommendation_origin"]
+        if receipt["status"] != "PLATFORM_FALLBACK":
+            row["reason"] = choice["reason"]
+            if "explanation" in row:
+                row["explanation"]["reason"] = choice["reason"]
+    return receipt
 
 
 def from_decisions(summary,decisions):
@@ -324,8 +365,17 @@ def explanation(task,reason):
 
 def explanation_text(row):
     detail=row.get('explanation') or {}
+    report = next((item["acceptance_sampling"] for item in row.get("local_holdout_review", ())
+                   if item.get("acceptance_sampling", {}).get("unit") == "withheld_utc_day"), None)
+    acceptance = []
+    if report:
+        planned = report["sample_size"]
+        acceptance = [f"留出验收总体 {report['population']} 组 · 计划试跑 {planned} 组 · 允许 {report['allowed_failures']} 组失败"
+                      if planned else f"留出验收总体 {report['population']} 组 · 预算内没有满足误判风险的抽检设计",
+                      f"实际试跑 {report['inspected']} 组 · 不合格 {report['failed']} 组 · 缺评分证据 {report.get('unscored', 0)} 组"]
     return '\n'.join(['数据依据',*(detail.get('facts') or ['尚无结构化数据依据，不能由推荐文字推断已核实。']),
         '', '推荐理由',row.get('reason') or '未提供', '', '平台检查与前提',detail.get('checks') or '等待契约核验',
+        *acceptance,
         '', '仍需核实',*(detail.get('unknowns') or ['未列出的信息不代表全部已确认；以执行检查记录为准。']),
         '',detail.get('boundary') or '推荐不代表精度提升，必须经过真实评价。'])
 
@@ -340,14 +390,21 @@ def validate(raw, summary):
     catalogue = summary.get("shared_algorithm_catalogue", {})
     recommendations=[]
     seen=set()
+    final = summary.get("final_verified_recommendation")
+    confirmed = set()
     for entry in entries:
         if not isinstance(entry,dict):
             continue
         key=(entry.get("task"),entry.get("recipe"))
         if not all(isinstance(k,str) for k in key) or key in seen:
             continue
+        if final and (key not in options or key[0] in confirmed):
+            continue
         if key in options:
+            if tasks[key[0]].get("route") == "independent_grid_search" and key[0] in confirmed:
+                continue
             seen.add(key)
+            confirmed.add(key[0])
             task=tasks[key[0]]
             quantities={f.get('physical_family') for f in task['context'].get('pair_details',[])}-{None,'UNKNOWN'}
             scope=dict(variable=next(iter(quantities))) if len(quantities)==1 else {}

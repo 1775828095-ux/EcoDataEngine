@@ -2,7 +2,28 @@
 import hashlib
 import io
 
-from .scan import assert_current, read_selected
+from .scan import assert_current, local_member, read_selected
+
+
+def check_cf_headers(scan, fields):
+    import numpy as np
+    import xarray as xr
+    from .grid_preparation import daily_contract, grid_candidates
+
+    periods, grids = [], []
+    for index, field in fields:
+        with local_member(scan["rows"][index]) as path, xr.open_dataset(path, cache=False) as dataset:
+            data, bounds, _ = daily_contract(dataset, field)
+            if data.sizes["time"] < 2 or bounds.shape != (data.sizes["time"], 2):
+                raise ValueError("需要足够的降水时间区间")
+            ends = bounds.isel(time=[0, -1]).values
+            if not np.issubdtype(ends.dtype, np.datetime64) or np.isnat(ends).any():
+                raise ValueError("降水时间边界没有有效日期")
+            periods.append((ends[0, 0], ends[-1, 1]))
+            grids.append(xr.Dataset(coords={axis: data[axis].load() for axis in ("lat", "lon")}))
+    if max(begin for begin, _ in periods) >= min(end for _, end in periods):
+        raise ValueError("两份降水资料没有共同 UTC 日期范围")
+    grid_candidates(grids, "conservative")
 
 
 def prepare(scan, task_id, task, folder):
@@ -12,11 +33,25 @@ def prepare(scan, task_id, task, folder):
     from ecodata.models.engineering.precipitation_products import inspect_product
     from ecodata.recognition import recognise_file
     from .grid_preparation import daily_precipitation
+    from .fallback_evidence import digest_file
+    import xarray as xr
 
     sources, audits, adapted, conversion = [], [], [], []
     hashes, reserved_from = set(), []
     for index, field in task["fields"]:
         row = scan["rows"][index]
+        if task.get("cf_daily"):
+            with local_member(row) as path, xr.open_dataset(path, cache=False) as ds:
+                source_times = ds.time.values
+                reserved_from.append(pd.Timestamp(source_times[-max(1, len(source_times) // 5)]).ceil("D").to_datetime64())
+                adapted.append(dict(product=f"source-{len(adapted) + 1}", dataset=daily_precipitation(ds, field)))
+                digest = digest_file(path)
+            if digest in hashes:
+                raise ValueError(f"{task_id}：同一来源副本不能用于双源补缺或融合")
+            hashes.add(digest)
+            conversion.append(dict(source=row["name"], field=field, source_sha256=digest,
+                                   operation="UTC_interval_daily_aggregation"))
+            continue
         raw = read_selected(row, limit=32*1024**2)
         ds, _ = recognise_file(row["name"], raw, record_read_source=False)
         digest = hashlib.sha256(raw).hexdigest()
@@ -28,11 +63,6 @@ def prepare(scan, task_id, task, folder):
         source_times = ds.time.values
         if len(source_times) > 1:
             reserved_from.append(pd.Timestamp(source_times[-max(1, len(source_times) // 5)]).ceil("D").to_datetime64())
-        if task.get("cf_daily"):
-            adapted.append(dict(product=f"source-{len(adapted) + 1}", dataset=daily_precipitation(ds, field)))
-            conversion.append(dict(source=row["name"], field=field, source_sha256=digest,
-                                   operation="UTC_interval_daily_aggregation"))
-            continue
         product = inspect_product(ds)
         if not product or not any(f["field"]==field for f in product["fields"]):
             raise ValueError(f"{task_id}：未能核验降水产品")
@@ -52,7 +82,7 @@ def prepare(scan, task_id, task, folder):
         raise ValueError(f"{task_id}：原版日累计转换未生成两份产品")
     grids = [entry["dataset"] for entry in adapted]
     from pyproj import CRS
-    from .grid_preparation import choose_grid, remap
+    from .grid_preparation import choose_grid, grid_candidates, remap
 
     start = max(ds.time.values[0] for ds in grids)
     end = min(ds.time.values[-1] for ds in grids)
@@ -84,6 +114,12 @@ def prepare(scan, task_id, task, folder):
         from ecodata.spatial.regridding import resolve_target_grid
         target = resolve_target_grid(grids, target_spec)
         alignment = dict(selection_basis="DECLARED_TARGET_GRID", target_grid=target_spec)
+    elif reviewed := task.get("verified_recipe_alignment"):
+        candidates = dict(grid_candidates(grids, "conservative"))
+        target = candidates.get(reviewed["selected_source_grid"] - 1)
+        if target is None:
+            raise ValueError("已验收的对齐网格无法在原始数据重现")
+        alignment = reviewed
     else:
         _, target, alignment = choose_grid(grids, primary, "precipitation", "conservative",
                                           comparison_times=reserved[:split])
@@ -91,36 +127,135 @@ def prepare(scan, task_id, task, folder):
     return adapted, conversion, grids, aligned, target, alignment, primary, common, reserved[split:]
 
 
-def review(scan, task_id, task):
+def indexed_holdout(scan, task, stack, *, independent=False):
+    """Establish dates from coordinates and open only selected observation slices."""
+    import numpy as np
+    import pandas as pd
+    import xarray as xr
+    from ecodata.spatial.regridding import normalize_grid_axes, resolve_target_grid
+    from .grid_preparation import choose_grid, daily_precipitation, remap
+    sources = []
+    for index, field in task["fields"]:
+        path = stack.enter_context(local_member(scan["rows"][index]))
+        ds = stack.enter_context(xr.open_dataset(path, cache=False))
+        ds, _ = normalize_grid_axes(ds)
+        if any(ds.sizes[axis] < 2 for axis in ("lat", "lon")):
+            raise ValueError("保守对齐需要至少两个网格坐标")
+        time = ds.time.values
+        bounds = ds[ds.time.attrs.get("bounds", "time_bounds")].transpose("time", ...).values
+        if (len(time) < 2 or bounds.shape != (len(time), 2)
+                or not np.issubdtype(bounds.dtype, np.datetime64) or not np.issubdtype(time.dtype, np.datetime64)
+                or np.isnat(bounds).any() or np.isnat(time).any()
+                or (np.diff(time) <= np.timedelta64(0, "s")).any()
+                or (time < bounds[:, 0]).any() or (time > bounds[:, 1]).any()
+                or (bounds[:, 1] <= bounds[:, 0]).any() or (bounds[1:, 0] < bounds[:-1, 1]).any()):
+            raise ValueError("回检需要两份有序、无重叠的日期区间")
+        dates = bounds[:, 0].astype("datetime64[D]")
+        first_reserved = (dates[0] if independent else
+                          pd.Timestamp(time[-max(1, len(time) // 5)]).ceil("D").to_datetime64())
+        sources.append((ds, field, dates, first_reserved))
+    day = np.timedelta64(1, "D")
+    start = max(source[3] for source in sources).astype("datetime64[D]")
+    end = min(source[2][-1] for source in sources)
+    reserved = np.arange(start, end + day, day)
+    split = 0 if task.get("target_grid") else len(reserved) // 2
+    inputs = [ds for ds, _, _, _ in sources]
+    primary = max(range(2), key=lambda i: float(np.diff(inputs[i].lat)[0] * np.diff(inputs[i].lon)[0]))
+
+    def read_day(date):
+        daily = []
+        for ds, field, dates, _ in sources:
+            low, high = np.searchsorted(dates, [date, date + day])
+            if low < high:
+                converted = daily_precipitation(ds.isel(time=slice(low, high)), field)
+            else:
+                shape = (1, ds.sizes["lat"], ds.sizes["lon"])
+                field_attrs = dict(units="mm", physical_variable="precipitation", data_kind="continuous",
+                                   temporal_semantics="accumulation", spatial_semantics="cell_mean")
+                converted = xr.Dataset(
+                    {"precipitation": (("time", "lat", "lon"), np.full(shape, np.nan), field_attrs)},
+                    coords=dict(time=[date], lat=ds.lat, lon=ds.lon), attrs=dict(crs=ds.attrs["crs"]))
+            daily.append(converted)
+        return daily
+
+    fixed = task.get("target_grid")
+    if fixed:
+        target = resolve_target_grid(inputs, fixed)
+        alignment = dict(selection_basis="DECLARED_TARGET_GRID", target_grid=fixed)
+    else:
+        comparison = (reserved[np.linspace(0, split - 1, min(4, split), dtype=int)] if split else [])
+        calibration = [xr.concat(datasets, dim="time") for datasets in zip(*(read_day(date) for date in comparison))]
+        _, target, alignment = choose_grid(calibration or inputs, primary, "precipitation", "conservative",
+                                          comparison_times=comparison)
+
+    def read_aligned(date):
+        return [remap(ds, target, "precipitation", "conservative") for ds in read_day(date)]
+
+    return reserved[split:], primary, alignment, read_aligned
+
+
+def review(scan, task_id, task, steps=(), *, independent=False):
+    from contextlib import ExitStack
     from pathlib import Path
     from tempfile import TemporaryDirectory
-    import numpy as np
-    from .grid_preparation import fill
-    from .sampling_risk import evaluate, settings
 
-    with TemporaryDirectory() as folder:
-        _, _, _, aligned, _, alignment, primary, _, reserved = prepare(
-            scan, task_id, task, Path(folder) / "adapted")
-    if not len(reserved):
-        return dict(status="pending", basis="no_disjoint_partition", count=0)
+    with ExitStack() as stack:
+        if task.get("cf_daily"):
+            reserved, primary, alignment, read_aligned = indexed_holdout(scan, task, stack, independent=independent)
+        else:
+            folder = stack.enter_context(TemporaryDirectory())
+            _, _, _, aligned, _, alignment, primary, _, reserved = prepare(
+                scan, task_id, task, Path(folder) / "adapted")
+
+            def read_aligned(date):
+                return [ds.sel(time=[date]) for ds in aligned]
+        if not len(reserved):
+            return dict(status="pending", basis="recipe_coverage_budget_insufficient", count=0, checks=[])
+        return review_recipe(reserved, read_aligned, primary, alignment, steps)
+
+
+def review_recipe(reserved, read_aligned, primary, alignment, steps):
+    import numpy as np
+    from os import environ
+    from .grid_preparation import trial_recipe
+    from .sampling_risk import evaluate_recipe
+
     count = filled = unresolved = 0
+    scores = []
     def check_day(index):
         nonlocal count, filled, unresolved
         date = reserved[index]
-        output, evidence = fill([ds.sel(time=[date]) for ds in aligned], primary, "precipitation")
+        output, evidence, metrics, failure = trial_recipe(read_aligned(date), primary, steps)
         count += int(np.isfinite(output.precipitation).sum())
         filled += evidence["filled"]
         unresolved += evidence["unresolved"]
-        if evidence["unresolved"]:
-            return dict(unit=str(date), rule="both_sources_missing_on_holdout")
+        if metrics:
+            scores.append(dict(day=str(date), **metrics))
+        if failure:
+            return dict(unit=str(date), rule=failure, unscored=failure == "insufficient_score_support")
         return None
 
-    report = evaluate(len(reserved), "withheld_utc_day", check_day, **settings())
-    return dict(status=report["status"],
-                basis="joint_aligned_gap_recheck" if not unresolved else "both_sources_missing_on_holdout",
-                checks=["aligned_two_source_holdout", "valid_primary_values_preserved"], count=count,
+    report = evaluate_recipe(len(reserved), "withheld_utc_day", check_day,
+        acceptable=float(environ.get("ECODATA_RECIPE_ACCEPTABLE_SHARE", "0.05")),
+        rejectable=float(environ.get("ECODATA_RECIPE_REJECTABLE_SHARE", "0.10")),
+        false_reject=float(environ.get("ECODATA_RECIPE_FALSE_REJECT", "0.05")),
+        false_accept=float(environ.get("ECODATA_RECIPE_FALSE_ACCEPT", "0.05")),
+        budget=int(environ.get("ECODATA_RECIPE_TRIAL_BUDGET", "512")))
+    failures = {row["rule"] for row in report["failures"]}
+    if report["status"] == "checked" and "spatial.blend" in steps and not scores:
+        basis = "recipe_coverage_budget_insufficient"
+    elif report["status"] == "checked":
+        basis = "joint_recipe_acceptance_passed"
+    elif report["status"] == "pending":
+        basis = "recipe_coverage_budget_insufficient"
+    elif failures and failures <= {"recipe_score_below_single_source", "both_sources_missing_on_holdout"}:
+        basis = "recipe_numeric_rejected"
+    else:
+        basis = "joint_recipe_acceptance_rejected"
+    return dict(status="pending" if basis == "recipe_coverage_budget_insufficient" else report["status"],
+                basis=basis, checks=["fixed_alignment_gap_fusion_trial"], count=count,
                 sampled_days=report["inspected"], gap_filling=dict(filled=filled, unresolved=unresolved),
-                acceptance_sampling=report, alignment=alignment)
+                acceptance_sampling=report, sampled_scores=scores, fusion_score_groups=len(scores), alignment=alignment)
 
 
 def run(scan, tasks, folder, progress=None, *, model_id=None):
@@ -181,8 +316,10 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
                 physical_variable="precipitation",semantic_type="continuous",temporal_semantics="accumulation",
                 nonnegative=True,processing_goal="spatial_fusion",initial_algorithms=task["seeds"])
             from ecodata.algorithms.platform_search import with_recommendations
-            request=with_recommendations(request,[dict(id=str(i),task=task_id,steps=recipe,scope=dict(variable='precipitation'))
-                for i,recipe in enumerate(task['recipes'])])
+            request=with_recommendations(request,[dict(id=str(i),task=task_id,
+                steps=[op for op in recipe if op != "fusion.series_missing_fallback"],
+                scope=dict(variable='precipitation'))
+                for i,recipe in enumerate(task['recipes']) if "spatial.blend" in recipe])
             request['completed_preparation']=[] if target_spec and not has_gaps else [
                 dict(operation='spatial.regrid.conservative', status='PASS', record=alignment)]
             if target_spec and not has_gaps:request['target_grid']=target_spec

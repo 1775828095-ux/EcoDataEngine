@@ -1,5 +1,5 @@
 """Preplanned finite-population acceptance sampling on reserved units."""
-from math import ceil
+from math import ceil, floor
 from random import Random
 
 
@@ -47,6 +47,55 @@ def evaluate(population, unit, test, *, seed=0, defect_share=0.05, detection=0.9
     failures = [item for item in result if item]
     return dict(design, unit=unit, inspected=len(result), failed=len(failures),
                 status="failed" if failures else "checked", failures=failures[:20])
+
+
+def recipe_plan(population, *, acceptable=0.05, rejectable=0.10, false_reject=0.05,
+                false_accept=0.05, budget=512):
+    """Find the smallest finite-population plan satisfying both risk bounds."""
+    from scipy.stats import hypergeom
+
+    if (population < 1 or budget < 1 or not 0 <= acceptable <= rejectable <= 1
+            or not 0 < false_reject < 1 or not 0 < false_accept < 1
+            or false_reject + false_accept >= 1):
+        raise ValueError("验收总体或风险设置无效")
+    from fractions import Fraction
+    good = floor(population * Fraction(str(acceptable)))
+    bad = max(good + 1, ceil(population * Fraction(str(rejectable))))
+    if bad > population:
+        raise ValueError("可接受质量与应驳回质量没有可区分的总体")
+    limit = min(population, budget)
+    design = dict(population=population, acceptable_share=acceptable, rejectable_share=rejectable,
+                  good_failures=good, bad_failures=bad, false_reject_limit=false_reject,
+                  false_accept_limit=false_accept, budget=limit, rounds=1)
+    for size in range(1, limit + 1):
+        allowed = int(hypergeom.ppf(1 - false_reject, population, good, size))
+        miss = float(hypergeom.cdf(allowed, population, bad, size))
+        if miss <= false_accept:
+            return dict(design, sample_size=size, allowed_failures=allowed, false_accept_risk=miss,
+                        false_reject_risk=float(hypergeom.sf(allowed, population, good, size)))
+    return dict(design, sample_size=None, allowed_failures=None)
+
+
+def evaluate_recipe(population, unit, test, *, seed=0, **policy):
+    design = recipe_plan(population, **policy)
+    size, allowed = design["sample_size"], design["allowed_failures"]
+    if size is None:
+        return dict(design, status="pending", unit=unit, inspected=0, failed=0, failures=[], unscored=0)
+    failures = []
+    unscored = []
+    def result(status, inspected):
+        return dict(design, status=status, unit=unit, inspected=inspected,
+                    failed=len(failures), failures=failures[:20], unscored=len(unscored),
+                    unscored_units=unscored[:20])
+    for inspected, index in enumerate(Random(seed).sample(range(population), size), 1):
+        if failure := test(index):
+            if failure.get("unscored"):
+                unscored.append(failure)
+                continue
+            failures.append(failure)
+            if len(failures) > allowed:
+                return result("failed", inspected)
+    return result("pending" if unscored else "checked", size)
 
 
 def review_field(row, field, *, basis=None, partition=None, defect_share=0.05, detection=0.95):

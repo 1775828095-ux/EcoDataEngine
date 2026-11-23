@@ -53,6 +53,9 @@ def classification_fields(scan, approved):
 
 def eligible(recommendation):
     release = recommendation.get("execution_release", {})
+    if release.get("status") == "failed":
+        return bool(release.get("blockers")) and all(
+            row.get("field") and row.get("reason") == "recipe_numeric_rejected" for row in release["blockers"])
     if release.get("status") != "pending":
         return False
     coverage_reasons = {"insufficient_sample_coverage", "no_disjoint_partition",
@@ -60,6 +63,11 @@ def eligible(recommendation):
                         "calendar_months", "spatial_blocks", "row_blocks", "time_windows"}
     return bool(release.get("blockers")) and all(
         row.get("field") and row.get("reason") in coverage_reasons for row in release["blockers"])
+
+
+def trigger(recommendation):
+    return ("留出试跑失败组超过验收上限" if recommendation["execution_release"]["status"] == "failed"
+            else "补样覆盖不足")
 
 
 def metadata(row, field):

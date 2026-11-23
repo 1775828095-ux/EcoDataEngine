@@ -163,3 +163,22 @@ def test_formal_acceptance_checks_the_reserved_worksheet(tmp_path):
     scan = {"rows": [source(path, "Excel", [field])]}
     result = sampling_risk.attach(scan, 0, field, report, {})["acceptance_sampling"]
     assert (result["unit"], result["status"]) == ("withheld_worksheet", "failed")
+def test_recipe_acceptance_finds_smallest_design_and_stops_only_on_excess_failures():
+    from scipy.stats import hypergeom
+    from ecodata.desktop.sampling_risk import evaluate_recipe, recipe_plan
+
+    design = recipe_plan(10_000)
+    n, c = design["sample_size"], design["allowed_failures"]
+    assert n > c > 0
+    assert hypergeom.sf(c, 10_000, 500, n) <= .05
+    assert hypergeom.cdf(c, 10_000, 1000, n) <= .05
+    for size in range(1, n):
+        threshold = hypergeom.ppf(.95, 10_000, 500, size)
+        assert hypergeom.cdf(threshold, 10_000, 1000, size) > .05
+    rejected = evaluate_recipe(10_000, "day", lambda index: dict(unit=index, rule="low_score"))
+    assert rejected["status"] == "failed" and rejected["inspected"] == c + 1
+    verified = evaluate_recipe(10_000, "day", lambda _: None)
+    assert verified["status"] == "checked" and verified["inspected"] == n
+    pending = evaluate_recipe(10_000, "day", lambda _: {"unscored": True})
+    assert pending["status"] == "pending" and pending["failed"] == 0 and pending["inspected"] == n
+    assert recipe_plan(10_000, acceptable=.05, rejectable=.05, budget=512)["sample_size"] is None

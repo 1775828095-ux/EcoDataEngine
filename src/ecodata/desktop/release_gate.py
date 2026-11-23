@@ -19,6 +19,11 @@ def assess(scan, recommendation, task, fields):
             status, reason = "pending", "new_independent_evidence_required"
         elif status == "failed":
             pass
+        elif task and task.get("route") == "independent_grid_search":
+            if reason != "joint_recipe_acceptance_passed":
+                status = "pending"
+                if review.get("independent"):
+                    reason = "paired_independent_recipe_required"
         elif source["format"] in {"CSV", "TSV", "Excel"} and not field.get("unit"):
             status, reason = "pending", "selected_table_unit_missing"
         elif source["format"] == "GeoTIFF" and any(step.startswith(("spatial.", "raster_task.spatial")) for step in steps):
@@ -120,6 +125,9 @@ def explanation(release):
         "selected_table_unit_missing": "表格数值列的单位尚未确认",
         "new_independent_evidence_required": "全量发送后需要未发送的独立数据复验",
         "formal_acceptance_sample_failed": "正式抽检发现不合格的留出单位",
+        "recipe_coverage_budget_insufficient": "留出数据或读取预算不足以完成整套方案评分",
+        "recipe_numeric_rejected": "整套方案的留出试跑失败次数超过允许值",
+        "paired_independent_recipe_required": "需提供两份未外发的独立数据复验整套方案",
     }
     reasons = [labels.get(item["reason"], "请补充字段定义、工程证据或留出回检")
                for item in release.get("blockers", ())]

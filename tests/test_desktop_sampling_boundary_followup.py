@@ -118,7 +118,7 @@ def test_mixed_frequency_exports_exact_intervals_or_complete_utc_days(tmp_path):
 
 
 @pytest.mark.parametrize("scenario", ["fallback", "fusion", "declared"])
-def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(tmp_path, scenario):
+def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(tmp_path, scenario, monkeypatch):
     import pandas as pd
     from ecodata.desktop import catalog_decision, discovery, output_review, recommendations, selected_processing
     from ecodata.desktop.scan import Scanner
@@ -151,8 +151,10 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
     if scenario == "declared":
         approved["task_requirements"] = dict(target_grid=dict(crs="EPSG:4326", latitude_step=.5,
                                                              longitude_step=.5, extent="intersection"))
-    result, gated = discovery.check(scan, {"C1": local},
-        {"decisions": [{"candidate": "C1", "action": "fusion"}]}, approved)
+    with monkeypatch.context() as patch:
+        patch.setattr("ecodata.desktop.scan.read_selected", lambda *_: pytest.fail("CF discovery read an entire source"))
+        result, gated = discovery.check(scan, {"C1": local},
+            {"decisions": [{"candidate": "C1", "action": "fusion"}]}, approved)
     task = gated["C1", "fusion"]
     assert task["cf_daily"]
     plan = recommendations.make_request(scan, approved, result, gated, include_samples=False)
@@ -161,6 +163,11 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
     picked = next(option for option in options if option["steps"][-1] == method)
     rec = recommendations.validate({"recommendations": [dict(task="C1:fusion", recipe=picked["id"])]}, plan)
     recommendations.review_holdouts(scan, approved, plan, rec, gated)
+    if scenario == "fusion":
+        # This short record offers no independently scoreable fusion window.
+        assert rec[0]["execution_release"]["status"] == "pending"
+        assert rec[0]["local_holdout_review"][0]["fusion_score_groups"] == 0
+        return
     assert rec[0]["execution_release"]["status"] == "released"
     assert rec[0]["local_holdout_review"][0]["acceptance_sampling"]["rounds"] == 1
     selected = dict(task, recipes=[picked["steps"]], runtime_fields=rec[0]["execution_fields"])
@@ -188,6 +195,46 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
             np.testing.assert_allclose(np.diff(ds.lat), .5)
     cards = output_review.cards(result, output_review.describe_output(result, None))
     assert any(card["title"] == "备用源逐缺口补位" for card in cards)
+    if scenario == "fallback":
+        from ecodata.desktop.independent_review import fields, review_pair
+
+        independent = tmp_path.parent / "independent-pair"
+        independent.mkdir()
+        paths = []
+        for index, _, _ in fields(scan, rec[0]):
+            source = tmp_path / scan["rows"][index]["name"]
+            path = independent / source.name
+            with xr.open_dataset(source) as ds:
+                ds = ds.assign_coords(time=ds.time + np.timedelta64(31, "D"))
+                ds["time_bounds"] = ds.time_bounds + np.timedelta64(31, "D")
+                ds.time.attrs["bounds"] = "time_bounds"
+                ds.time.encoding["units"] = ds.time_bounds.encoding["units"] = "seconds since 1970-01-01"
+                ds.to_netcdf(path, engine="scipy")
+            paths.append(path)
+        reports = review_pair(scan, rec[0], task, paths)
+        assert all(report["status"] == "checked" and report["independent"] for report in reports)
+        with pytest.raises(ValueError, match="时段与原数据重叠"):
+            review_pair(scan, rec[0], task, [tmp_path / paths[0].name, paths[1]])
+
+
+def test_fixed_grid_recipe_scores_candidate_and_source_on_same_support():
+    from ecodata.desktop.grid_preparation import trial_recipe
+
+    def dataset(amount):
+        return xr.Dataset({"precipitation": (("time", "lat", "lon"), np.full((1, 6, 6), amount),
+                                              dict(units="mm", spatial_semantics="cell_mean",
+                                                   physical_variable="precipitation", temporal_semantics="accumulation",
+                                                   data_kind="continuous"))},
+                          coords=dict(time=[np.datetime64("2026-01-01")], lat=np.arange(6.), lon=np.arange(6.)),
+                          attrs=dict(crs="EPSG:4326"))
+
+    steps = ["spatial.regrid.conservative", "fusion.series_missing_fallback", "spatial.blend"]
+    _, _, matched, failure = trial_recipe([dataset(12.), dataset(12.)], 0, steps)
+    assert failure is None and matched["count"] > 0
+    assert matched["candidate"]["rmse"] == matched["baseline"]["rmse"]
+    _, _, biased, failure = trial_recipe([dataset(12.), dataset(30.)], 0, steps)
+    assert failure == "recipe_score_below_single_source"
+    assert biased["candidate"]["mae"] > biased["baseline"]["mae"]
 
 
 def test_precipitation_rejects_duplicate_time_without_replacing_output(tmp_path):

@@ -39,6 +39,10 @@ COMPONENTS = {
 }
 
 
+def blend_fields(left, right, weight):
+    return weight * left + (1 - weight) * right
+
+
 def applies(parsed, request):
     if request.get('task') not in {'spatial', 'multisource'} or request.get('adapter'):
         return False
@@ -732,7 +736,7 @@ class SpatialSearch:
                     elif op=='spatial.blend':
                         a=inputs['left'].value;b=inputs['right'].value;w=p['weight']
                         if not np.isfinite(w) or not 0<=w<=1:raise ValueError('Convex blend weight must be in [0,1]')
-                        result=w*a+(1-w)*b
+                        result=blend_fields(a,b,w)
                     else:
                         a=inputs['field'].value; station=a[:,nq:]
                         if op=='spatial.affine':

@@ -11,9 +11,8 @@ from ecodata.evaluation.metrics import fidelity_metrics
 from ecodata.spatial.regridding import GridRegridder, RegridConfig, contained_cell_grid
 
 
-def daily_precipitation(dataset, field):
-    """Integrate only complete UTC days; expose incomplete support as missing."""
-    import pandas as pd
+def daily_contract(dataset, field):
+    """Check the declared precipitation contract without reading observations."""
     from pyproj import CRS
     from ecodata.engines.units import UnitEngine
     from ecodata.spatial.regridding import normalize_grid_axes
@@ -33,7 +32,28 @@ def daily_precipitation(dataset, field):
     bounds = dataset.get(bounds_name)
     if bounds is None or "time" not in bounds.dims or bounds.ndim != 2:
         raise ValueError("需要 CF 时间区间")
-    edges = bounds.transpose("time", ...).values
+    bounds = bounds.transpose("time", ...)
+    engine = UnitEngine()
+    semantic = data.attrs.get("temporal_semantics")
+    if semantic in {"accumulation", "interval_total"}:
+        mode = "amount"
+        engine.affine(data.attrs.get("units"), "mm")
+    elif semantic in {"mean", "interval_mean", "mean_rate"} or "time: mean" in data.attrs.get("cell_methods", ""):
+        mode = "rate"
+        engine.affine(data.attrs.get("units"), "mm/s")
+    else:
+        raise ValueError("需要已声明的区间平均降水率或区间累计量")
+    return data, bounds, mode
+
+
+def daily_precipitation(dataset, field):
+    """Integrate only complete UTC days; expose incomplete support as missing."""
+    import pandas as pd
+    from ecodata.engines.units import UnitEngine
+
+    data, bounds, mode = daily_contract(dataset, field)
+    time = data.time
+    edges = bounds.values
     if edges.shape != (time.size, 2) or not np.issubdtype(edges.dtype, np.datetime64):
         raise ValueError("时间区间须有有效日期")
     begin, end = edges[:, 0], edges[:, 1]
@@ -48,14 +68,11 @@ def daily_precipitation(dataset, field):
     if (end > dates + day).any():
         raise ValueError("降水区间跨 UTC 日，缺少日内分配依据")
     engine = UnitEngine()
-    semantic = data.attrs.get("temporal_semantics")
-    if semantic in {"accumulation", "interval_total"}:
+    if mode == "amount":
         amount = engine.convert(data, "mm")
-    elif semantic in {"mean", "interval_mean", "mean_rate"} or "time: mean" in data.attrs.get("cell_methods", ""):
+    else:
         seconds = (end - begin) / np.timedelta64(1, "s")
         amount = engine.integrate_rate(data, seconds, "mm")
-    else:
-        raise ValueError("需要已声明的区间平均降水率或区间累计量")
     if bool((amount < 0).any()):
         raise ValueError("源降水包含负值")
     labels = pd.date_range(dates[0], dates[-1], freq="D")
@@ -176,3 +193,48 @@ def fill(aligned, primary, variable):
     dataset.source_availability.attrs.update(flag_values=[0, 1, 2, 3],
                                              flag_meanings="missing source_1 source_2 both_original_sources")
     return dataset, dict(output.report, unresolved=int((availability == 0).sum()), fused=False)
+
+
+def trial_recipe(aligned, primary, steps, variable="precipitation"):
+    """Run the frozen recipe and score a fixed reduced-grid reconstruction proxy."""
+    from ecodata.algorithms.spatial_fusion_task import blend_fields
+
+    output, evidence = fill(aligned, primary, variable)
+    if evidence["unresolved"]:
+        return output, evidence, None, "both_sources_missing_on_holdout"
+    if "spatial.blend" not in steps:
+        return output, evidence, None, None
+    # The original spatial search seeds its blend with equal weights.
+    left, right = (ds[variable] for ds in aligned)
+    paired = np.isfinite(left) & np.isfinite(right)
+    if not bool(paired.any()):
+        # Covered gaps can be filled even when this date provides no fusion reference.
+        return output, evidence, None, None
+    combined = blend_fields(left, right, .5)
+    output[variable] = combined.where(paired, output[variable])
+    output[variable].attrs = dict(left.attrs)
+
+    reference = aligned[primary]
+    coords = {}
+    for axis in ("lat", "lon"):
+        values = reference[axis].values
+        if len(values) < 4:
+            return output, evidence, None, "insufficient_score_support"
+        coords[axis] = values[:len(values) // 2 * 2].reshape(-1, 2).mean(axis=1)
+    coarse = xr.Dataset(coords=coords)
+    reference = contained_cell_grid(reference, coarse)
+    estimates = [remap(remap(ds, coarse, variable, "conservative"), reference, variable, "conservative")[variable]
+                 for ds in aligned]
+    truth = reference[variable]
+    mask = np.isfinite(truth) & np.isfinite(estimates[0]) & np.isfinite(estimates[1])
+    if not bool(mask.any()):
+        return output, evidence, None, "insufficient_score_support"
+    truth = truth.where(mask)
+    single = [asdict(fidelity_metrics(estimate.where(mask), truth)) for estimate in estimates]
+    baseline = min(single, key=lambda score: (score["rmse"], score["mae"]))
+    candidate = asdict(fidelity_metrics(blend_fields(*estimates, .5).where(mask), truth))
+    metrics = dict(candidate=candidate, baseline=baseline, count=int(mask.sum()),
+                   reference="REDUCED_SCALE_PRODUCT_RECONSTRUCTION_PROXY")
+    # The desktop independent raster check uses these same paired error limits.
+    failed = any(candidate[key] > baseline[key] + 1e-9 for key in ("rmse", "mae"))
+    return output, evidence, metrics, "recipe_score_below_single_source" if failed else None

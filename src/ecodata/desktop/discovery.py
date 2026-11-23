@@ -583,8 +583,7 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         same_quantity=bool(unit_check["quantity"])
         cf_daily_pair = (action in {"align_space", "fusion"} and not delegated
                          and unit_check.get("quantity") == "precipitation"
-                         and ar["format"] == br["format"] == "NetCDF"
-                         and ar["bytes"] + br["bytes"] <= 32 * 1024**2)
+                         and ar["format"] == br["format"] == "NetCDF")
         row["unit_check"]=unit_check
         row["physical_identity"]=dict(left_basis=basis_a,right_basis=basis_b,match=same_quantity,
                                       mapping_basis=unit_check.get("identity_basis","local_metadata"))
@@ -636,6 +635,22 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                 prepared[(cid,action)]=task
                 row.update(status="通过",reason="原始站点与网格时空配对通过。可运行已登记的组合。")
                 continue
+            cf_error = None
+            if cf_daily_pair:
+                from .independent_alignment import check_cf_headers
+
+                selections = [(ai, a["name"]), (bi, b["name"])]
+                try:
+                    check_cf_headers(scan, selections)
+                except (EcoDataError, OSError, ValueError, KeyError) as error:
+                    cf_error = error
+                else:
+                    prepared[(cid, action)] = dict(action=action, cf_daily=True,
+                        route="independent_grid_search" if action == "fusion" else "independent_alignment",
+                        fields=selections)
+                    row.update(status="通过", next_step="alignment_then_fusion",
+                               reason="已核对 UTC 区间语义、单位和共同网格范围。完整日对齐，不完整日留待补位试跑。")
+                    continue
             if physical(a)==physical(b)=="precipitation":
                 read_for_check(ai,a)
                 read_for_check(bi,b)
@@ -672,24 +687,8 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                                 fields=[(ai,a["name"]),(bi,b["name"])],methods=["spatial.blend"])
                             row.update(status="通过",reason="先做保守网格对齐，缺测可用备用源补位；满足覆盖条件时用原版空间变异搜索比较单源与多源。")
                         continue
-            if cf_daily_pair:
-                from .grid_preparation import daily_precipitation
-
-                try:
-                    daily = [daily_precipitation(read_for_check(index, field), field["name"])
-                             for index, field in ((ai, a), (bi, b))]
-                except (EcoDataError, ValueError) as error:
-                    if unit_check["status"] not in {"equivalent", "convertible"}:
-                        raise ValueError(f"降水率与累计量需要明确的单位、时间边界与日界：{error}") from error
-                else:
-                    if max(ds.time.values[0] for ds in daily) > min(ds.time.values[-1] for ds in daily):
-                        raise ValueError("两份资料没有共同 UTC 日期范围")
-                    prepared[(cid, action)] = dict(action=action, cf_daily=True,
-                        route="independent_grid_search" if action == "fusion" else "independent_alignment",
-                        fields=[(ai, a["name"]), (bi, b["name"])])
-                    row.update(status="通过", next_step="alignment_then_fusion",
-                               reason="已核验 UTC 区间统计语义。完整日换算后对齐，不完整日作为缺测评估备用源补位。")
-                    continue
+            if cf_error and unit_check["status"] not in {"equivalent", "convertible"}:
+                raise ValueError(f"降水率与累计量需要明确的单位、时间边界与日界：{cf_error}") from cf_error
             if action=="fusion":
                 if not same_quantity:
                     row["block_code"]="quantity_unknown"

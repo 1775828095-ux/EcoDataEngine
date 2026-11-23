@@ -77,14 +77,81 @@ def review(scan, candidate, task, fid, path):
 
 
 def apply(scan, candidate, task, report):
+    apply_many(scan, candidate, task, (report,))
+
+
+def apply_many(scan, candidate, task, reports):
     existing = {item["field"]: item for item in candidate.get("local_holdout_review", ())}
-    existing[report["field"]] = report
+    existing.update((item["field"], item) for item in reports)
     candidate["local_holdout_review"] = list(existing.values())
     candidate["execution_release"] = assess(scan, candidate, task, fields(scan, candidate))
 
 
+def review_pair(scan, candidate, task, paths):
+    """Test a complete recipe on a new pair with disjoint observation dates."""
+    import numpy as np
+    import xarray as xr
+    from ecodata.spatial.regridding import normalize_grid_axes
+    from . import file_tools, independent_alignment
+    from .fallback_evidence import digest_file
+
+    assert_current(scan)
+    source_fields = fields(scan, candidate)
+    if len(source_fields) != 2 or len(paths) != 2:
+        raise ValueError("整套方案需要分别为两个来源提供独立 NetCDF 数据")
+
+    def support(path):
+        with xr.open_dataset(path, cache=False) as dataset:
+            dataset, _ = normalize_grid_axes(dataset)
+            time = dataset.time
+            bounds = dataset[time.attrs.get("bounds", "time_bounds")]
+            values = bounds.transpose("time", ...).values
+            if (not values.size or not np.issubdtype(values.dtype, np.datetime64) or np.isnat(values).any()):
+                raise ValueError("无法确认复验时段，需提供带明确时间边界的数据")
+            return (values.min(), values.max()), tuple(dataset[axis].values for axis in ("lat", "lon"))
+
+    previous_periods = [tuple(np.datetime64(bound) for bound in period)
+                        for period in candidate.get("previous_independent_periods", ())]
+    original_grids = []
+    for index, _, _ in source_fields:
+        with local_member(scan["rows"][index]) as original:
+            period, grid = support(original)
+            previous_periods.append(period)
+            original_grids.append(grid)
+
+    rows, checks = [], []
+    for path, (index, fid, field), original_grid in zip(paths, source_fields, original_grids, strict=True):
+        path = Path(path).resolve(strict=True)
+        (begin, end), grid = support(path)
+        if any(begin < old_end and old_begin < end for old_begin, old_end in previous_periods):
+            raise ValueError("新增复验文件的时段与原数据重叠，请选从未用于推荐和外发的时段")
+        if any(not np.array_equal(before, after) for before, after in zip(original_grid, grid)):
+            raise ValueError("新增独立时段需要沿用对应原始数据的空间网格，才能复验同一套对齐方案")
+        checksum = digest_file(path)
+        if checksum in candidate.get("previous_independent_hashes", ()) or any(checksum == item[2] for item in checks):
+            raise ValueError("请提供两份不同的独立观测，且未用于上一轮验收")
+        row = file_tools.inspect(path, "read_header", {"path": ""})["row"]
+        if row["format"] != "NetCDF" or not any(new["name"] == field["name"] for new in row["fields"]):
+            raise ValueError(f"独立文件需要包含来源 {scan['rows'][index]['name']} 对应的字段 {field['name']}")
+        rows.append(row)
+        checks.append((path, fid, checksum, (str(begin), str(end))))
+
+    validation = dict(task, cf_daily=True, fields=[(index, field["name"])
+                      for index, (_, _, field) in enumerate(source_fields)])
+    report = independent_alignment.review({"rows": rows}, candidate["task"], validation,
+                                          candidate["steps"], independent=True)
+    if any(digest_file(path) != checksum for path, _, checksum, _ in checks):
+        raise ValueError("复验文件在检查期间已变化")
+    assert_current(scan)
+    return [dict(report, field=fid, independent=True, independent_file=path.name,
+                 independent_sha256=checksum, independent_period=period)
+            for path, fid, checksum, period in checks]
+
+
 def invalidate(scan, candidate, task):
     selected = fields(scan, candidate)
+    candidate.pop("final_verified_recommendation", None)
+    candidate.pop("final_recommendation_origin", None)
     candidate["independent_required"] = True
     candidate["local_holdout_review"] = []
     candidate["execution_release"] = assess(scan, candidate, task, selected)
