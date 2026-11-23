@@ -13,10 +13,10 @@ for thread_variable in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THRE
     os.environ.setdefault(thread_variable, '1')
 
 from PySide6.QtCore import Qt, QObject, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,
     QPushButton,QMenu,QLineEdit,QComboBox,QLabel,QPlainTextEdit,QFileDialog,QTabWidget,
-    QTableWidget,QTableWidgetItem,QAbstractItemView,QSplitter,QCheckBox,QMessageBox,QScrollArea,QFrame,QInputDialog)
+    QTableWidget,QTableWidgetItem,QAbstractItemView,QSplitter,QCheckBox,QMessageBox,QScrollArea,QFrame,QInputDialog,QDialog,QDialogButtonBox)
 from ecodata.models.requirements import RequirementStore
 from .scan import Scanner, assert_current
 from . import service as s
@@ -1184,6 +1184,10 @@ class Window(QMainWindow):
                 check=QCheckBox(f"{row['task']} · 执行待核验" if advisory else f"{row['task']} · 加入本地寻优")
                 check.setEnabled(allowed(row))
                 layout.addWidget(check)
+            if allowed(row) and any(item.get("precipitation_trial") for item in row.get("local_holdout_review", ())):
+                delivery = QPushButton("导出降水累计 NetCDF")
+                delivery.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.deliver_netcdf_precipitation(item)))
+                layout.addWidget(delivery)
             if row.get("execution_release") and not allowed(row):
                 from .release_gate import explanation
                 from .fallback_evidence import approved_fields, eligible
@@ -1309,6 +1313,7 @@ class Window(QMainWindow):
             count = sum(item["records"] for item in entries)
             size = sum(item["bytes"] for item in entries)
             batches = sum(len(item["parts"]) for item in entries)
+            native_parts = [part for item in entries for part in item.get("native_upload", ())]
             scope = "\n".join(f"{scan['rows'][index]['name']} · {field['name']}（"
                               + ("分类编码原样" if field.get("approved_classification") else str(field.get("unit"))) + "）"
                               for index, field in [*fields, *selected_classification])
@@ -1321,6 +1326,15 @@ class Window(QMainWindow):
                 archive.unlink(missing_ok=True)
                 self.show_progress("全量扰动证据未发送")
                 return
+            native_approved = False
+            if native_parts:
+                native_bytes = sum(part["bytes"] for part in native_parts)
+                native_answer = QMessageBox.question(self, "附加原生 GeoTIFF 审核",
+                    f"是否另外上传 {len(native_parts)} 个原生 GeoTIFF 文件或图块，共 {native_bytes:,} 字节？\n"
+                    "文件保留坐标系、位置、掩码及已获准的分类值。DeepSeek 将它们作为视觉资料解析，"
+                    "可能按页计费。数值判断仍用前面已审核的 CSV。选择否将只发送 CSV。",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+                native_approved = native_answer == QMessageBox.StandardButton.Yes
 
             from .independent_review import fields as bound_fields, invalidate
 
@@ -1343,12 +1357,13 @@ class Window(QMainWindow):
             self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="已批准外发范围"))
             archive.with_suffix(".approval.json").write_text(s.dump(dict(
                 digest=digest, fields=entries, trigger="补样覆盖不足", records=count,
-                bytes=size, requests=batches, approved=True)), encoding="utf8")
+                bytes=size, requests=batches, approved=True, native_geotiff=native_approved)), encoding="utf8")
 
             def transmit(log):
                 assert_current(scan)
                 return fallback.transmit(archive, entries, digest, api_key=key, progress=log,
-                                         recipes=recommendation.get("local_recipe_options", ()))
+                                         recipes=recommendation.get("local_recipe_options", ()),
+                                         native_approved=native_approved)
 
             def sent(result):
                 from .independent_review import start
@@ -1369,7 +1384,7 @@ class Window(QMainWindow):
                 self.show_progress("已形成新候选，等待独立数据复验" if candidate else
                                    "已收齐分片回复，各分片依据尚不足以形成一致候选")
                 self.detail.appendPlainText(s.dump(dict(分片回执=str(result["receipts"]), 候选支持=result["votes"],
-                                                        形成候选=result.get("candidate"))))
+                                                        形成候选=result.get("candidate"), TIFF回执=result["native_receipts"])))
 
             self.work(transmit, sent)
 
@@ -1410,6 +1425,45 @@ class Window(QMainWindow):
             self.work(send_supplement, reviewed)
 
         self.work(lambda _: fallback.supplement(scan, fields, targets), consider)
+
+    def deliver_netcdf_precipitation(self, recommendation):
+        from .independent_review import fields
+        from .release_gate import require
+        from .precipitation_delivery import export
+
+        scan = self.scan
+        require([recommendation])
+        covered = {item["field"] for item in recommendation["local_holdout_review"] if item.get("precipitation_trial")}
+        entries = {f"{scan['rows'][index]['name']} · {field['name']}": (index, field)
+                   for index, fid, field in fields(scan, recommendation) if fid in covered}
+        if not entries:
+            raise ValueError("没有已核验的降水率字段")
+        entry, ok = QInputDialog.getItem(self, "导出降水累计", "字段", list(entries), 0, False)
+        if not ok:
+            return
+        periods = ["保留原始时间区间", "仅导出证据完整的 UTC 日累计"]
+        period, ok = QInputDialog.getItem(self, "导出时间口径", "目标", periods, 0, False)
+        if not ok:
+            return
+        name, _ = QFileDialog.getSaveFileName(self, "保存降水产品", "precipitation-amount.nc", "NetCDF (*.nc)")
+        if not name:
+            return
+        destination = Path(name).resolve()
+        root = Path(scan["path"]).resolve()
+        if destination == root or root.is_dir() and destination.is_relative_to(root):
+            raise ValueError("请将转换结果保存到原始输入目录之外")
+        index, field = entries[entry]
+
+        def run(_):
+            assert_current(scan)
+            with TemporaryDirectory(dir=destination.parent) as staged:
+                temporary = Path(staged) / "checked.nc"
+                result = export(scan["rows"][index], field, temporary, daily=period == periods[1])
+                assert_current(scan)
+                temporary.replace(destination)
+            return result["groups"]
+
+        self.work(run, lambda groups: self.show_progress(f"已导出 {groups} 个累计时间区间 · {destination.name}"))
 
     def review_new_independent_data(self, candidate):
         from .independent_review import apply, fields, review
@@ -1473,8 +1527,10 @@ class Window(QMainWindow):
         name, ok = QInputDialog.getItem(self, "复查工程说明", "选择原始文件", documents, 0, False)
         if not ok:
             return
-        action, ok = QInputDialog.getItem(self, "读取范围", "操作",
-            ["复查相关章节或页面", "提取观测表到本地 CSV"], 0, False)
+        actions = ["复查相关章节或页面", "提取观测表到本地 CSV"]
+        if PurePosixPath(name).suffix.lower() == ".pdf":
+            actions.append("查看 PDF 原页并确认原文")
+        action, ok = QInputDialog.getItem(self, "读取范围", "操作", actions, 0, False)
         if not ok:
             return
         section, ok = QInputDialog.getInt(self, "读取范围",
@@ -1490,6 +1546,11 @@ class Window(QMainWindow):
         def run(_):
             from . import document_evidence, file_tools
             assert_current(scan)
+            if action == "查看 PDF 原页并确认原文":
+                with file_tools.selected(root, locator) as (path, _, __):
+                    image = document_evidence.render_original_page(path, section)
+                assert_current(scan)
+                return {"original_page": image}
             if action == "提取观测表到本地 CSV":
                 with file_tools.selected(root, locator) as (path, _, __):
                     table = document_evidence.observation_table(path, section)
@@ -1510,6 +1571,9 @@ class Window(QMainWindow):
             return {"evidence": evidence.get("evidence", []), "checks": checks}
 
         def reviewed(result):
+            if "original_page" in result:
+                self.verify_document_page(scan, name, section, result["original_page"])
+                return
             if "table" in result:
                 self.save_document_observations(scan, result["table"])
                 return
@@ -1518,6 +1582,43 @@ class Window(QMainWindow):
             self.show_progress("本地说明复查完成 · 查看检查记录及原文位置")
 
         self.work(run, reviewed)
+
+    def verify_document_page(self, scan, name, section, png):
+        from .document_evidence import cross_check
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"复核原件 · 第 {section} 页")
+        dialog.resize(900, 750)
+        layout = QVBoxLayout(dialog)
+        image = QLabel()
+        rendering = QPixmap()
+        if not rendering.loadFromData(png, "PNG"):
+            raise ValueError("原页无法显示")
+        image.setPixmap(rendering)
+        scroller = QScrollArea()
+        scroller.setWidget(image)
+        layout.addWidget(scroller, 1)
+        text = QPlainTextEdit()
+        text.setPlaceholderText("逐字填写原页中已核对的单位、时区、变量说明或引用")
+        text.setMaximumHeight(95)
+        layout.addWidget(text)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if not dialog.exec() or not text.toPlainText().strip():
+            return
+        if self.scan is not scan:
+            return
+        assert_current(scan)
+        observed = text.toPlainText().strip()
+        if len(observed) > 4000:
+            raise ValueError("只需记录本次核对的原文片段")
+        audit = cross_check(dict(scan, engineering_docs=[(name, observed)]))
+        for item in audit:
+            item["verified_original_page"] = section
+        self.apply_document_review(scan, audit)
+        self.detail.appendPlainText(s.dump(dict(复核原件=name, 页码=section, 原页抄录=observed, 核对=audit)))
 
     def apply_document_review(self, scan, updates):
         from .release_gate import assess, resolve_field, task_fields

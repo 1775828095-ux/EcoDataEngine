@@ -20,8 +20,11 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
             runtime_report = []
             if task.get("runtime_fields"):
                 from .release_gate import runtime
-                runtime_report = runtime(scan, {"fields": task["runtime_fields"],
-                                                "steps": [step for recipe in task["recipes"] for step in recipe]}, folder)
+                steps = [step for recipe in task["recipes"] for step in recipe]
+                target = (task.get("target_unit") if route == "structure_conversion" and
+                          all("units.harmonize" in recipe for recipe in task["recipes"]) else None)
+                runtime_report = runtime(scan, {"fields": task["runtime_fields"], "steps": steps,
+                                                "segmented_table_target": target}, folder)
             if route == "station_grid":
                 result = station_grid.run(scan,task_id,task,stage,model_id,progress)
             elif route == "structure_conversion":

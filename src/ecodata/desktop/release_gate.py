@@ -113,6 +113,7 @@ def explanation(release):
         "precipitation_time_bounds_or_unit_missing": "降水单位或统计时间区间缺少可核实依据",
         "target_grid_or_holdout_evidence_missing": "目标网格、覆盖或留出块验证不足",
         "missing_engineering_reference": "工程引用尚未核对",
+        "native_dependency_unresolved": "原生控制文件声明的工程依赖未确认",
         "invalid_netcdf_time_coordinates": "时间轴存在重复、无效坐标或重叠区间",
         "heldout_worksheet_field_semantics_need_declaration": "需要补充留出工作表的字段定义",
         "algorithm_or_independent_reference_not_verified": "留出数据尚未验证该算法",
@@ -157,7 +158,7 @@ def runtime(scan, task, folder):
         elif row["format"] == "GeoTIFF":
             reports.append(dict(source=row["name"], **raster_review(row, field)))
         elif row["format"] in {"CSV", "TSV", "Excel"} and not row.get("original_reader"):
-            reports.append(dict(source=row["name"], **table_review(row, field, folder)))
+            reports.append(dict(source=row["name"], **table_review(row, field, folder, target_unit=task.get("segmented_table_target"))))
     assert_current(scan)
     return reports
 
@@ -246,7 +247,7 @@ def raster_review(row, field):
     return dict(valid_cells=valid, missing_cells=missing)
 
 
-def table_review(row, field, folder):
+def table_review(row, field, folder, *, target_unit=None):
     from contextlib import closing
     import sqlite3
     from tempfile import TemporaryDirectory
@@ -254,6 +255,7 @@ def table_review(row, field, folder):
     from itertools import islice
     from .sampling_plan import IDENTIFIERS, TIME, normalized, records
     from .sample_values import numeric
+    from .table_unit_segments import unit_column
 
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
@@ -266,7 +268,7 @@ def table_review(row, field, folder):
                 names = [normalized(item) for item in header]
                 clock = next((i for i, name in enumerate(names) if name in TIME), None)
                 station = next((i for i, name in enumerate(names) if name in IDENTIFIERS - {"id"}), None)
-                units = next((i for i, name in enumerate(names) if name in {"unit", "units", "单位"}), None)
+                units = unit_column(header, field)
                 declared = field.get("unit")
                 total = missing = 0
                 unit_ranges = []
@@ -280,7 +282,6 @@ def table_review(row, field, folder):
                         missing += sum(value is None for value in numeric(
                             record[col] if len(record) > col else None for record in batch))
                         if units is not None:
-                            observed = {str(record[units]).strip() for record in batch if len(record) > units and record[units]}
                             for position, record in enumerate(batch, total - len(batch) + 1):
                                 unit = (str(record[units]).strip() if len(record) > units and record[units] else declared)
                                 distinct.add(unit)
@@ -312,14 +313,17 @@ def table_review(row, field, folder):
                     statuses = {}
                     for unit in distinct:
                         try:
-                            UnitEngine().affine(unit, declared or unit_ranges[0]["unit"])
+                            UnitEngine().affine(unit, target_unit or declared or unit_ranges[0]["unit"])
                         except (EcoDataError, ValueError, TypeError):
                             statuses[unit] = "failed"
                         else:
                             statuses[unit] = "checked"
                     display = "、".join(f"第 {item['start']}–{item['stop']} 条 {item['unit'] or '单位未知'} {statuses[item['unit']]}"
                                       for item in unit_ranges[:10])
-                    raise ValueError(f"表格已分成 {segment_count} 段并复查单位。当前整表方案不能安全覆盖这些分段：" + display)
+                    if not target_unit or any(status != "checked" for status in statuses.values()):
+                        raise ValueError(f"表格已分成 {segment_count} 段并复查单位。当前整表方案不能安全覆盖这些分段：" + display)
+                    return dict(records=total, missing=missing, target_unit=target_unit,
+                                unit_segment_count=segment_count, unit_segments=unit_ranges)
                 return dict(records=total, missing=missing, unit=declared or next(iter(distinct), None),
                             unit_segments=unit_ranges)
         except UnicodeDecodeError:

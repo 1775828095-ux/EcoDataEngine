@@ -281,7 +281,8 @@ def run(scan, summary, cache, mock, key, progress, feedback):
     decisions = [row for item in dialogue.values() for row in item['decisions']]
     checked, gated = discovery.check(full, candidates, dict(decisions=decisions), approved)
     from .document_evidence import cross_check
-    full['document_evidence_checks'] = cross_check(full)
+    from .native_dependencies import review as review_native_dependencies
+    full['document_evidence_checks'] = [*cross_check(full), *review_native_dependencies(full, summary['target_model']['id'])]
     reply = dict(mode='DeepSeek API', decisions=decisions, failures=[], batch_count=len(receipts),
         local_checks=answer['field_checks'], api_receipts=receipts, reused_batches=0,
         file_agent=full['file_agent_audit'])

@@ -691,8 +691,19 @@ def recommendation_review(scan, recommendation, gated, fields, cache=None):
             if "units.harmonize" in steps:
                 target_unit = (gated or {}).get("target_unit")
                 if target_unit and held.get("unit"):
-                    array = xr.DataArray(values, dims=["sample"], attrs={"units": held["unit"]})
-                    converted = UnitEngine().convert(array, target_unit)
+                    segmented = None
+                    if row["format"] in {"CSV", "TSV", "Excel"} and not row.get("original_reader"):
+                        from .table_unit_segments import convert_holdout
+                        segmented = convert_holdout(row, field, held, target_unit)
+                    if segmented is not None:
+                        converted, units = segmented
+                        if not converted.size:
+                            report.update(status="pending", basis="heldout_segmented_units_need_observations")
+                            continue
+                        report["observed_unit_segments"] = units
+                    else:
+                        array = xr.DataArray(values, dims=["sample"], attrs={"units": held["unit"]})
+                        converted = UnitEngine().convert(array, target_unit)
                     if not np.isfinite(converted.values).all():
                         report.update(status="failed", basis="nonfinite_heldout_conversion")
                         continue

@@ -45,6 +45,8 @@ python -m ecodata.desktop.csv_index 'D:\data\weather.csv'
 
 正式抽检预先固定一轮。默认要求对占留出总体至少 5% 的问题，有 95% 的概率抽到至少一个。可通过 `ECODATA_ACCEPTANCE_DEFECT_SHARE` 和 `ECODATA_ACCEPTANCE_DETECTION` 设置目标。使用 SciPy 的超几何分布计算不放回样本量。千万级简单随机总体中，5% 对应约 59 个抽样单位，1% 对应约 299 个。报告标明实际使用的站点、时间窗口、空间块或记录块。该概率对应抽样规则和当前留出总体。 [NIST 抽样验收手册](https://www.itl.nist.gov/div898/handbook/pmc/section2/pmc232.htm) · [SciPy 超几何分布](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.hypergeom.html)
 
-频率和显式区间变化按边界自动拆分复验。表格单位变化会逐段核对维度，当前只支持统一单位的后端会暂停。运行时使用开源 `ruptures` 对有限窗口的统计摘要检测疑似变点，供本地复核。失败结果记录范围，调整候选后用新提供且未用于此前选择的独立文件再验。 [ruptures 源码](https://github.com/deepcharles/ruptures)
+频率和显式区间变化按边界自动拆分复验。带明确 CF 区间及区间平均降水率定义的数据可以导出原区间累计，或在完整覆盖且区间不跨日时导出 UTC 日累计。CSV 和 Excel 可对逐条显式单位分段换算，按原顺序合并，保留原单位和有效输出单位。运行时使用开源 `ruptures` 对有限窗口的统计摘要检测疑似变点。调整候选后用新提供且未用于此前选择的独立文件再验。 [ruptures 源码](https://github.com/deepcharles/ruptures)
 
-全量兜底只处理采样覆盖不足，优先补选网格窗口、CSV 站点、Excel 工作表或包内成员。若仍不足，批准记录包含副本指纹、字段、条数、字节数、分片数和原因。经额外选择的 GeoTIFF 分类编码按原值写入本地原生副本，云端使用受支持的 CSV 表示。分片仅从已登记目录提议方案，取得过半支持才形成新候选，始终要用新增独立数据复验。 [DeepSeek 文件解析说明](https://api-docs.deepseek.com/guides/document_parsing/)
+全量兜底只处理采样覆盖不足，优先补选网格窗口、CSV 站点、Excel 工作表或包内成员。若仍不足，批准记录包含副本指纹、字段、条数、字节数、分片数和原因。GeoTIFF 原生副本经单独批准后可通过 Files API 附加上传，超大栅格拆成保留空间坐标及掩码的 TIFF 块。DeepSeek 把 TIFF 作为视觉资料解析，数值复核使用 CSV 分片。分片仅从已登记目录提议方案，取得过半支持才形成新候选，始终要用新增独立数据复验。 [DeepSeek 文件解析说明](https://api-docs.deepseek.com/guides/document_parsing/)
+
+关键 OCR 字段可在工作台显示 PDF 原页并录入核对原文，平台按页码留下记录，再与实际数据比较。ZIP 放行复用原有模型控制文件解析器，在完整成员目录上核对其隐式依赖。依赖运行时脚本和变量才能确定的项目继续标为待核实。

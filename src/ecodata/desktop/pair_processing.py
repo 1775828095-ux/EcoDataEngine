@@ -43,7 +43,7 @@ def conversion_task(scan, selections, action, unit_check):
         if fmt not in {*FORMATS,"HDF5","RDB","NOAA ISD","Shapefile"}:
             raise ValueError("原版结构转换器未登记此输入格式")
         fields.append(dict(index=index,name=field["name"],header=field.get("original_header",field["name"]),
-                           unit=field["unit"]))
+                           unit=field["unit"],sheet=field.get("sheet")))
     labels=[scan["rows"][item["index"]]["format"] for item in fields]
     grid_formats={"NetCDF","GeoTIFF","HDF5","HDF5-NetCDF"}
     formats=[["format.netcdf"],["format.hdf5_netcdf"]] if any(fmt in grid_formats for fmt in labels) else [
@@ -82,8 +82,8 @@ def conversion_source(scan,index):
 
 
 def run_conversion(scan,task_id,task,folder,model_id,progress):
-    from ecodata.engines.units import UnitEngine
     from ecodata.io.structures import export_structure, read_structure
+    from .table_unit_segments import convert
     files,artifacts,reports=[],[],[]
     output_formats=[]
     for index,recipe in enumerate(task["recipes"],1):
@@ -96,19 +96,13 @@ def run_conversion(scan,task_id,task,folder,model_id,progress):
         for position,source in enumerate(task["fields"],1):
             row=scan["rows"][source["index"]]
             input_name,content=conversion_source(scan,source["index"])
-            with read_structure(input_name,content,record_read_source=False) as dataset:
+            with read_structure(input_name,content,record_read_source=False, excel_sheet=source.get("sheet")) as dataset:
                 field=source["name"] if source["name"] in dataset else source["header"]
                 if field not in dataset:
                     raise ValueError("原版读取器无法绑定扫描字段")
+                segments = []
                 if "units.harmonize" in recipe:
-                    data=dataset[field]
-                    if data.dtype.kind not in "iuf":
-                        values=np.asarray(pd.to_numeric(data.values.reshape(-1),errors="coerce")).reshape(data.shape)
-                        data=data.copy(data=values)
-                    if not np.isfinite(data.values).any():
-                        raise ValueError("单位转换没有有效数值")
-                    data.attrs=dict(data.attrs,units=source["unit"])
-                    dataset=dataset.assign({field:UnitEngine().convert(data,task["target_unit"])})
+                    dataset, segments = convert(dataset, field, source, task["target_unit"])
                 raw,exported,_=export_structure(dataset,target)
                 name=f"conversion-{index}-source-{position}"+exported[exported.rfind("."):]
                 with read_structure(name,raw,record_read_source=False) as restored:
@@ -119,7 +113,7 @@ def run_conversion(scan,task_id,task,folder,model_id,progress):
                 files.append((name,raw))
                 artifacts.append(dict(name=name,dimensions=dict(dataset.sizes),fields=list(dataset.data_vars)))
                 reports.append(dict(source_format=row["format"],target_format=target,field=field,
-                                    target_unit=dataset[field].attrs.get("units"),methods=recipe))
+                                    target_unit=dataset[field].attrs.get("units"),methods=recipe,unit_segments=segments))
     return dict(files=files,source_formats=[scan["rows"][item["index"]]["format"] for item in task["fields"]],
                 target_format=" / ".join(dict.fromkeys(output_formats)),original_report=reports,
                 local=dict(artifacts=artifacts,reason="原版单位和格式转换完成，选中字段已回读核对。"))

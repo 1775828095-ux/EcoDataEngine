@@ -162,6 +162,20 @@ def document_result(items, next_offset, pending=None):
                 pending=pending or (None if evidence else "该范围没有可定位的相关声明，需回查原文"))
 
 
+def render_original_page(path, section):
+    from io import BytesIO
+    import pypdfium2
+
+    with pypdfium2.PdfDocument(path) as pdf:
+        if not 1 <= section <= len(pdf):
+            raise ValueError("PDF 没有该原始页码")
+        page = pdf[section - 1]
+        image = page.render(scale=min(2.5, 2200 / max(page.get_size()))).to_pil()
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+
 def relative_reference(scan, name, reference):
     """Resolve within the same archive or input directory, never across its root."""
     from .file_tools import selected

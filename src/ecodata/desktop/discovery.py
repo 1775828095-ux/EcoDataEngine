@@ -604,8 +604,15 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                     row["block_code"]="quantity_unknown"
                     raise ValueError("还需确定可共同换算的物理量和单位")
                 if action=="convert_units" and unit_check["status"]=="equivalent":
-                    results.pop()
-                    continue
+                    from .table_unit_segments import unit_column
+                    explicitly_segmented = any(
+                        source["format"] in {"CSV", "TSV", "Excel"} and
+                        unit_column([column.get("original_header") or column["name"] for column in source["fields"]
+                                     if column.get("sheet") == field.get("sheet")], field) is not None
+                        for source, field in ((ar, a), (br, b)))
+                    if not explicitly_segmented:
+                        results.pop()
+                        continue
                 task=conversion_task(scan,[(ai,a),(bi,b)],action,unit_check)
                 prepared[(cid,action)]=task
                 row.update(status="通过",reason="可独立转换字段并回读核对，供后续配对和融合使用。")

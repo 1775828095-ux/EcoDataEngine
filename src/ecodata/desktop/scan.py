@@ -603,9 +603,13 @@ def scientific(row, path):
             for i in range(ds.count):
                 name=saved.get("export_variable","value") if ds.count==1 else (ds.descriptions[i] or f"band_{i+1}")
                 attrs=saved.get("variables",{}).get(name,{})
+                band_tags=ds.tags(i+1)
+                semantic={key: attrs.get(key,band_tags.get(key)) for key in
+                          ("data_kind","spatial_semantics","flag_values","flag_meanings","flag_masks")
+                          if attrs.get(key,band_tags.get(key)) is not None}
                 row["fields"].append(dict(name=name,band=i+1,type=ds.dtypes[i],unit=attrs.get("units") or ds.units[i] or "",
                     standard_name=attrs.get("standard_name",""), physical_variable=attrs.get("physical_variable",""),
-                    long_name=attrs.get("long_name",""),axis=False))
+                    long_name=attrs.get("long_name",""),axis=False,**semantic))
             if ds.count>1:
                 row["pending"].append("多波段处理前需核验波段及原版读取器映射")
             row["basis"].append("栅格元数据；未读像元")

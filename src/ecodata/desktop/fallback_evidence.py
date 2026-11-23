@@ -26,7 +26,7 @@ def approved_fields(scan, recommendation):
         label = normalized(field.get("source_column") or name)
         if (field.get("axis") or field.get("flag_values") or field.get("flag_meanings") or field.get("flag_masks")
                 or label in AXES | IDENTIFIERS | TIME
-                or label in {"qc", "qa", "landuse", "land_cover"}
+                or label in {"qc", "qa", "landuse", "land_use", "land_cover"}
                 or any(word in label for word in ("category", "class", "flag", "mask", "quality", "identifier"))
                 or field.get("data_kind") in {"categorical", "binary"}):
             continue
@@ -46,7 +46,7 @@ def classification_fields(scan, approved):
             label = normalized(field["name"])
             if (field.get("band") and (field.get("flag_values") or field.get("flag_meanings")
                     or field.get("data_kind") == "categorical"
-                    or any(term in label for term in ("land_cover", "landuse", "classification", "category")))):
+                    or any(term in label for term in ("land_cover", "landuse", "land_use", "classification", "category")))):
                 result.append((index, dict(field, approved_classification=True)))
     return result
 
@@ -208,10 +208,15 @@ def build(scan, fields, destination, progress=None):
                 entry = dict(info, id=f"F{ordinal}", bytes=total, records=count, parts=parts,
                              source_member=row["name"])
                 if row["format"] == "GeoTIFF":
+                    from .deepseek_files import MAX_DOCUMENT_BYTES
                     native = Path(folder) / f"raster-{ordinal}.tif"
                     write_native_raster(row, field, archive, parts, native)
                     entry["native_member"] = f"{prefix}/band.tif"
                     archive.write(native, entry["native_member"])
+                    if native.stat().st_size <= MAX_DOCUMENT_BYTES:
+                        entry["native_upload"] = [{"member": entry["native_member"], "bytes": native.stat().st_size}]
+                    else:
+                        entry["native_upload"] = write_raster_upload_tiles(native, archive, prefix, Path(folder))
                 entries.append(entry)
                 if progress:
                     progress(f"已生成扰动副本 {ordinal}/{len(fields)}")
@@ -242,6 +247,8 @@ def write_native_raster(row, field, archive, parts, destination):
             out.set_band_description(1, original.descriptions[band - 1] or field["name"])
             if field.get("unit"):
                 out.set_band_unit(1, field["unit"])
+            if category:
+                copy_category_metadata(original, band, out)
             for window in raster_windows(original, band):
                 shape = (int(window.height), int(window.width))
                 block = np.zeros(shape, dtype=config["dtype"])
@@ -253,6 +260,46 @@ def write_native_raster(row, field, archive, parts, destination):
                         mask[index] = 255
                 out.write(block, 1, window=window)
                 out.write_mask(mask, window=window)
+
+
+def write_raster_upload_tiles(native, archive, prefix, folder):
+    import rasterio
+    from rasterio.windows import Window
+
+    parts = []
+    target = folder / "upload-tile.tif"
+    with rasterio.open(native) as source, rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+        for row, column in product(range(0, source.height, 512), range(0, source.width, 512)):
+            window = Window(column, row, min(512, source.width - column), min(512, source.height - row))
+            profile = dict(driver="GTiff", width=int(window.width), height=int(window.height), count=1,
+                           crs=source.crs, transform=source.window_transform(window), dtype=source.dtypes[0],
+                           compress="deflate")
+            with rasterio.open(target, "w", **profile) as copy:
+                copy.write(source.read(1, window=window), 1)
+                copy.write_mask(source.read_masks(1, window=window))
+                if source.units[0]:
+                    copy.set_band_unit(1, source.units[0])
+                if source.descriptions[0]:
+                    copy.set_band_description(1, source.descriptions[0])
+                if source.dtypes[0] in {"uint8", "uint16"}:
+                    copy_category_metadata(source, 1, copy)
+            member = f"{prefix}/native-tile-{row}-{column}.tif"
+            archive.write(target, member)
+            parts.append(dict(member=member, bytes=target.stat().st_size, row=row, column=column))
+    return parts
+
+
+def copy_category_metadata(source, band, target):
+    tags = {key: value for key, value in source.tags(band).items()
+            if key in {"flag_values", "flag_meanings", "data_kind", "spatial_semantics"}}
+    target.update_tags(1, **tags)
+    if source.dtypes[band - 1] in {"uint8", "uint16"}:
+        try:
+            colors = source.colormap(band)
+        except ValueError:
+            colors = None
+        if colors:
+            target.write_colormap(1, colors)
 
 
 def supplement(scan, fields, targets=None):
@@ -398,7 +445,8 @@ def digest_file(path):
     return digest.hexdigest()
 
 
-def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None, send=None, recipes=()):
+def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None, send=None, recipes=(),
+             native_approved=False, upload=None):
     from hashlib import sha256
     from .service import tool_turn
 
@@ -409,6 +457,7 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
     from collections import Counter
     choices = Counter()
     allowed = {item["id"] for item in recipes}
+    native_receipts = []
     with Path(archive_path).open("rb") as source:
         digest = sha256()
         while chunk := source.read(1024 * 1024):
@@ -421,15 +470,46 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
                 raise ValueError("待发清单与获准副本不一致")
             for entry in manifest:
                 meta = {key: value for key, value in entry.items()
-                        if key not in {"parts", "native_member", "source_member"}}
+                        if key not in {"parts", "native_member", "native_upload", "source_member"}}
+                native_ids = []
+                if native_approved:
+                    from .deepseek_files import MAX_DOCUMENT_BYTES, upload_tiff
+                    upload_native = upload or upload_tiff
+                    for item in entry.get("native_upload", ()):
+                        size = archive.getinfo(item["member"]).file_size
+                        if size != item["bytes"] or size > MAX_DOCUMENT_BYTES:
+                            raise ValueError("原生分片大小与批准清单不符")
+                        try:
+                            with archive.open(item["member"]) as stream:
+                                receipt = upload_native(stream, size, api_key=api_key)
+                        except (ValueError, OSError, RuntimeError) as error:
+                            log.write(json.dumps(dict(field=entry["id"], kind="native_tiff", status="unconfirmed")) + "\n")
+                            raise ValueError(f"原生 TIFF 上传未完成，已有 {len(native_receipts)} 个回执。记录：{receipt_path}") from error
+                        native_ids.append((item, receipt["id"]))
+                        native_receipts.append(receipt)
+                        log.write(json.dumps(dict(field=entry["id"], kind="native_tiff", receipt=receipt)) + "\n")
+                        log.flush()
                 for number, part in enumerate(entry["parts"], 1):
                     if archive.getinfo(part).file_size > PART_BYTES:
                         raise ValueError("分片超过批准的单次请求大小")
+                    csv_text = archive.read(part).decode("utf-8")
+                    content = json.dumps(dict(field=meta, part=number, total_parts=len(entry["parts"]),
+                                              allowed_recipes=list(recipes), csv=csv_text),
+                                         ensure_ascii=False)
+                    if native_ids:
+                        if len(native_ids) == 1:
+                            visible = native_ids[0][1] if number == 1 else None
+                        else:
+                            point = next(csv.reader(io.StringIO(csv_text)))
+                            y, x = int(point[0]), int(point[1])
+                            visible = next((identifier for item, identifier in native_ids
+                                            if item["row"] <= y < item["row"] + 512
+                                            and item["column"] <= x < item["column"] + 512), None)
+                        if visible:
+                            content = [dict(type="file", file_id=visible), dict(type="text", text=content)]
                     messages = [
                         dict(role="system", content="只分析当前扰动数据分片。返回 JSON，recipe 使用目录中有证据支持的候选 ID，依据不足用 null；reason 简述证据。不要把分片结论解释为全数据验证。"),
-                        dict(role="user", content=json.dumps(
-                            dict(field=meta, part=number, total_parts=len(entry["parts"]), allowed_recipes=list(recipes),
-                                 csv=archive.read(part).decode("utf-8")), ensure_ascii=False)),
+                        dict(role="user", content=content),
                     ]
                     try:
                         message, receipt = send(messages, [], api_key, progress)
@@ -452,4 +532,4 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
     ranked = choices.most_common()
     winner = ranked[0][0] if ranked and ranked[0][1] * 2 > total else None
     return dict(received=received, total=total, receipts=receipt_path, votes=dict(choices),
-                unresolved=total - sum(choices.values()), candidate=winner)
+                unresolved=total - sum(choices.values()), candidate=winner, native_receipts=native_receipts)
