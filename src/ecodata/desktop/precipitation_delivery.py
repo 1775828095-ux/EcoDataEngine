@@ -29,8 +29,9 @@ def precipitation_bounds(dataset, clock, variable, daily):
             or (array[:, 1] <= array[:, 0]).any() or (array[1:, 0] < array[:-1, 1]).any()):
         raise ValueError("时间区间无效或重叠")
     times = np.ma.asarray(time[:], dtype=float).filled(np.nan)
-    if not np.isfinite(times).all() or ((times < array[:, 0]) | (times > array[:, 1])).any():
-        raise ValueError("时间坐标不在所声明的区间内")
+    if (not np.isfinite(times).all() or (np.diff(times) <= 0).any()
+            or ((times < array[:, 0]) | (times > array[:, 1])).any()):
+        raise ValueError("时间坐标存在重复、倒序或超出声明区间")
     from re import escape, search
     expected = str(getattr(variable, "temporal_semantics", "")).lower()
     if expected not in {"mean_rate", "interval_mean", "mean"} and not search(
@@ -133,7 +134,6 @@ def export(row, field, destination, *, daily=False):
             if present:
                 result.coordinates = " ".join(present)
             out.setncatts(dict(Conventions="CF-1.8", aggregation="UTC_day" if daily else "preserved_source_intervals"))
-            axes_order = original.dimensions.index(clock)
             shape = [len(source.dimensions[dim]) for dim in extra]
             widths = [1] * len(shape)
             budget = 4096
@@ -156,5 +156,12 @@ def export(row, field, destination, *, daily=False):
                         piece *= multiplier[time_index]
                         amount = piece if amount is None else amount + piece
                     result[(index, *output_key)] = amount
+        with Dataset(temporary) as written:
+            saved_time = written[clock]
+            saved_amount = written[field["name"]]
+            if (saved_amount.shape != (len(groups), *shape) or saved_amount.units != "mm"
+                    or not np.array_equal(saved_time[:], bounds[:, 0])
+                    or not np.array_equal(written[saved_time.bounds][:], bounds)):
+                raise ValueError("回读校验未通过，未替换降水结果")
         temporary.replace(destination)
     return dict(path=str(destination), groups=len(groups), mode="UTC_day" if daily else "source_intervals")

@@ -56,6 +56,7 @@ def review(scan, model):
                                    check="native_project_member", basis="native_control_reader"))
         checks.extend(dict(document=issue.get("file") or display, status="pending",
                            check="native_project_dependency", basis="native_dependency_unresolved",
+                           runtime_manifest_eligible=issue.get("code") == "UNSUPPORTED_NATIVE_CONTROL_READER",
                            reference=issue["message"]) for issue in [*report["issues"], *prefix["issues"]])
         for child, name in next_level:
             try:
@@ -66,3 +67,65 @@ def review(scan, model):
 
     inspect_archive("", root.name)
     return checks
+
+
+def verify_runtime_manifest(scan, model, manifest):
+    """Bind explicitly observed runtime inputs to the exact current archive."""
+    from hashlib import sha256
+    from .fallback_evidence import digest_file
+    from .file_tools import selected
+    from .scan import assert_current
+
+    assert_current(scan)
+    root = Path(scan["path"])
+    if not isinstance(manifest, dict) or manifest.get("schema") != "ecodata.native-runtime-bindings.v1":
+        raise ValueError("不是可识别的原生运行依赖清单")
+    if manifest.get("model") != model or manifest.get("archive_sha256") != digest_file(root):
+        raise ValueError("运行依赖清单与本次模型或 ZIP 原件不匹配")
+    prefix = root.name + "!/"
+    pending = {item["document"][len(prefix):]: item
+               for item in scan.get("document_evidence_checks", ())
+               if item.get("runtime_manifest_eligible") and item["status"] == "pending"
+               and item["document"].startswith(prefix)}
+    groups = manifest.get("controls")
+    if not isinstance(groups, list) or not groups or not pending:
+        raise ValueError("本次没有可通过运行依赖清单复核的原生控制")
+    updates = []
+    visited = set()
+    for control in groups:
+        if not isinstance(control, dict):
+            raise ValueError("运行控制条目无效")
+        locator = control.get("path")
+        evidence = control.get("files")
+        if (not isinstance(locator, str) or locator not in pending or locator in visited
+                or not isinstance(evidence, list) or not evidence):
+            raise ValueError("运行依赖清单需要对应本次待核对的控制文件及其实际输入")
+        visited.add(locator)
+        members = set()
+        for binding in evidence:
+            reference = binding.get("path") if isinstance(binding, dict) else None
+            if (not isinstance(reference, str) or not all(safe(part) for part in reference.split("!/"))
+                    or reference in members or reference == locator):
+                raise ValueError("运行依赖路径不明确或重复")
+            members.add(reference)
+            parent, separator, member = reference.rpartition("!/")
+            if not separator:
+                member = reference
+            with selected(root, parent) as (container, _, __), ZipFile(container) as archive:
+                matches = [item for item in archive.infolist() if item.filename == member and not item.is_dir()]
+                if len(matches) != 1:
+                    raise ValueError(f"运行依赖没有唯一对应的 ZIP 成员：{reference}")
+                digest = sha256()
+                with archive.open(matches[0]) as stream:
+                    while block := stream.read(1024 * 1024):
+                        digest.update(block)
+            if digest.hexdigest() != binding.get("sha256"):
+                raise ValueError(f"运行依赖的内容与清单不匹配：{reference}")
+            updates.append(dict(document=pending[locator]["document"], data=f"{root.name}!/{reference}",
+                                status="checked", check="verified_runtime_member", basis="archive_member_hash",
+                                verified_sha256=digest.hexdigest()))
+        updates.append(dict(document=pending[locator]["document"], status="checked",
+                            check="verified_runtime_bindings", basis="operator_runtime_manifest_bound",
+                            verified_members=len(members)))
+    assert_current(scan)
+    return updates

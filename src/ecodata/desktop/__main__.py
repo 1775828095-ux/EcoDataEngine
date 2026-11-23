@@ -288,6 +288,9 @@ class Window(QMainWindow):
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key.setPlaceholderText("已配置环境变量时无需填写；也可在此填写本次密钥")
         connection.addWidget(self.api_key,1)
+        live_check = QPushButton("联机自检（合成数据）")
+        live_check.clicked.connect(lambda: self.safe(self.check_deepseek_connection))
+        connection.addWidget(live_check)
         self.api_status=QLabel()
         connection.addWidget(self.api_status)
         auditbox.addLayout(connection)
@@ -1211,6 +1214,11 @@ class Window(QMainWindow):
                     document_button = QPushButton("复查说明章节或观测表")
                     document_button.clicked.connect(lambda: self.safe(self.review_source_document))
                     layout.addWidget(document_button)
+                if self.scan and any(item.get("runtime_manifest_eligible") and item["status"] == "pending"
+                                     for item in self.scan.get("document_evidence_checks", ())):
+                    runtime_button = QPushButton("核对运行时依赖清单")
+                    runtime_button.clicked.connect(lambda: self.safe(self.review_runtime_dependencies))
+                    layout.addWidget(runtime_button)
             reason=QLabel("推荐理由：" + (row["reason"].strip() or "DeepSeek 未提供理由。"))
             reason.setTextFormat(Qt.TextFormat.PlainText)
             reason.setWordWrap(True)
@@ -1426,6 +1434,24 @@ class Window(QMainWindow):
 
         self.work(lambda _: fallback.supplement(scan, fields, targets), consider)
 
+    def check_deepseek_connection(self):
+        from .deepseek_self_check import check
+
+        key = self.api_key.text().strip() or os.environ.get("DEEPSEEK_API_KEY", "").strip()
+        if not key:
+            raise ValueError("请先在连接设置配置密钥，再运行合成数据自检")
+        if QMessageBox.question(self, "DeepSeek 联机自检",
+                "是否向 DeepSeek 上传一张程序生成的 GeoTIFF，并发送两行合成 CSV 进行自检？"
+                "不会读取当前项目文件。该调用可能产生少量 API 费用。",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+
+        def complete(result):
+            self.show_progress("DeepSeek 联机自检通过 · 原生 TIFF 上传及 CSV 计算响应已核验")
+            self.detail.appendPlainText(s.dump(dict(合成数据联机自检=result)))
+        self.work(lambda log: check(key, log), complete)
+
     def deliver_netcdf_precipitation(self, recommendation):
         from .independent_review import fields
         from .release_gate import require
@@ -1581,6 +1607,27 @@ class Window(QMainWindow):
             self.detail.appendPlainText(s.dump(dict(复核原文=name, **result)))
             self.show_progress("本地说明复查完成 · 查看检查记录及原文位置")
 
+        self.work(run, reviewed)
+
+    def review_runtime_dependencies(self):
+        from .native_dependencies import verify_runtime_manifest
+
+        scan, model = self.scan, self.decision_model
+        filename, _ = QFileDialog.getOpenFileName(self, "选择实际运行记录生成的依赖清单", "", "JSON (*.json)")
+        if not filename:
+            return
+
+        def run(_):
+            with Path(filename).open("rb") as stream:
+                content = stream.read(1024**2 + 1)
+            if len(content) > 1024**2:
+                raise ValueError("运行依赖清单超过可审核范围")
+            return verify_runtime_manifest(scan, model, json.loads(content.decode("utf-8-sig")))
+
+        def reviewed(checks):
+            self.apply_document_review(scan, checks)
+            self.detail.appendPlainText(s.dump(dict(运行时依赖复核=checks)))
+            self.show_progress("已核对 ZIP 和依赖成员指纹 · 工程仍须通过目标模型的原生准入检查")
         self.work(run, reviewed)
 
     def verify_document_page(self, scan, name, section, png):

@@ -1,5 +1,6 @@
 import io
 import json
+from hashlib import sha256
 from zipfile import ZipFile
 
 import numpy as np
@@ -62,6 +63,21 @@ def test_mixed_frequency_exports_exact_intervals_or_complete_utc_days(tmp_path):
             assert ds["rain"].values.tolist() == ([24.0] if daily else widths.tolist())
             assert ds[ds.time.attrs["bounds"]].values[-1, -1] == 24
     assert fallback_evidence.digest_file(path) == original
+
+
+def test_precipitation_rejects_duplicate_time_without_replacing_output(tmp_path):
+    path = tmp_path / "duplicate.nc"
+    xr.Dataset(
+        {"rain": ("time", [1.0, 1.0], {"units": "mm/h", "cell_methods": "time: mean"}),
+         "time_bounds": (("time", "edge"), [[0, 1], [1, 2]])},
+        coords={"time": ("time", [1, 1], {"units": "hours since 2021-01-01", "bounds": "time_bounds"})},
+    ).to_netcdf(path)
+    field = dict(name="rain", unit="mm/h")
+    output = tmp_path / "existing.nc"
+    output.write_bytes(b"existing")
+    with pytest.raises(ValueError, match="重复"):
+        precipitation_delivery.export(source(path, "NetCDF", [field]), field, output)
+    assert output.read_bytes() == b"existing"
 
 
 def test_mixed_unit_holdout_integrates_actual_row_representations(tmp_path):
@@ -167,3 +183,59 @@ def test_pdf_original_page_preview_is_rendered_locally(tmp_path):
     assert render_original_page(path, 1).startswith(b"\x89PNG")
     with pytest.raises(ValueError, match="没有"):
         render_original_page(path, 2)
+
+
+def test_connection_check_sends_only_generated_tiff_and_fixed_csv():
+    from rasterio.io import MemoryFile
+    from ecodata.desktop import deepseek_self_check
+
+    def upload(stream, size, *, api_key):
+        data = stream.read()
+        assert len(data) == size and api_key == "test-key"
+        with MemoryFile(data) as memory, memory.open() as image:
+            assert image.shape == (128, 128)
+            assert set(np.unique(image.read(1))) == {0, 255}
+        return {"id": "test-attachment", "expires_at": 123}
+
+    def response(messages, tools, key, progress):
+        assert messages[1]["content"][0] == {"type": "file", "file_id": "test-attachment"}
+        assert messages[1]["content"][1]["text"].endswith("value\n1\n2")
+        assert not tools and key == "test-key"
+        return {"content": '{"synthetic_sum": 3}'}, {"id": "test-chat"}
+
+    result = deepseek_self_check.check("test-key", upload=upload, send=response)
+    assert result["status"] == "passed" and result["chat_id"] == "test-chat"
+    with pytest.raises(ValueError, match="校验没有通过"):
+        deepseek_self_check.check("test-key", upload=upload,
+                                  send=lambda *_: ({"content": '{"synthetic_sum": 4}'}, {}))
+    with pytest.raises(ValueError, match="API 密钥"):
+        deepseek_self_check.check("", upload=upload, send=response)
+
+
+def test_runtime_manifest_verifies_members_without_bypassing_native_gate(tmp_path):
+    archive = tmp_path / "project.zip"
+    data = b"test meteorology"
+    with ZipFile(archive, "w") as package:
+        package.writestr("run.csh", "# CMAQ run\nsetenv CTM_MET inputs/met.nc\n")
+        package.writestr("inputs/met.nc", data)
+    checks = native_dependencies.review({"path": archive}, "cmaq")
+    assert any(item.get("runtime_manifest_eligible") for item in checks)
+    scan = dict(path=archive, signature=tuple(inventory(archive)), document_evidence_checks=checks)
+    binding = dict(path="inputs/met.nc", sha256=sha256(data).hexdigest())
+    manifest = dict(schema="ecodata.native-runtime-bindings.v1", model="cmaq",
+                    archive_sha256=fallback_evidence.digest_file(archive),
+                    controls=[dict(path="run.csh", files=[binding])])
+    updates = native_dependencies.verify_runtime_manifest(scan, "cmaq", manifest)
+    assert [item["check"] for item in updates] == ["verified_runtime_member", "verified_runtime_bindings"]
+    assert updates[0]["verified_sha256"] == binding["sha256"]
+    scan["document_evidence_checks"] = [*checks, *updates]
+    assessment = release_gate.assess(scan, {"steps": ["engineering.port_binding"]}, {}, [])
+    assert assessment["status"] == "pending"
+    with pytest.raises(ValueError, match="模型或 ZIP"):
+        native_dependencies.verify_runtime_manifest(scan, "wrf", manifest)
+    binding["sha256"] = sha256(b"changed").hexdigest()
+    with pytest.raises(ValueError, match="内容与清单不匹配"):
+        native_dependencies.verify_runtime_manifest(scan, "cmaq", manifest)
+    binding["path"] = "../outside"
+    with pytest.raises(ValueError, match="路径不明确"):
+        native_dependencies.verify_runtime_manifest(scan, "cmaq", manifest)
