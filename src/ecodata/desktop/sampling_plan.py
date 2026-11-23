@@ -366,7 +366,9 @@ def table(row, field, holdout, *, future=False):
                                          if item.get("sheet") == reserved and
                                          (item.get("original_header") or item.get("name")) == original), {})
                             if field.get("unit") and peer.get("unit") and field["unit"] != peer["unit"]:
-                                return dict(basis="heldout_sheet_unit_conflict", values=[])
+                                from ecodata.engines.units import UnitEngine
+                                if not UnitEngine().equivalent(field["unit"], peer["unit"]):
+                                    return dict(basis="heldout_sheet_unit_conflict", values=[])
                             verified_semantics = False
                             for attribute in ("standard_name", "physical_variable", "temporal_semantics"):
                                 if field.get(attribute) and peer.get(attribute) and field[attribute] != peer[attribute]:

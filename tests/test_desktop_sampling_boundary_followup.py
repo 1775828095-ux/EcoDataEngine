@@ -15,6 +15,58 @@ def source(path, kind, fields):
     return dict(name=path.name, format=kind, ref=(path, "", None, None), bytes=path.stat().st_size, fields=fields)
 
 
+def test_chinese_unit_in_table_header_reaches_field_comparison(tmp_path):
+    from ecodata.desktop.discovery import public_unit
+    from ecodata.desktop.file_tools import inspect
+    from ecodata.models.scientific_schema import compare_units
+
+    path = tmp_path / "rain.csv"
+    path.write_text("rain（毫米/天）\n3\n5\n", encoding="utf-8")
+    field, = inspect(path, "read_header", {"path": ""})["row"]["fields"]
+    assert (field["name"], field["unit"]) == ("rain", "毫米/天")
+    assert public_unit(field["unit"]) == public_unit("mm / d")
+    assert compare_units("precipitation", "mm/day", "precipitation", field["unit"])["status"] == "equivalent"
+
+
+def test_runtime_table_accepts_equivalent_chinese_and_standard_spellings(tmp_path):
+    path = tmp_path / "rain.csv"
+    path.write_text("rain,rain_unit\n3,毫米\n5,mm\n", encoding="utf-8")
+    field = dict(name="rain", unit="mm")
+    result = release_gate.table_review(source(path, "CSV", [field]), field, tmp_path)
+    assert result["records"] == 2
+    assert result["unit"] == "mm"
+
+
+def test_chinese_interval_rate_uses_same_integration_contract():
+    times = np.arange("2021-01-01T00", "2021-01-01T03", dtype="datetime64[h]")
+    from ecodata.engines.units import UnitEngine
+
+    rain = xr.DataArray([1., 2., 3.], dims=["time"], coords={"time": times}, attrs={"units": "毫米每小时"})
+    result = UnitEngine().integrate_rate(rain, [3600., 3600., 3600.], target="毫米")
+    assert result.values.tolist() == [1., 2., 3.]
+    assert result.attrs["source_units"] == "毫米每小时"
+
+
+@pytest.mark.parametrize("source_unit,target,expected", [
+    ("摄氏度", "开尔文", (1., 273.15)), ("毫米", "mm", (1., 0.)),
+    ("毫米每天", "mm d-1", (1., 0.)), ("米／秒", "千米/小时", (3.6, 0.)),
+    ("毫克每立方米", "ug/m3", (1000., 0.)),
+])
+def test_chinese_aliases_use_shared_dimensional_conversions(source_unit, target, expected):
+    from ecodata.engines.units import UnitEngine
+
+    assert UnitEngine().affine(source_unit, target) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("source_unit,target", [("毫米每小时", "毫米"), ("度", "摄氏度")])
+def test_chinese_aliases_do_not_guess_incompatible_or_ambiguous_units(source_unit, target):
+    from ecodata.core.exceptions import SchemaError
+    from ecodata.engines.units import UnitEngine
+
+    with pytest.raises(SchemaError):
+        UnitEngine().affine(source_unit, target)
+
+
 @pytest.mark.parametrize("kind", ["CSV", "Excel"])
 def test_mixed_units_are_converted_and_read_back_in_order(tmp_path, kind):
     import pandas as pd

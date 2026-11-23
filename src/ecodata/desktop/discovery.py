@@ -92,10 +92,11 @@ def pair_units(ar, a, br, b, inferred_quantity=None):
 def public_unit(value):
     if value in PUBLIC_UNITS:
         return value
-    if not re.fullmatch(r"[A-Za-z0-9°µμ%*/^(). +_-]{1,40}",value):
-        return None
     from ecodata.core.exceptions import SchemaError
-    from ecodata.engines.units import UnitEngine
+    from ecodata.engines.units import UnitEngine, normalize_unit
+    value = normalize_unit(value)
+    if not re.fullmatch(r"[A-Za-z0-9°µμ%*/^(). +_-]{1,40}", value):
+        return None
     try:
         return f"{UnitEngine.parse(value):~}"
     except (SchemaError, ValueError, TypeError):

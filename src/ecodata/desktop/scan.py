@@ -225,8 +225,8 @@ def tabular(row, blob, complete):
             samples.append(values)
     for i,title in enumerate(header):
         values = [r[i] for r in samples if r[i].strip()]
-        m = re.fullmatch(r"(.+?)\s*[\[(]([^\])]+)[\])]", title)
-        name, unit = (m[1].strip(),m[2]) if m else (title,"")
+        m = re.fullmatch(r"(.+?)\s*(?:\[([^\]]+)\]|\(([^)]+)\)|（([^）]+)）|【([^】]+)】)", title)
+        name, unit = (m[1].strip(), next(group.strip() for group in m.groups()[1:] if group is not None)) if m else (title,"")
         base = name.casefold().strip()
         typ = "unknown"
         if values:

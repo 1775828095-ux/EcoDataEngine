@@ -310,10 +310,15 @@ def table_review(row, field, folder, *, target_unit=None):
                     from ecodata.core.exceptions import EcoDataError
                     from ecodata.engines.units import UnitEngine
 
+                    engine = UnitEngine()
+                    common_unit = declared or unit_ranges[0]["unit"]
+                    if not target_unit and all(engine.equivalent(unit, common_unit) for unit in distinct):
+                        return dict(records=total, missing=missing, unit=common_unit,
+                                    unit_segments=unit_ranges)
                     statuses = {}
                     for unit in distinct:
                         try:
-                            UnitEngine().affine(unit, target_unit or declared or unit_ranges[0]["unit"])
+                            engine.affine(unit, target_unit or common_unit)
                         except (EcoDataError, ValueError, TypeError):
                             statuses[unit] = "failed"
                         else:
