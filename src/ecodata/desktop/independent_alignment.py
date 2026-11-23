@@ -102,6 +102,12 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
                 raise ValueError(f"{task_id}：目标区域有缺测，不自动填补")
             transformed=GridRegridder(config).apply(EcoDataBundle(source))
             aligned=transformed.data.dataset
+            # The spatial operator outputs only the regridded variable. The
+            # verified accumulation intervals still belong to the same dates.
+            if not aligned.indexes['time'].equals(source.indexes['time']):
+                raise ValueError(f'{task_id}：重网格后的日期与已核验的日累计区间不一致')
+            aligned['time_bounds']=source.time_bounds
+            aligned.time.attrs['bounds']='time_bounds'
             if not np.isfinite(aligned.precipitation.values).all():
                 raise ValueError(f"{task_id}：对齐输出存在缺测")
             outputs=((adapted[1-target_index]["product"],aligned),(adapted[target_index]["product"],target))
