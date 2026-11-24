@@ -271,33 +271,75 @@ def combine(series, task, steps):
     return pd.Series(result[variable].values, index=aligned.index), aligned
 
 
+def held_groups(scan, task, primary, backup):
+    from .holdout_plan import exposures, table_groups
+
+    eligible = [table_groups(source, exposures(scan, index, field))
+                for source, (index, _), field in zip((primary, backup), task["fields"], task["field_metadata"], strict=True)]
+    return sorted(eligible[0] & eligible[1])
+
+
+def freeze_holdout(scan, task):
+    with ExitStack() as stack:
+        return {"groups": held_groups(scan, task, *pair(stack, scan, task))}
+
+
 def review(scan, task, steps, *, independent=False):
     with ExitStack() as stack:
         primary, backup = pair(stack, scan, task)
         common = set(primary.groups) & set(backup.groups)
-        groups = sorted(common if independent else common & primary.held & backup.held)
+        groups = sorted(common) if independent else held_groups(scan, task, primary, backup)
+        if not independent and (plan := task.get("locked_holdout")) is not None:
+            if not set(plan["groups"]) <= set(groups):
+                raise ValueError("锁定的表格回检组与外发记录重叠，或原分组已变化")
+            groups = plan["groups"]
 
         def trial(index):
             group = groups[index]
             left, right = rows_for(primary, group), rows_for(backup, group)
-            paired = left.dropna().index.intersection(right.dropna().index)
-            if len(paired) < 4:
-                return index, None, "insufficient_score_support"
-            # Reserve distinct observed points for dropout and for fusion scoring.
-            dropout, fusion = paired[1::4], paired[3::4]
-            truth = left.reindex(dropout.append(fusion)).to_numpy()
-            sampled_left = left.copy()
-            sampled_left.loc[dropout.append(fusion)] = np.nan
+            paired = left[np.isfinite(left)].index.intersection(right[np.isfinite(right)].index)
             actual, aligned = combine([left, right], task, steps)
-            if ((aligned.notna().any(axis=1)) & ~np.isfinite(actual)).any():
-                return index, None, "recipe_output_missing_on_reference"
-            filled, _ = combine([sampled_left, right], task, steps)
-            baseline = right.reindex(dropout.append(fusion)).to_numpy()
-            metrics, reason = recipe_trials.score(filled.reindex(dropout.append(fusion)).to_numpy(), baseline,
-                                                  truth, "masked_local_table_observations",
-                                                  retained=np.r_[sampled_left.to_numpy(), right.to_numpy()],
-                                                  request=task.get("scoring_request"))
-            return index, metrics, reason
+            if (np.isfinite(aligned).any(axis=1) & ~np.isfinite(actual)).any():
+                return group, None, "recipe_output_missing_on_reference"
+
+            scores = []
+            failures = []
+            dropout = paired[1::4]
+            withheld = left.copy()
+            withheld.loc[dropout] = np.nan
+            fill_steps = [step for step in steps if step != recipe_trials.BLEND]
+            filled, _ = combine([withheld, right], task, fill_steps)
+            metrics, reason = recipe_trials.score(
+                filled.reindex(dropout).to_numpy(), right.reindex(dropout).to_numpy(),
+                left.reindex(dropout).to_numpy(), "masked_local_table_observations",
+                retained=np.r_[withheld.to_numpy(), right.to_numpy()], request=task.get("scoring_request"))
+            if metrics:
+                scores.append(dict(metrics, assessment="gap_fill"))
+            if reason:
+                failures.append("insufficient_gap_score_support" if reason == "insufficient_score_support" else reason)
+
+            if recipe_trials.BLEND in steps:
+                # The original primary measurement is the reference. Reconstruct
+                # it using the recipe's temporal alignment before applying fusion,
+                # and score only points with both inputs actually available.
+                fusion = paired[2::4]
+                withheld = left.copy()
+                withheld.loc[fusion] = np.nan
+                blended, inputs = combine([withheld, right], task, steps)
+                inputs = inputs.reindex(fusion)
+                supported = np.isfinite(inputs).all(axis=1)
+                truth = left.reindex(fusion).where(supported).to_numpy()
+                baselines = inputs.to_numpy().T
+                best = min(baselines, key=lambda prediction: np.nansum((prediction - truth)**2))
+                metrics, reason = recipe_trials.score(
+                    blended.reindex(fusion).to_numpy(), best, truth, "reconstructed_primary_table_proxy",
+                    retained=np.r_[withheld.to_numpy(), right.to_numpy()], request=task.get("scoring_request"))
+                if metrics:
+                    scores.append(dict(metrics, assessment="fusion"))
+                if reason:
+                    failures.append("insufficient_fusion_score_support" if reason == "insufficient_score_support" else reason)
+            failure = next((reason for reason in failures if reason not in recipe_trials.UNSCORED), None)
+            return group, scores, failure or (failures[0] if failures else None)
 
         return recipe_trials.audit(len(groups), f"withheld_{primary.category}", trial)
 

@@ -159,7 +159,7 @@ class ResultCards(QWidget):
                 self.cards.addWidget(label(name, "recommendationTitle"))
             card = QFrame()
             card.setObjectName("recommendationCard")
-            if row["selected"]:
+            if row["selected"] and row["metrics"]:
                 card.setProperty("winner", True)
             layout = QVBoxLayout(card)
             layout.setContentsMargins(14, 10, 14, 11)
@@ -167,8 +167,10 @@ class ResultCards(QWidget):
             heading = row["title"]
             if row["metrics"]:
                 heading = f"第 {row['rank']} 名 · {heading} · {row['family']}"
-            if row["selected"]:
+            if row["selected"] and row["metrics"]:
                 heading += " · 本次最优"
+            elif row.get("performed"):
+                heading += " · 已执行"
             layout.addWidget(label(heading, "recommendationTitle"))
             metric = row["metrics"]
             if metric:

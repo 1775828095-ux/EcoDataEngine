@@ -206,17 +206,36 @@ def trial_recipe(aligned, primary, steps, variable="precipitation", *, scoring_r
     output, evidence = fill(aligned, primary, variable)
     if evidence["unresolved"]:
         return output, evidence, None, "both_sources_missing_on_holdout"
-    if "spatial.blend" not in steps:
-        return output, evidence, None, None
     # The original spatial search seeds its blend with equal weights.
     left, right = (ds[variable] for ds in aligned)
     paired = np.isfinite(left) & np.isfinite(right)
     if not bool(paired.any()):
-        # Covered gaps can be filled even when this date provides no fusion reference.
-        return output, evidence, None, None
-    combined = blend_fields(left, right, .5)
-    output[variable] = combined.where(paired, output[variable])
-    output[variable].attrs = dict(left.attrs)
+        return output, evidence, None, "insufficient_score_support"
+    if "spatial.blend" in steps:
+        combined = blend_fields(left, right, .5)
+        output[variable] = combined.where(paired, output[variable])
+        output[variable].attrs = dict(left.attrs)
+    else:
+        # Hide measured primary cells from the fill operation and compare its
+        # backup predictions with the median of the remaining primary cells.
+        observed = np.asarray(aligned[primary][variable].values, dtype=float)
+        available = np.flatnonzero(paired.values)
+        if len(available) < 2:
+            return output, evidence, None, "insufficient_score_support"
+        withheld = available[::2]
+        masked = aligned[primary].copy()
+        values = observed.copy()
+        values.flat[withheld] = np.nan
+        masked[variable] = masked[variable].copy(data=values)
+        inputs = list(aligned)
+        inputs[primary] = masked
+        reconstructed, _ = fill(inputs, primary, variable)
+        expected = observed.flat[withheld]
+        baseline = np.full(expected.shape, np.nanmedian(values))
+        metrics, failure = score(reconstructed[variable].values.flat[withheld], baseline, expected,
+                                 "MASKED_PRIMARY_GAP_RECONSTRUCTION_PROXY", retained=values,
+                                 request=scoring_request)
+        return output, evidence, metrics, failure
 
     reference = aligned[primary]
     coords = {}

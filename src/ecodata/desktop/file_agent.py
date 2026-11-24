@@ -8,10 +8,12 @@ import subprocess
 import sys
 import time
 
-from .scan import FORMATS, inventory, assert_current
+from .scan import inventory, assert_current
 
 RULES = '''你是环境数据工程检查助手。通过工具自主检查用户授权的本地输入。
-先列目录。文件名只用于定位，不能据此确定物理含义或工程完整性。
+先参考已提供的 DeepSeek 文件类型判断和本地结构证据，再针对其路径调用工具。
+文件名、扩展名和文件签名不能确定物理含义或工程完整性。类型待确认的文件按需要打开核实。
+文件类型清单有下一页时可按需调用 list_file_types；容器内部未列出的路径用 list_directory 查询。已有定位证据时可直接读表头或正文。
 按需读取说明、控制文件和科学数据表头。根据文件实际内容查找其依赖引用，并再次列目录或读被引用文件核实。
 任务要求核验时间定义时，查time单位、bounds和工程控制；若目录或说明列出原始请求／下载回执，应按需核对其中时间标准，不能在未查这些直接证据时笼统断言不存在。
 不要遍历或深读全部数据。归档只是容器，不主动全部展开。同内容ZIP与7z副本优先检查可随机读取的ZIP。
@@ -32,6 +34,7 @@ TOOLS = [dict(type='function', function=dict(name=name, description=description,
         offset=dict(type='integer', description='列表条目偏移或文本字节偏移，默认0。')),
         required=['path'], additionalProperties=False))) for name, description in [
     ('list_directory', '只列目录或指定归档目录，不读取成员数组。超过150条按next_offset继续。'),
+    ('list_file_types', '获取 DeepSeek 文件类型判断和结构证据的下一页。path 必须为空，offset 使用上一页的 next_offset。'),
     ('read_text', '只读选定的说明、工程配置及依赖清单，最多16KiB，按next_offset继续。'),
     ('read_header', '读取选定文件的字段、类型、单位、维度或数据库结构；文本表只取开头几行。')]]
 
@@ -48,6 +51,7 @@ class FileTools:
         self.events = []
         self.rows = {}
         self.documents = {}
+        self.file_cards = []
 
     def call(self, name, arguments):
         if name not in {tool['function']['name'] for tool in TOOLS}:
@@ -59,6 +63,19 @@ class FileTools:
         locator = arguments.get('path', '')
         if not isinstance(locator, str):
             raise ValueError("path 必须为字符串")
+        if name == "list_file_types":
+            from .file_cards import page
+
+            started = time.perf_counter()
+            offset = arguments.get("offset", 0)
+            if locator or type(offset) is not int or offset < 0:
+                raise ValueError("分类列表需要空路径和非负偏移")
+            if tuple(inventory(self.root)) != self.signature:
+                raise ValueError("原始输入已变化，需重新确认")
+            self.events.append(dict(tool=name, arguments=arguments, ok=True,
+                                    seconds=time.perf_counter() - started,
+                                    temporary_bytes_after_tool=0, temporary_directory_removed=True))
+            return dict(ok=True, result=page(self.file_cards, offset))
         excluded = {record["locator"].casefold() for record in self.local_references.values()}
         if locator.casefold() in excluded or Path(locator).name == MANIFEST or locator.endswith(SUFFIX):
             raise ValueError("该本地索引或留出参考文件仅用于本地复查")
@@ -126,12 +143,9 @@ class FileTools:
             for document in value.get('companion_documents',[]):
                 self.documents[document['name']]=document['text']
                 self.document_locators[document['name']]=arguments.get('path','')+'.receipt.json'
-            # Internal exact bytes support native validation, not another copy
-            # of configuration/base64 in every remote tool transcript.
-            if 'row' in value:
-                from .sampling_plan import recommendation_metadata
-                value['row'] = recommendation_metadata(value['row'])
-            if 'document' in value:value['document']={k:v for k,v in value['document'].items() if k!='raw_base64'}
+            from .file_tools import sendable_inspection
+
+            result["result"] = sendable_inspection(value, locator)
         return result
 
     def scan(self):
@@ -147,26 +161,36 @@ def complete_pair_headers(tools,calls,completion,progress):
     Names locate files and never establish physical identity. Stop at two
     inspected scientific structures, four total dependency probes, or 48 calls.
     """
+    from .precipitation_partitions import shard_family
+
     suffixes={'.nc','.nc4','.cdf','.tif','.tiff','.csv','.xlsx'}
-    count=sum(bool(r.get('fields')) and Path(r['name']).suffix.lower() in suffixes for r in tools.rows.values())
+    inspected = {shard_family(row["name"]) or row["name"] for row in tools.rows.values()
+                 if row.get("fields") and Path(row["name"]).suffix.casefold() in suffixes}
     for display,entry in sorted(tools.directory_members.items()):
-        if count>=2 or calls>=48 or len(completion)>=4:break
-        if Path(entry['path']).suffix.lower() not in suffixes or tools.rows.get(display,{}).get('fields'):continue
+        if len(inspected)>=2 or calls>=48 or len(completion)>=4:break
+        source = shard_family(display) or display
+        if source in inspected or Path(display).suffix.casefold() not in suffixes:
+            continue
         progress('补核已列目录中的数据表头：'+entry['path']+'；仅为达到双源任务最低识别条件，不深读数组')
         response=tools.call('read_header',dict(path=entry['path']));calls+=1
         completion.append(dict(source='observed directory, minimum paired-data header inspection',path=entry['path'],ok=response['ok']))
-        if response['ok'] and response.get('result',{}).get('row',{}).get('fields'):count+=1
+        if response['ok'] and response.get('result',{}).get('row',{}).get('fields'):
+            inspected.add(source)
     return calls
 
 
 def scan_index(location, progress=None):
+    from .file_cards import local_cards
+
     start = time.perf_counter()
     tools = FileTools(location)
     response = tools.call('list_directory', dict(path=''))
     if not response['ok']:
         raise ValueError(response['error'])
     scan = tools.scan()
-    scan.update(shallow=True, initial_directory=response['result'])
+    cards = local_cards(tools.root, tools.signature, excluded=[item["locator"] for item in tools.local_references.values()])
+    assert_current(scan)
+    scan.update(shallow=True, initial_directory=response['result'], file_cards=cards)
     from ecodata.models.input_context import find
     context=find(location)
     if context:scan['saved_input_context']={k:v for k,v in context.items() if k!='documents'}
@@ -180,14 +204,33 @@ def run(scan, summary, cache, mock, key, progress, feedback):
     if mock:
         raise ValueError('自主文件工具验收需要真实API，未生成模拟判断')
     tools = FileTools(scan['path'])
+    from .file_cards import page
+
+    from .three_phase import classify
+
+    structural_cards = scan.get("file_cards", [])
+    files = [dict(id=f"F{number}", format=card["format"], member_bytes=card["bytes"],
+                  structure_hint=card["basis"], columns=card.get("columns"))
+             for number, card in enumerate(structural_cards, 1)]
+    receipts = []
+    classifications = dict(api_receipts=receipts, failures=[], reused_batches=0)
+    kinds = classify(scan, summary, cache, mock, key, progress, feedback, classifications,
+                     request=dict(stage="file_classification", target_model=summary["target_model"], files=files))
+    if files and not kinds and classifications["failures"]:
+        raise ValueError("DeepSeek 文件类型判断未完成：" + classifications["failures"][0]["reason"])
+    tools.file_cards = [dict(card, kind=kinds.get(file["id"], "uncertain"))
+                        for card, file in zip(structural_cards, files, strict=True)]
+    for card in tools.file_cards:
+        locator = card["path"]
+        display = f"{tools.root.name}!/{locator}" if tools.root.is_file() and locator else locator or tools.root.name
+        tools.directory_members[display] = dict(path=locator, bytes=card["bytes"])
     saved_context=scan.get('saved_input_context')
     if saved_context and saved_context.get('model_id')!=summary['target_model']['id']:saved_context=None
     messages = [dict(role='system', content=RULES), dict(role='user', content=json.dumps(dict(
         target_model=summary['target_model'], input_kind='directory' if tools.root.is_dir() else 'archive_or_file',
         goal='识别数据、工程控制及依赖，按证据规划后续处理',
-        task_goal=summary.get('task_goal'),saved_input_context=saved_context,
+        task_goal=summary.get('task_goal'),saved_input_context=saved_context, file_types=page(tools.file_cards),
         task_requirements=summary.get('task_requirements', {})), ensure_ascii=False))]
-    receipts = []
     transcript = []
     final = None
     calls = 0
@@ -248,7 +291,31 @@ def run(scan, summary, cache, mock, key, progress, feedback):
         response=tools.call('read_header',dict(path=target));calls+=1
         completion.append(dict(source='observed acquisition receipt dependency',receipt=name,path=target,ok=response['ok']))
     calls=complete_pair_headers(tools,calls,completion,progress)
+    from .precipitation_partitions import prepare as partition_precipitation, shard_family
+    families = {shard_family(name) for name, row in tools.rows.items() if row.get("fields")}
+    families.discard(None)
+    if families and tools.root.is_file() and tools.root.suffix.casefold() == ".zip":
+        from zipfile import ZipFile
+        from .scan import safe
+
+        with ZipFile(tools.root) as archive:
+            for info in archive.infolist():
+                display = f"{tools.root.name}!/{info.filename}"
+                if not info.is_dir() and safe(info.filename) and shard_family(display) in families:
+                    tools.directory_members.setdefault(display, dict(path=info.filename, bytes=info.file_size))
+    for display, entry in sorted(tools.directory_members.items()):
+        if calls >= 48 or sum(item["source"] == "same-product daily shard" for item in completion) >= 6:
+            break
+        if shard_family(display) not in families or tools.rows.get(display, {}).get("fields"):
+            continue
+        response = tools.call("read_header", dict(path=entry["path"]))
+        calls += 1
+        completion.append(dict(source="same-product daily shard", path=entry["path"], ok=response["ok"]))
     full = tools.scan()
+    try:
+        partition_precipitation(full)
+    except (OSError, ValueError, RuntimeError, KeyError) as error:
+        full["warnings"].append(f"同产品分片留出准备失败：{error}")
     if saved_context:full['saved_input_context']=saved_context
     # Keep all inspected rows and actual parent references, never hydrate uninspected files.
     full['file_agent_audit'] = dict(events=tools.events, transcript=transcript, result=final,
@@ -280,11 +347,12 @@ def run(scan, summary, cache, mock, key, progress, feedback):
     candidates, approved, dialogue = catalog_decision.materialize(full, catalogue, originals, details,
         [(set(originals), answer)], ask_implicit=False)
     decisions = [row for item in dialogue.values() for row in item['decisions']]
-    checked, gated = discovery.check(full, candidates, dict(decisions=decisions), approved)
+    proposals = discovery.workflow_proposals(decisions, approved)
+    checked, gated = discovery.check(full, candidates, dict(decisions=proposals), approved, sampled_workflow=True)
     from .document_evidence import cross_check
     from .native_dependencies import review as review_native_dependencies
     full['document_evidence_checks'] = [*cross_check(full), *review_native_dependencies(full, summary['target_model']['id'])]
-    reply = dict(mode='DeepSeek API', decisions=decisions, failures=[], batch_count=len(receipts),
-        local_checks=answer['field_checks'], api_receipts=receipts, reused_batches=0,
-        file_agent=full['file_agent_audit'])
+    reply = dict(mode='DeepSeek API', decisions=decisions, failures=classifications["failures"], batch_count=len(receipts),
+        local_checks=answer['field_checks'], api_receipts=receipts, reused_batches=classifications["reused_batches"],
+        file_classifications=tools.file_cards, file_agent=full['file_agent_audit'])
     return reply, checked, gated, candidates, approved, full

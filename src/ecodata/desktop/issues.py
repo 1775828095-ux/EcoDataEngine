@@ -50,6 +50,27 @@ def exception(exc):
     return [item('当前操作',None,str(exc))]
 
 
+def recommendation_checks(rows):
+    from .fallback_evidence import eligible
+    from .release_gate import allowed, explanation
+
+    result = []
+    for row in rows:
+        release = row.get("execution_release")
+        if not release or row.get("advisory_only") or allowed(row):
+            continue
+        if release["status"] == "released" and row.get("requires_final_confirmation"):
+            result.append(item("算法验收", row["task"], "留出评分已通过，等待 DeepSeek 最终确认。",
+                               "在方案卡片点击「重新请求最终推荐」。"))
+        elif release.get("blockers"):
+            action = ("工作台会在抽检驳回后自动提交全量扰动副本，完成后查看复验状态。"
+                      if eligible(row) and release["status"] == "failed" else
+                      "在方案卡片补充证据或提供新的独立数据。" if eligible(row) else
+                      "在方案卡片查看数据依据与检查前提。")
+            result.append(item("算法验收", row["task"], explanation(release), action))
+    return result
+
+
 def output(result,review=None):
     rows=checks([],result.get('failed_tasks',[]))
     manifest=result.get('manifest',{})

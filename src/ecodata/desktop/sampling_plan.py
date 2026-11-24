@@ -94,6 +94,16 @@ def netcdf(row, field, holdout, spatial=False):
         size = array.sizes[partition]
         reserved = max(1, size // 5)
         boundary = size - reserved
+        if not holdout and temporal == partition and row.get("recommendation_cutoff"):
+            import xarray as xr
+
+            dates = xr.decode_cf(dataset[[temporal]])[temporal].values.astype("datetime64[D]")
+            cutoff = np.datetime64(row["recommendation_cutoff"], "D")
+            if np.isnat(dates).any() or (dates[1:] < dates[:-1]).any():
+                return dict(basis="no_disjoint_partition", values=[])
+            boundary = int(np.searchsorted(dates, cutoff))
+            if boundary == 0:
+                return dict(basis="no_disjoint_partition", values=[])
         spacing = row.get("declared_time_resolution")
         tile_axes = [dim for dim in dims if dim not in {partition, temporal} and array.sizes[dim] >= 4][:2]
         width = min(16 // 2**len(tile_axes), reserved if holdout else max(1, boundary // 4))
@@ -477,6 +487,7 @@ def table(row, field, holdout, *, future=False):
                                           for value in batch if value is not None), VALUE_LIMIT))
                 return dict(basis=basis, unit=field.get("unit"), sheet=sheet,
                             partition=dict(held_month=held_month, coverage="indexed_file" if indexed else "bounded_prefix"),
+                            sampled_group_keys=list(groups) if not holdout else [],
                             dates_valid=valid_dates([clock for batch in stamps.values() for clock, _ in batch]) if holdout and time is not None else None,
                             groups=len(groups), values=values, observation_groups=list(stamps.values()) if holdout else [])
         except UnicodeDecodeError:
@@ -593,12 +604,16 @@ def latest_month_review(prefix, remainder, time, station, column, prefix_holdout
     return reservoir.result(partition)
 
 
-def export_field(row, field):
+def export_field(row, field, *, require_partition=False, record=None):
     from .sample_values import export_sample, field_sample
 
     if row["format"] not in SUPPORTED or row.get("original_reader") or field.get("noaa_component"):
+        if require_partition:
+            return dict(status="unavailable", basis="holdout_partition_unavailable", perturbed_samples=[])
         return export_sample(field_sample(row, field, outbound=True))
-    record = sample(row, field)
+    record = sample(row, field) if record is None else record
+    if require_partition and not record.get("partition"):
+        return dict(status="unavailable", basis="holdout_partition_unavailable", perturbed_samples=[])
     payload = export_sample(record["values"])
     windows = [dict(axis=window.get("axis"), points=window["stop_index"] - window["start_index"],
                     interval=window.get("interval"),

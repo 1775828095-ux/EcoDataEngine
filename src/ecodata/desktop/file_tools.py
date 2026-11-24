@@ -11,6 +11,75 @@ import zipfile
 
 from .scan import FORMATS, archive_stream, decode, kind, materialize_member, safe, scientific, tabular
 
+OBSERVATION_TEXT = {".csv", ".tsv", ".pcp", ".tmp", ".hmd", ".slr", ".wnd", ".rdb", ".isd"}
+
+
+def sendable_inspection(result, locator):
+    """Construct the tool reply from structure and filtered engineering text."""
+    from .document_content import PLACEHOLDER, classify, numeric_row, scalar_numeric, table_row
+    from .document_evidence import text_passages
+    from .engineering_excerpt import INSPECTION_NUMBER, PRIVATE, redact_private
+    from .sampling_plan import recommendation_metadata
+    from urllib.parse import parse_qs, urlsplit
+
+    def excerpt(name, raw, *, engineering_passage=False):
+        document = classify(name, raw)
+        text = document.text
+        suffix = Path(name).suffix.casefold()
+        # Short controls may contain a single setting, insufficient for the
+        # general document classifier to identify the entire fragment.
+        if text is None and document.mode == "unknown" and suffix in {".cio", ".cli", ".ini", ".cfg", ".nml"}:
+            text = "\n".join(line for line in raw.splitlines() if "=" in line or ":" in line)
+        if text is None and document.mode == "unknown" and engineering_passage:
+            text = raw
+        if text is None:
+            return PLACEHOLDER
+        lines = []
+        for line in text.splitlines():
+            cells = table_row(line)
+            data = numeric_row(cells) or any(
+                delimiter in line and any(scalar_numeric(cell) for cell in cells)
+                for delimiter in (",", "|", "\t", ";"))
+            lines.append(PLACEHOLDER if data else INSPECTION_NUMBER.sub("[数值]", PRIVATE.sub(redact_private, line)))
+        return "\n".join(lines)
+
+    def companion(doc):
+        clean = dict(doc, text=excerpt(doc["name"], doc["text"]))
+        if doc["name"].casefold().endswith(".receipt.json"):
+            try:
+                url = json.loads(doc["text"]).get("url")
+                values = parse_qs(urlsplit(url).query).get("time-standard", [])
+                if values in (["UTC"], ["LST"]):
+                    clean["declared_time_standard"] = values[0]
+            except (AttributeError, TypeError, ValueError):
+                pass
+        return clean
+
+    clean = dict(result)
+    if "row" in clean:
+        local_keys = {"ref", "containers", "attribute_member"}
+        clean["row"] = recommendation_metadata(
+            {key: value for key, value in result["row"].items() if key not in local_keys})
+    name = result.get("row", {}).get("name", locator) or "说明.txt"
+    if "text" in result:
+        if Path(name).suffix.casefold() in {".pdf", ".docx"} and "evidence" in result:
+            clean["evidence"] = [
+                dict(location=INSPECTION_NUMBER.sub("[编号]", PRIVATE.sub(redact_private, item["location"])),
+                     excerpt=excerpt(name, item["excerpt"], engineering_passage=True))
+                for item in result["evidence"]]
+            clean["text"] = "\n".join(item["excerpt"] for item in clean["evidence"])
+        else:
+            clean["text"] = excerpt(name, result["text"])
+        if "evidence" in result and Path(name).suffix.casefold() not in {".pdf", ".docx"}:
+            clean["evidence"] = text_passages(clean["text"], markdown=Path(name).suffix.casefold() == ".md")
+    if "document" in result:
+        doc = result["document"]
+        clean["document"] = {**{key: value for key, value in doc.items() if key not in {"raw_base64", "text"}},
+                             "text": clean["text"] if "text" in clean else excerpt(doc["name"], doc["text"])}
+    if "companion_documents" in result:
+        clean["companion_documents"] = [companion(doc) for doc in result["companion_documents"]]
+    return clean
+
 
 @contextmanager
 def selected(root, locator, *, stream_table=False, max_leaf_bytes=None):
@@ -92,10 +161,12 @@ def inspect(root, operation, arguments):
     locator = arguments.get('path', '')
     if not isinstance(locator, str):
         raise ValueError('path必须为字符串')
-    if operation == 'read_text' and Path(locator or root).suffix.lower() in {'.csv', '.tsv'}:
+    if operation == 'read_text' and Path(locator or root).suffix.lower() in OBSERVATION_TEXT:
         raise ValueError('请用 read_header 读取列名，再按已审核字段申请数值样本')
     with selected(root, locator, stream_table=operation == 'read_header') as (path, reference, containers):
         if operation == 'list_directory':
+            from .file_cards import describe
+
             start = arguments.get('offset', 0)
             if type(start) is not int or start < 0:
                 raise ValueError('offset必须为非负整数')
@@ -107,6 +178,8 @@ def inspect(root, operation, arguments):
                     row['path'] = '!/'.join(x for x in (locator, row['name']) if x)
                 else:
                     row['path'] = locator
+                if not row["directory"]:
+                    row["local_format"] = describe(row["name"], row["bytes"])["format"]
             return dict(entries=rows[start:start + 150], total=len(rows),
                         next_offset=start + 150 if start + 150 < len(rows) else None,
                         arrays_read=False)
@@ -145,7 +218,7 @@ def inspect(root, operation, arguments):
             with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as database:
                 tables = database.execute("select name,sql from sqlite_master where type='table' order by name limit 150").fetchall()
             return dict(tables=tables, row=row, arrays_read=False)
-        if suffix in {'.csv', '.tsv', '.txt', '.pcp', '.tmp', '.cli', '.cio'}:
+        if suffix in OBSERVATION_TEXT | {'.txt', '.cli', '.cio'}:
             if suffix in {'.csv', '.tsv'} and reference[1] == 'zip':
                 with zipfile.ZipFile(path) as archive:
                     row['bytes'] = archive.getinfo(reference[2]).file_size
@@ -154,20 +227,30 @@ def inspect(root, operation, arguments):
             else:
                 with path.open('rb') as stream:
                     raw = stream.read(16384)
+            from .document_content import DATE, scalar_numeric, table_row
+
             lines = decode(raw).splitlines()[:8]
-            if suffix in {'.csv', '.tsv'} and lines:
+            first = table_row(lines[0]) if lines else []
+            header = bool(first and not any(scalar_numeric(cell) or DATE.fullmatch(cell) for cell in first))
+            if suffix in {'.csv', '.tsv'} and header:
                 delimiter = '\t' if suffix == '.tsv' else ','
                 columns = next(csv.reader([lines[0]], delimiter=delimiter))
                 from io import StringIO
                 header = StringIO()
                 csv.writer(header, delimiter=delimiter).writerow(columns)
                 tabular(row, header.getvalue().encode('utf-8'), False)
-            if suffix in {'.csv', '.tsv'}:
-                lines = lines[:1]
-            answer=dict(header_lines=lines, row=row, arrays_read=False,
-                        sample_scope='first eight lines, at most 16 KiB; not a full-series audit')
-            if suffix in {'.csv', '.tsv'}:
-                answer['sample_scope'] = 'column header only; observation samples are requested separately'
+            if suffix in {'.csv', '.tsv'} and header:
+                header_lines = lines[:1]
+            else:
+                from .scan import swat_result_fields
+
+                recognized = swat_result_fields(row, lines)
+                header_lines = [" ".join(field["name"] for field in row["fields"])] if recognized else []
+                if not recognized and header and len(first) >= 2 and any(
+                        token.casefold() in {"time", "date", "year", "day", "jday", "station_id", "日期", "时间"} for token in first):
+                    header_lines = [lines[0]]
+            answer = dict(header_lines=header_lines, row=row, arrays_read=False,
+                          sample_scope='仅返回可识别的列名、类型和单位；观测记录须经抽样后另行提供')
             if suffix in {'.cio','.cli'} and len(raw)==path.stat().st_size:
                 answer['document']=dict(name=display,text=decode(raw),offset=0,total_bytes=len(raw),
                     raw_base64=base64.b64encode(raw).decode('ascii'),partial=False)

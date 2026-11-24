@@ -11,6 +11,7 @@ from .sampling_risk import evaluate_recipe, recipe_settings
 FILL = "fusion.series_missing_fallback"
 BLEND = "spatial.blend"
 ARRAY_ROUTES = {"windowed_grid_recipe", "indexed_table_recipe"}
+UNSCORED = {"insufficient_score_support", "insufficient_gap_score_support", "insufficient_fusion_score_support"}
 
 
 def required(task):
@@ -22,6 +23,9 @@ def review(scan, task_id, task, steps, *, model=None, independent=False):
     from .local_search import model_request
 
     route = (task or {}).get("route")
+    if not independent and task and task.get("holdout_lock_error"):
+        return dict(status="pending", basis="holdout_overlap_unverified", count=0, checks=[],
+                    reason=task["holdout_lock_error"])
     try:
         if route == "independent_grid_search":
             scoring = model_request(dict(task="multisource", variable="precipitation", unit="mm",
@@ -38,7 +42,11 @@ def review(scan, task_id, task, steps, *, model=None, independent=False):
         return dict(status="pending", basis="joint_recipe_index_required", count=0, checks=[], reason=str(error))
     except (EcoDataError, OSError, RuntimeError, ValueError, KeyError, TypeError, IndexError, ImportError) as error:
         return dict(status="pending", basis="joint_grid_holdout_unavailable", count=0, checks=[], reason=str(error))
-    return dict(status="pending", basis="joint_recipe_adapter_unavailable", count=0, checks=[], route=route)
+    label = {"original_engineering": "原生工程端口", "native_reference_search": "原生网格参考",
+             "pair_processing": "通用配对处理", "observation_gap_search": "观测缺口搜索"}.get(route)
+    reason = (f"{label or '当前处理路线'}尚未接入完整的留出试跑与评分。"
+              if task else "候选还缺少可用的本地处理入口。")
+    return dict(status="pending", basis="joint_recipe_adapter_unavailable", count=0, checks=[], route=route, reason=reason)
 
 
 def combine(aligned, variable, steps):
@@ -76,20 +84,29 @@ def score(candidate, baseline, truth, reference, *, retained, request=None):
 
 def audit(population, unit, trial):
     if not population:
-        return dict(status="pending", basis="recipe_coverage_budget_insufficient", count=0, checks=[])
+        return dict(status="pending", basis="no_disjoint_partition", population=0, unit=unit, count=0, checks=[])
     scores = []
 
     def check(index):
         group, metrics, reason = trial(index)
         if metrics:
-            scores.append(dict(unit=str(group), **metrics))
+            items = metrics if isinstance(metrics, list) else [metrics]
+            scores.extend(dict(unit=str(group), **item) for item in items)
+        elif not reason:
+            reason = "insufficient_score_support"
         if reason:
-            return dict(unit=str(group), rule=reason, unscored=reason == "insufficient_score_support")
+            return dict(unit=str(group), rule=reason, unscored=reason in UNSCORED)
         return None
 
     report = evaluate_recipe(population, unit, check, **recipe_settings())
     basis = ("joint_recipe_acceptance_passed" if report["status"] == "checked" else
              "recipe_numeric_rejected" if report["status"] == "failed" else
+             "recipe_scoring_reference_insufficient" if report["unscored"] else
              "recipe_coverage_budget_insufficient")
+    missing = {item["rule"] for item in report.get("unscored_units", ())}
+    reasons = {"insufficient_gap_score_support": "缺少可用于模拟缺测的实测参考和单源基线",
+               "insufficient_fusion_score_support": "缺少双源同时有效、参考值未进入融合输入的配对时刻",
+               "insufficient_score_support": "缺少能在相同位置比较方案与单源基线的参考值"}
     return dict(status=report["status"], basis=basis, count=sum(item["count"] for item in scores),
-                checks=["fixed_alignment_gap_fusion_trial"], acceptance_sampling=report, sampled_scores=scores)
+                checks=["fixed_alignment_gap_fusion_trial"], acceptance_sampling=report, sampled_scores=scores,
+                reason="；".join(reasons[code] for code in sorted(missing)) if report["status"] == "pending" else "")

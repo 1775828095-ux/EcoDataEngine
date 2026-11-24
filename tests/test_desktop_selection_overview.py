@@ -4,6 +4,28 @@ from ecodata.desktop import output_review, service
 from test_desktop_simple_flow import window
 
 
+def test_alignment_fallback_and_measured_selection_have_distinct_labels(window):
+    alignment = dict(selection_basis="GEOMETRY_BASELINE", candidates=[], selected_source_grid=2)
+    result = dict(mode="selected_operations", source_formats=["NetCDF"], target_format="NetCDF",
+                  original_report=[dict(task="C1:align_space", backend="independent_alignment",
+                                        report=[dict(alignment=alignment)])])
+    check = output_review.describe_output(result, None)
+    def render():
+        items = output_review.cards(result, check)
+        summaries = output_review.selection_summaries(items, [], [], result=result)
+        window.result_cards.render(items, check, summaries=summaries)
+        return summaries, [widget.text() for widget in window.result_cards.findChildren(QLabel)]
+    summaries, labels = render()
+    assert summaries[0]["performed"] and not summaries[0].get("metrics")
+    assert "保守重网格 · 已执行" in labels and not any("本次最优" in text for text in labels)
+    alignment["candidates"] = [
+        dict(source_grid=i, latitude_step=.25*i, longitude_step=.25*i, rmse=loss, mae=loss, n=20)
+        for i, loss in [(1, 2.), (2, 1.)]]
+    summaries, labels = render()
+    assert summaries[0]["metrics"]["RMSE"] == 1.
+    assert any("第 1 名" in text and "本次最优" in text for text in labels)
+
+
 def test_overview_uses_recorded_winner_and_keeps_failures_unscored(window):
     check = dict(source_formats=['NetCDF'], target_format='NetCDF', conversion_reason='',
                  model=None, native_ready=False, requirements=[], notes=[])

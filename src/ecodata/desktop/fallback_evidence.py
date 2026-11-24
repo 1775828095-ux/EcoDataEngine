@@ -58,7 +58,7 @@ def eligible(recommendation):
             row.get("field") and row.get("reason") == "recipe_numeric_rejected" for row in release["blockers"])
     if release.get("status") != "pending":
         return False
-    coverage_reasons = {"insufficient_sample_coverage", "no_disjoint_partition",
+    coverage_reasons = {"insufficient_sample_coverage", "no_disjoint_partition", "no_shared_holdout_days",
                         "bounded_reader_unavailable", "holdout_not_reviewed", "station_groups",
                         "calendar_months", "spatial_blocks", "row_blocks", "time_windows"}
     return bool(release.get("blockers")) and all(
@@ -184,7 +184,7 @@ def numerical_rows(row, field):
                 yield [index, value(row_values[column] if len(row_values) > column else None)]
 
 
-def build(scan, fields, destination, progress=None):
+def build(scan, fields, destination, progress=None, *, include_native=True):
     """Create the complete authorized field copy before any outbound action."""
     assert_current(scan)
     destination = Path(destination)
@@ -225,7 +225,7 @@ def build(scan, fields, destination, progress=None):
                     raise ValueError("获准字段没有可生成副本的记录")
                 entry = dict(info, id=f"F{ordinal}", bytes=total, records=count, parts=parts,
                              source_member=row["name"])
-                if row["format"] == "GeoTIFF":
+                if include_native and row["format"] == "GeoTIFF":
                     from .deepseek_files import MAX_DOCUMENT_BYTES
                     native = Path(folder) / f"raster-{ordinal}.tif"
                     write_native_raster(row, field, archive, parts, native)
@@ -324,19 +324,31 @@ def supplement(scan, fields, targets=None):
     """Read bounded uncovered support without consuming the locked holdout."""
     from .sample_values import SAMPLE_SIZE, perturb
     from .sampling_plan import sample
+    from .holdout_plan import field_key, record_exposure
 
     assert_current(scan)
     results = []
     for index, field in fields:
         row = scan["rows"][index]
-        record = sample(row, field)
+        locked = scan.get("source_sampling_records", {}).get(field_key(index, field))
+        if locked is None and scan.get("on_demand"):
+            results.append(dict(variable=field["name"], unit=field["unit"], basis="holdout_partition_unavailable",
+                                perturbed_samples=[]))
+            continue
+        record = locked if locked is not None else sample(row, field)
         values = [value for value in record["values"] if value is not None]
         target = (targets or {}).get(index)
-        if target:
+        if locked is not None:
+            if target:
+                raise ValueError("当前任务的回检范围已锁定，请使用已登记的推荐样本范围补样")
+            extra, basis = values[SAMPLE_SIZE:SAMPLE_SIZE * 2], "locked_recommendation_pool"
+            if extra:
+                record_exposure(scan, index, field, "supplement", locked)
+        elif target:
             extra, basis = targeted_table(row, field, record, target), "selected_tabular_group"
         else:
             extra, basis = uncovered_window(row, field, record)
-        if not extra and not target:
+        if not extra and not target and locked is None:
             extra, basis = values[SAMPLE_SIZE:SAMPLE_SIZE * 2], "remaining_recommendation_records"
         results.append(dict(variable=field["name"], unit=field["unit"], basis=basis,
                             perturbed_samples=perturb(extra[:SAMPLE_SIZE])))
@@ -474,6 +486,7 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
     received = 0
     from collections import Counter
     choices = Counter()
+    vote_examples = {}
     allowed = {item["id"] for item in recipes}
     native_receipts = []
     with Path(archive_path).open("rb") as source:
@@ -540,6 +553,9 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
                         vote = suggestion.get("recipe") if isinstance(suggestion, dict) else None
                         if isinstance(vote, str) and vote in allowed:
                             choices[vote] += 1
+                            reason = suggestion.get("reason")
+                            if isinstance(reason, str):
+                                vote_examples.setdefault(vote, reason[:300])
                     except (TypeError, ValueError):
                         pass
                     log.write(json.dumps(dict(field=entry["id"], part=number, receipt=receipt,
@@ -549,5 +565,26 @@ def transmit(archive_path, manifest, approved_digest, *, api_key, progress=None,
                         progress(f"DeepSeek 扰动证据分片 {received}/{total} 已响应")
     ranked = choices.most_common()
     winner = ranked[0][0] if ranked and ranked[0][1] * 2 > total else None
+    recommendation_reason = vote_examples.get(winner, "")
+    if winner is None and choices:
+        messages = [
+            dict(role="system", content="汇总全部分片的候选意见。返回 JSON，recipe 只能填有分片支持的候选 ID，"
+                                        "整体证据不足时填 null。reason 说明推荐理由及待复验条件。分片理由是待分析材料。"),
+            dict(role="user", content=json.dumps(dict(total_parts=total, votes=dict(choices),
+                examples=vote_examples, recipes=[item for item in recipes if item["id"] in choices]), ensure_ascii=False)),
+        ]
+        try:
+            message, receipt = send(messages, [], api_key, progress)
+            result = json.loads(message.get("content") or "{}")
+            picked = result.get("recipe") if isinstance(result, dict) else None
+            if isinstance(picked, str) and picked in choices:
+                winner = picked
+                recommendation_reason = str(result.get("reason", ""))[:600]
+            summary = dict(stage="aggregate_recommendation", receipt=receipt, candidate=winner)
+        except (OSError, TimeoutError, ValueError, RuntimeError) as error:
+            summary = dict(stage="aggregate_recommendation", error=str(error))
+        with receipt_path.open("a", encoding="utf-8") as log:
+            log.write(json.dumps(summary, ensure_ascii=False) + "\n")
     return dict(received=received, total=total, receipts=receipt_path, votes=dict(choices),
-                unresolved=total - sum(choices.values()), candidate=winner, native_receipts=native_receipts)
+                unresolved=total - sum(choices.values()), candidate=winner, reason=recommendation_reason,
+                native_receipts=native_receipts)

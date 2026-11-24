@@ -67,7 +67,9 @@ def test_explanation_toggle_and_candidate_choice_are_real_widgets(tmp_path,compl
     from PySide6.QtWidgets import QApplication,QPlainTextEdit,QPushButton
     from ecodata.desktop.__main__ import Window
     app=QApplication.instance() or QApplication([])
-    window=Window();window.render_recommendations(dict(mode='界面功能测试',recommendations=[advised_row()]))
+    row = advised_row()
+    row['final_verified_recommendation'] = True
+    window=Window();window.render_recommendations(dict(mode='界面功能测试',recommendations=[row]))
     evidence=next(w for w in window.findChildren(QPlainTextEdit) if w.accessibleName()=='数据依据与推荐边界')
     toggle=next(w for w in window.findChildren(QPushButton) if w.text()=='展开数据依据与检查前提')
     assert evidence.isHidden();toggle.click();assert not evidence.isHidden()
@@ -144,3 +146,30 @@ def test_final_recommendation_sends_only_verified_recipes_and_aggregate_counts(m
     receipt = recommendations.finalize_recipes(plan, [accepted, blocked], mock=False, api_key="synthetic", progress=None)
     assert receipt["status"] == "COMPLETED" and accepted["final_recommendation_origin"] == "deepseek"
     assert not blocked.get("final_verified_recommendation")
+def test_engineering_fusion_obligation_keeps_a_complete_pending_plan(tmp_path):
+    from ecodata.desktop import discovery, recommendations, release_gate
+    from ecodata.desktop.scan import inventory
+
+    pair = dict(id="C1", fields=["D1.F1", "D2.F1"], possible_actions=["fusion"],
+                unit_check={"status": "equivalent"})
+    approved = dict(candidates=[pair], target_model={"id": "swat_plus"},
+                    engineering_documents=[dict(text="工程要求两份日降水产品进行融合。", source_ids=["D1", "D2"])])
+    direct = [dict(candidate="C1", action="direct")]
+    assert discovery.workflow_proposals(direct, approved)[-1]["action"] == "fusion"
+    rejected = [dict(candidate="C1", action="fusion", status="条件不足", reason="缺少共同 UTC 日")]
+    scan = dict(path=tmp_path, signature=tuple(inventory(tmp_path)), rows=[])
+    plan = recommendations.make_request(scan, approved, rejected, {}, include_samples=False)
+    row, = recommendations.validate({"recommendations": []}, plan)
+    assert all(label in row["description"] for label in ("对齐", "补齐", "融合"))
+    assert "共同 UTC 日" in row["reason"] and not release_gate.allowed(row)
+    unbound = recommendations.make_request(scan, dict(approved, candidates=[]), [], {}, include_samples=False)
+    provisional, = recommendations.validate({"recommendations": []}, unbound)
+    assert provisional["task"] == "工程要求:fusion_requirement" and not release_gate.allowed(provisional)
+    negated = dict(approved, engineering_documents=[dict(text="工程要求分别使用，不需要融合。")])
+    assert discovery.engineering_fusion_targets(negated) == set()
+    checked = [dict(candidate="C1", action="fusion", status="通过", reason="可核验")]
+    gated = {("C1", "fusion"): dict(route="independent_grid_search")}
+    verified_plan = recommendations.make_request(scan, approved, checked, gated, include_samples=False)
+    recipes = verified_plan["tasks"][0]["allowed_recipes"]
+    assert [recipe["steps"] for recipe in recipes] == [
+        ["spatial.regrid.conservative", "fusion.series_missing_fallback", "spatial.blend"]]

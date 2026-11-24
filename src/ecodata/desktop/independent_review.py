@@ -13,10 +13,13 @@ def start(recommendation, result):
     candidate = dict(recommendation, **{key: option[key] for key in ("id", "name", "description", "steps")},
                      recommendation_origin="deepseek_fallback",
                      local_holdout_review=[], independent_required=True)
-    candidate["reason"] = (f"已审核的候选在 {result['votes'][option['id']]}/{result['total']} 个分片得到支持。"
-                           "需要新增独立数据本地复验。")
+    reason = result.get("reason") or ""
+    candidate["reason"] = (f"{reason} " if reason else "") + (
+        f"该方案获 {result['votes'][option['id']]}/{result['total']} 个分片支持，等待独立数据本地复验。")
     candidate["execution_release"] = dict(status="pending",
         checks=[], blockers=[dict(reason="new_independent_evidence_required")])
+    candidate.pop("final_verified_recommendation", None)
+    candidate.pop("final_recommendation_origin", None)
     return candidate
 
 
@@ -102,29 +105,40 @@ def review_pair(scan, candidate, task, paths, *, model=None):
     if task.get("route") != "independent_grid_search":
         return review_generic_pair(scan, candidate, task, source_fields, paths, model=model)
 
-    def support(path):
-        with xr.open_dataset(path, cache=False) as dataset:
-            dataset, _ = normalize_grid_axes(dataset)
-            time = dataset.time
-            bounds = dataset[time.attrs.get("bounds", "time_bounds")]
-            values = bounds.transpose("time", ...).values
-            if (not values.size or not np.issubdtype(values.dtype, np.datetime64) or np.isnat(values).any()):
-                raise ValueError("无法确认复验时段，需提供带明确时间边界的数据")
-            return (values.min(), values.max()), tuple(dataset[axis].values for axis in ("lat", "lon"))
+    def support(dataset):
+        dataset, _ = normalize_grid_axes(dataset)
+        key = dataset.time.attrs.get("bounds", "time_bounds")
+        if key not in dataset:
+            raise ValueError("无法确认复验时段，需提供带明确时间边界的数据")
+        values = dataset[key].transpose("time", ...).values
+        if (not values.size or not np.issubdtype(values.dtype, np.datetime64) or np.isnat(values).any()):
+            raise ValueError("无法确认复验时段，需提供带明确时间边界的数据")
+        return (values.min(), values.max()), tuple(dataset[axis].values for axis in ("lat", "lon"))
 
     previous_periods = [tuple(np.datetime64(bound) for bound in period)
                         for period in candidate.get("previous_independent_periods", ())]
     original_grids = []
-    for index, _, _ in source_fields:
-        with local_member(scan["rows"][index]) as original:
-            period, grid = support(original)
-            previous_periods.append(period)
-            original_grids.append(grid)
+    if task.get("cf_daily"):
+        for index, _, _ in source_fields:
+            with local_member(scan["rows"][index]) as original, xr.open_dataset(original, cache=False) as dataset:
+                period, grid = support(dataset)
+                previous_periods.append(period)
+                original_grids.append(grid)
+    else:
+        from tempfile import TemporaryDirectory
+        # Product adapters establish the original UTC bounds using their receipts.
+        with TemporaryDirectory() as folder:
+            adapted, *_ = independent_alignment.prepare(scan, candidate["task"], task, Path(folder) / "adapted")
+            for item in adapted:
+                period, grid = support(item["dataset"])
+                previous_periods.append(period)
+                original_grids.append(grid)
 
     rows, checks = [], []
     for path, (index, fid, field), original_grid in zip(paths, source_fields, original_grids, strict=True):
         path = Path(path).resolve(strict=True)
-        (begin, end), grid = support(path)
+        with xr.open_dataset(path, cache=False) as dataset:
+            (begin, end), grid = support(dataset)
         if any(begin < old_end and old_begin < end for old_begin, old_end in previous_periods):
             raise ValueError("新增复验文件的时段与原数据重叠，请选从未用于推荐和外发的时段")
         if any(not np.array_equal(before, after) for before, after in zip(original_grid, grid)):

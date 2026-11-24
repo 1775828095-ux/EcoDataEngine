@@ -92,6 +92,18 @@ def prepare(scan, task_id, task, folder):
     common = np.arange(start.astype("datetime64[D]"), end.astype("datetime64[D]") + day, day)
     reserved = common[common >= max(reserved_from)] if len(reserved_from) == len(grids) else common[:0]
     split = len(reserved) // 2
+    locked = [scan["rows"][index].get("precipitation_holdout_days") for index, _ in task["fields"]]
+    planned = task.get("locked_holdout")
+    if planned is not None or (locked[0] and locked[0] == locked[1]):
+        held = np.array(planned["days"] if planned is not None else locked[0], dtype="datetime64[D]")
+        original_overlap = np.intersect1d(*(ds.time.values.astype("datetime64[D]") for ds in grids))
+        if not np.isin(held, original_overlap).all():
+            raise ValueError("预留日期与实际双源日期不一致，请重新扫描")
+        reserved = held
+        split = 0
+        comparison_times = original_overlap[original_overlap < held[0]] if len(held) else held
+    else:
+        comparison_times = reserved[:split]
     for ds in grids:
         times = ds.time.values
         if not np.array_equal(times, times.astype("datetime64[D]")) or not np.array_equal(
@@ -122,7 +134,7 @@ def prepare(scan, task_id, task, folder):
         alignment = reviewed
     else:
         _, target, alignment = choose_grid(grids, primary, "precipitation", "conservative",
-                                          comparison_times=reserved[:split])
+                                          comparison_times=comparison_times)
     aligned = [remap(ds, target, "precipitation", "conservative") for ds in grids]
     return adapted, conversion, grids, aligned, target, alignment, primary, common, reserved[split:]
 
@@ -159,6 +171,14 @@ def indexed_holdout(scan, task, stack, *, independent=False):
     end = min(source[2][-1] for source in sources)
     reserved = np.arange(start, end + day, day)
     split = 0 if task.get("target_grid") else len(reserved) // 2
+    planned = task.get("locked_holdout") if not independent else None
+    if planned is not None:
+        reserved = np.asarray(planned["days"], dtype="datetime64[D]")
+        common_days = np.intersect1d(*(source[2] for source in sources))
+        calibration_days = common_days[common_days < reserved[0]] if len(reserved) else reserved
+        split = 0
+    else:
+        calibration_days = reserved[:split]
     inputs = [ds for ds, _, _, _ in sources]
     primary = max(range(2), key=lambda i: float(np.diff(inputs[i].lat)[0] * np.diff(inputs[i].lon)[0]))
 
@@ -183,7 +203,8 @@ def indexed_holdout(scan, task, stack, *, independent=False):
         target = resolve_target_grid(inputs, fixed)
         alignment = dict(selection_basis="DECLARED_TARGET_GRID", target_grid=fixed)
     else:
-        comparison = (reserved[np.linspace(0, split - 1, min(4, split), dtype=int)] if split else [])
+        n = len(calibration_days)
+        comparison = calibration_days[np.linspace(0, n - 1, min(4, n), dtype=int)] if n else []
         calibration = [xr.concat(datasets, dim="time") for datasets in zip(*(read_day(date) for date in comparison))]
         _, target, alignment = choose_grid(calibration or inputs, primary, "precipitation", "conservative",
                                           comparison_times=comparison)
@@ -194,23 +215,60 @@ def indexed_holdout(scan, task, stack, *, independent=False):
     return reserved[split:], primary, alignment, read_aligned
 
 
+def freeze_holdout(scan, task):
+    import numpy as np
+    import xarray as xr
+    from .holdout_plan import exposures, time_boundary
+    from .sampling_plan import time_dimension
+
+    groups, cutoffs = [], []
+    explicit = []
+    for index, name in task["fields"]:
+        row = scan["rows"][index]
+        field = next(item for item in row["fields"] if item["name"] == name)
+        explicit.append(row.get("precipitation_holdout_days", ()))
+        with local_member(row) as path, xr.open_dataset(path, cache=False) as dataset:
+            axis = time_dimension(dataset[name], dataset)
+            dates = dataset[axis].values.astype("datetime64[ns]")
+            boundary = time_boundary(exposures(scan, index, field), axis)
+            if boundary >= len(dates):
+                return {"days": []}
+            lower = dates[boundary].astype("datetime64[D]")
+            if dates[boundary] != lower:
+                lower += np.timedelta64(1, "D")
+            groups.append(dates.astype("datetime64[D]"))
+            cutoffs.append(lower)
+    shared = np.intersect1d(*groups)
+    shared = shared[shared >= max(cutoffs)]
+    if explicit[0] and explicit[0] == explicit[1]:
+        shared = np.intersect1d(shared, np.asarray(explicit[0], dtype="datetime64[D]"))
+    return {"days": [str(date) for date in shared]}
+
+
 def review(scan, task_id, task, steps=(), *, independent=False):
     from contextlib import ExitStack
     from pathlib import Path
     from tempfile import TemporaryDirectory
 
     with ExitStack() as stack:
+        coverage = {}
+        if not independent and (plan := task.get("locked_holdout")) is not None:
+            if freeze_holdout(scan, task) != plan:
+                raise ValueError("锁定的 UTC 日回检范围与当前外发记录不一致")
         if task.get("cf_daily"):
             reserved, primary, alignment, read_aligned = indexed_holdout(scan, task, stack, independent=independent)
         else:
             folder = stack.enter_context(TemporaryDirectory())
-            _, _, _, aligned, _, alignment, primary, _, reserved = prepare(
+            adapted, _, _, aligned, _, alignment, primary, common, reserved = prepare(
                 scan, task_id, task, Path(folder) / "adapted")
+            coverage = dict(common_range_days=len(common), source_day_counts=[
+                item["dataset"].sizes["time"] for item in adapted])
 
             def read_aligned(date):
                 return [ds.sel(time=[date]) for ds in aligned]
         if not len(reserved):
-            return dict(status="pending", basis="recipe_coverage_budget_insufficient", count=0, checks=[])
+            return dict(status="pending", basis="no_shared_holdout_days", count=0, checks=[],
+                        population=0, unit="withheld_utc_day", date_coverage=coverage)
         return review_recipe(reserved, read_aligned, primary, alignment, steps,
                              scoring_request=task.get("scoring_request"))
 
@@ -243,7 +301,7 @@ def review_recipe(reserved, read_aligned, primary, alignment, steps, *, scoring_
     elif report["status"] == "checked":
         basis = "joint_recipe_acceptance_passed"
     elif report["status"] == "pending":
-        basis = "recipe_coverage_budget_insufficient"
+        basis = "recipe_scoring_reference_insufficient" if report["unscored"] else "recipe_coverage_budget_insufficient"
     elif failures and failures <= {"recipe_score_below_single_source", "both_sources_missing_on_holdout"}:
         basis = "recipe_numeric_rejected"
     else:
@@ -251,7 +309,9 @@ def review_recipe(reserved, read_aligned, primary, alignment, steps, *, scoring_
     return dict(status="pending" if basis == "recipe_coverage_budget_insufficient" else report["status"],
                 basis=basis, checks=["fixed_alignment_gap_fusion_trial"], count=count,
                 sampled_days=report["inspected"], gap_filling=dict(filled=filled, unresolved=unresolved),
-                acceptance_sampling=report, sampled_scores=scores, fusion_score_groups=len(scores), alignment=alignment)
+                acceptance_sampling=report, sampled_scores=scores, fusion_score_groups=len(scores), alignment=alignment,
+                reason="部分留出 UTC 日缺少可比较的双源网格或评分参考。"
+                       if basis == "recipe_scoring_reference_insufficient" else "")
 
 
 def run(scan, tasks, folder, progress=None, *, model_id=None):

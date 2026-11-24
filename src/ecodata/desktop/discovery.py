@@ -428,7 +428,54 @@ def audit_precipitation(scan,row,field,raw,dataset):
                 pass
     return dict(product=audit["product"],**detail)
 
-def check(scan,candidates,reply,approved_summary,*,station_matches=None):
+def engineering_fusion_targets(approved):
+    """Bind explicit fusion requirements to referenced or compatible field pairs."""
+    requirements = []
+    for doc in approved.get("engineering_documents", ()):
+        for clause in re.split(r"[。！？；;\n]", doc.get("text") or ""):
+            required = re.search(
+                r"(?:必须|需要|要求|须|应当|应先).{0,35}(?:融合|合并.{0,5}来源)"
+                r"|融合\s*(?:为必需|是必需|为必选|必须执行)"
+                r"|\b(?:must|shall|required to|requires?)\b.{0,60}\b(?:fus(?:e[ds]?|ing|ion)|blend(?:ed|ing)?)\b", clause, re.I)
+            negated = re.search(r"不(?:得|可|必|应|需要|要求)|无需|禁止|是否|\b(?:not|never|optional|whether)\b", clause, re.I)
+            if required and not negated:
+                requirements.append(set(doc.get("source_ids", ())))
+                break
+    targets = set()
+    for sources in requirements:
+        pairs = [pair for pair in approved.get("candidates", ()) if "fusion" in pair.get("possible_actions", ())
+                 and (not sources or {fid.split(".")[0] for fid in pair["fields"]} <= sources)]
+        compatible = [pair for pair in pairs if pair.get("unit_check", {}).get("status") in {"equivalent", "convertible"}]
+        if compatible and (sources or len(compatible) == 1):
+            targets.update(pair["id"] for pair in compatible)
+        elif len(pairs) == 1:
+            targets.add(pairs[0]["id"])
+        else:
+            targets.add("工程要求")
+    return targets
+
+
+def workflow_proposals(decisions, approved):
+    """Offer a joint trial for an inspected pair when alignment is a prerequisite."""
+    proposals = list(decisions)
+    if approved.get("task_goal") == "grid_comparison":
+        return proposals
+    required = engineering_fusion_targets(approved)
+    for pair in approved.get("candidates", ()):
+        cid = pair["id"]
+        actions = {row["action"] for row in decisions if row["candidate"] == cid}
+        if (cid in required and not actions & {"fusion", "reject"}) or (
+                actions & {"align_space", "align_time", "compare_station_grid"}
+                and actions <= {"align_space", "align_time", "compare_station_grid", "convert_units", "convert_format",
+                                "quality_screen"}
+                and "fusion" in pair.get("possible_actions", ())
+                and pair.get("unit_check", {}).get("status") in {"equivalent", "convertible"}):
+            proposals.append(dict(candidate=cid, action="fusion", goal="evaluate_gain",
+                                  reason="在该字段对上试跑对齐、补缺与按需融合，并与单源基线比较。"))
+    return proposals
+
+
+def check(scan,candidates,reply,approved_summary,*,station_matches=None,sampled_workflow=False):
     from .scan import read_selected
     from ecodata.recognition import recognise_file
     assert_current(scan)
@@ -571,6 +618,11 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         ai,_,a=left
         bi,_,b=right
         ar,br=scan["rows"][ai],scan["rows"][bi]
+        # Check the bounded scientific route before handing the pair to the
+        # native writer. The discovered project is the delivery target.
+        try_sampled = (sampled_workflow and action in {"fusion", "align_space"}
+                       and action in actions and action in detected
+                       and {ar["format"], br["format"]} <= {"NetCDF", "GeoTIFF", "CSV", "TSV", "Excel"})
         row["block_code"]="verification_pending"
         if a["axis"] or b["axis"]:
             row.update(block_code="coordinate_field",reason="坐标轴可用于对齐，不能作为待融合的观测变量")
@@ -581,7 +633,7 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         _,basis_a=field_identity(ar,a)
         _,basis_b=field_identity(br,b)
         same_quantity=bool(unit_check["quantity"])
-        cf_daily_pair = (action in {"align_space", "fusion"} and not delegated
+        cf_daily_pair = (action in {"align_space", "fusion"} and (not delegated or try_sampled)
                          and unit_check.get("quantity") == "precipitation"
                          and ar["format"] == br["format"] == "NetCDF")
         row["unit_check"]=unit_check
@@ -599,7 +651,7 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
             row["reason"]="I/O API 边界和内部字段承担不同模型角色。只有经工程确认来源及角色后才能拿来比较或融合。"
             continue
         try:
-            if delegated:
+            if delegated and not try_sampled:
                 prepared[(cid,action)]=dict(action=action,route='original_engineering',fields=[(ai,a['name']),(bi,b['name'])])
                 row.update(status='待工程核验',next_step='original_workbench',reason='已识别实际工程控制与同物理量候选；交由公共工程输入端口服务核验日界、依赖、拟合隔离及真实数值效果。此状态不是融合或质量PASS。')
                 continue
@@ -723,6 +775,12 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                         continue
             if cf_error and unit_check["status"] not in {"equivalent", "convertible"}:
                 raise ValueError(f"降水率与累计量需要明确的单位、时间边界与日界：{cf_error}") from cf_error
+            if delegated:
+                prepared[(cid,action)] = dict(action=action, route="original_engineering",
+                                              fields=[(ai,a["name"]),(bi,b["name"])])
+                row.update(status="待工程核验",next_step="original_workbench",
+                           reason="需要通过公共工程输入端口核验统计日界、依赖及真实数值效果。")
+                continue
             if action=="fusion":
                 if not same_quantity:
                     row["block_code"]="quantity_unknown"

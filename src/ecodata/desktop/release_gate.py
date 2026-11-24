@@ -24,9 +24,9 @@ def assess(scan, recommendation, task, fields):
             pass
         elif joint:
             if reason != "joint_recipe_acceptance_passed":
-                status = "pending"
-                if review.get("independent"):
+                if review.get("independent") and status == "checked" and "acceptance_sampling" not in review:
                     reason = "paired_independent_recipe_required"
+                status = "pending"
         elif source["format"] in {"CSV", "TSV", "Excel"} and not field.get("unit"):
             status, reason = "pending", "selected_table_unit_missing"
         elif source["format"] == "GeoTIFF" and any(step.startswith(("spatial.", "raster_task.spatial")) for step in steps):
@@ -54,7 +54,8 @@ def assess(scan, recommendation, task, fields):
                 status, reason = "checked", "heldout_inputs_and_registered_execution_contract"
         elif status == "pending" and not review.get("count", 0) and reason == "algorithm_or_independent_reference_not_verified":
             reason = "insufficient_sample_coverage"
-        checks.append(dict(field=fid, source=source["name"], format=source["format"], status=status, reason=reason))
+        checks.append(dict(field=fid, source=source["name"], format=source["format"], status=status, reason=reason,
+                           **({"detail": review["reason"]} if review.get("reason") else {})))
 
     engineering = any(step.startswith("engineering.") for step in steps)
     if engineering:
@@ -104,6 +105,7 @@ def package_members(scan, checks, engineering):
 
 def allowed(recommendation):
     return (not recommendation.get("advisory_only")
+            and (not recommendation.get("requires_final_confirmation") or recommendation.get("final_verified_recommendation") is True)
             and recommendation.get("execution_release", {}).get("status", "released") == "released")
 
 
@@ -120,6 +122,10 @@ def require_whole_scope(recommendations):
 
 def explanation(release):
     labels = {
+        "no_shared_holdout_days": "两源共同时间范围内可独立回检的 UTC 日为 0，需补充两源重叠的独立时段",
+        "no_disjoint_partition": "在两源共同覆盖内没有可独立回检的分组，需补充独立数据",
+        "insufficient_sample_coverage": "首轮可用样本不足，需补充覆盖",
+        "initial_recommendation_unavailable": "首轮 DeepSeek 推荐未完成，请重新请求推荐",
         "precipitation_time_bounds_or_unit_missing": "降水单位或统计时间区间缺少可核实依据",
         "target_grid_or_holdout_evidence_missing": "目标网格、覆盖或留出块验证不足",
         "missing_engineering_reference": "工程引用尚未核对",
@@ -131,13 +137,15 @@ def explanation(release):
         "new_independent_evidence_required": "全量发送后需要未发送的独立数据复验",
         "formal_acceptance_sample_failed": "正式抽检发现不合格的留出单位",
         "recipe_coverage_budget_insufficient": "留出数据或读取预算不足以完成整套方案评分",
+        "recipe_scoring_reference_insufficient": "部分留出组缺少可比较的评分参考",
         "recipe_numeric_rejected": "整套方案的留出试跑失败次数超过允许值",
         "paired_independent_recipe_required": "需提供两份未外发的独立数据复验整套方案",
         "joint_recipe_adapter_unavailable": "此组合需要能试跑完整方案的本地适配器及评分参考",
         "joint_recipe_index_required": "缺少可按站点或月份读取的本地表格索引",
         "joint_grid_holdout_unavailable": "无法建立独立留出窗口，或时空、单位证据仍需核对",
+        "holdout_overlap_unverified": "无法证明留出组与外发样本相互独立",
     }
-    reasons = [labels.get(item["reason"], "请补充字段定义、工程证据或留出回检")
+    reasons = [item.get("detail") or labels.get(item["reason"], "请补充字段定义、工程证据或留出回检")
                for item in release.get("blockers", ())]
     return "待放行 · " + "；".join(dict.fromkeys(reasons or ["请查看本地回检记录"]))
 

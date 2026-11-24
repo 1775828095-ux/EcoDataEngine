@@ -82,7 +82,7 @@ def coordinates(grid,var):
     return lonvalues,latvalues,time,axes,(0,0)
 
 
-def load(scan,task, *, table_data=None, keep_missing=False):
+def load(scan,task, *, table_data=None, keep_missing=False, minimum_grid_index=0):
     from netCDF4 import Dataset
     from ecodata.io.structures import read_structure, table_frame
     from ecodata.models.scientific_schema import compare_units
@@ -147,7 +147,7 @@ def load(scan,task, *, table_data=None, keep_missing=False):
             indices=(time.get_indexer(actual) if method==EXACT else
                      time.get_indexer(actual,method="nearest",tolerance=model_step/2))
             indices[(actual<time[0])|(actual>time[-1])]=-1
-            keep=np.flatnonzero(indices>=0)
+            keep=np.flatnonzero(indices>=minimum_grid_index)
             frame=observation.iloc[keep].copy()
             frame["grid_time"]=time[indices[keep]]
             frame["grid_lon"]=lon[yy[keep],xx[keep]]
@@ -207,23 +207,61 @@ def corrected_frame(frame):
     return frame, held, training.background.to_numpy()
 
 
+def station_holdout(scan, task, source, field):
+    from .holdout_plan import exposures, table_groups, time_boundary
+    from netCDF4 import Dataset
+
+    index = task["grid_index"]
+    grid = scan["rows"][index]
+    grid_field = next(item for item in grid["fields"] if item["name"] == task["grid_name"])
+    events = exposures(scan, index, grid_field)
+    minimum = 0
+    if events:
+        with local_member(grid) as path, Dataset(str(path)) as dataset:
+            axis = dataset.variables[task["grid_name"]].dimensions[0]
+        minimum = time_boundary(events, axis)
+    return {"groups": sorted(table_groups(source, exposures(scan, task["table_index"], field))),
+            "minimum_grid_index": minimum}
+
+
+def freeze_holdout(scan, task):
+    from . import indexed_table_recipe
+
+    row = scan["rows"][task["table_index"]]
+    if row["format"] not in indexed_table_recipe.FORMATS:
+        raise ValueError(f"站点留出计划暂不支持 {row['format']} 表格")
+    field = task.get("table_field") or next(item for item in row["fields"] if item["name"] == task["table_name"])
+    with ExitStack() as stack:
+        source = indexed_table_recipe.table(stack, row, field, task["obs_unit"])
+        return station_holdout(scan, task, source, field)
+
+
 def review(scan, task, steps, *, independent=False):
     from . import indexed_table_recipe, recipe_trials
 
     row = scan["rows"][task["table_index"]]
     if row["format"] not in indexed_table_recipe.FORMATS:
-        return dict(status="pending", basis="joint_recipe_adapter_unavailable", count=0, checks=[])
+        return dict(status="pending", basis="joint_recipe_adapter_unavailable", count=0, checks=[],
+                    reason=f"站点与网格试跑目前无法按组读取 {row['format']} 站点表。")
     field = task.get("table_field") or next(item for item in row["fields"] if item["name"] == task["table_name"])
-    method = next(step for step in steps if step in {EXACT, NEAREST})
+    method = next((step for step in steps if step in {EXACT, NEAREST}), None)
+    if method is None:
+        return dict(status="pending", basis="joint_recipe_adapter_unavailable", count=0, checks=[],
+                    reason="站点与网格方案缺少已登记的时间配对步骤，无法试跑评分。")
     with ExitStack() as stack:
         source = indexed_table_recipe.table(stack, row, field, task["obs_unit"])
         keys = sorted(source.groups if independent else source.held)
+        minimum = 0
+        if not independent and (plan := task.get("locked_holdout")) is not None:
+            if station_holdout(scan, task, source, field) != plan:
+                raise ValueError("锁定的站点回检范围与当前外发记录不一致")
+            keys, minimum = plan["groups"], plan["minimum_grid_index"]
 
         def trial(index):
             data = pd.DataFrame(source.read(keys[index]), columns=source.header)
             if len(data) < 6:
                 return index, None, "insufficient_score_support"
-            matched = load(scan, task, table_data=data, keep_missing=True)[method]
+            matched = load(scan, task, table_data=data, keep_missing=True, minimum_grid_index=minimum)[method]
             if len(matched) < 6:
                 return index, None, "insufficient_score_support"
             frame, held, training = corrected_frame(matched)

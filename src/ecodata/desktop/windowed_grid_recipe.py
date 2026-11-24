@@ -36,6 +36,8 @@ class Grid:
     support: str = "point"
     temporal: str = "static"
     interval: np.ndarray | None = None
+    sampling_axis: str | None = None
+    outbound: dict | None = None
 
     @property
     def whole(self):
@@ -70,7 +72,8 @@ def source(stack, row, field, unit):
 
         support = attrs.get("spatial_semantics") or "grid_estimate"
         return Grid(ds.crs, ds.transform, ds.width, ds.height, read,
-                    held_window(ds.width, ds.height, "y" if ds.height > 1 else "x"), support=support)
+                    held_window(ds.width, ds.height, "y" if ds.height > 1 else "x"), support=support,
+                    sampling_axis="row" if ds.height > 1 else "column")
 
     ds = stack.enter_context(xr.open_dataset(path, cache=False))
     array = ds[field["name"]]
@@ -131,7 +134,8 @@ def source(stack, row, field, unit):
         return np.asarray(array.isel(selection).transpose(y, x), dtype=float) * scale + offset
 
     return Grid(CRS.from_user_input(crs_value), affine, len(xx), len(yy), read, held, times, holdout_time,
-                attrs.get("spatial_semantics") or "grid_estimate", temporal, intervals)
+                attrs.get("spatial_semantics") or "grid_estimate", temporal, intervals,
+                "time" if times is not None else held_axis)
 
 
 def intersection(base, other, base_window, other_window, *, contained):
@@ -166,10 +170,13 @@ def clock_pairs(a, b):
 
 
 def pair(stack, scan, task):
+    from .holdout_plan import exposures
     rows = [scan["rows"][index] for index, _ in task["fields"]]
     if rows[0]["ref"] == rows[1]["ref"] and rows[0].get("containers") == rows[1].get("containers"):
         raise ValueError("同一输入不能组成两个独立来源")
     a, b = [source(stack, row, field, task["unit"]) for row, field in zip(rows, task["field_metadata"], strict=True)]
+    for grid, (index, _), field in zip((a, b), task["fields"], task["field_metadata"], strict=True):
+        grid.outbound = exposures(scan, index, field)
     geog = a.crs == b.crs == CRS.from_epsg(4326)
     continuous = {a.support, b.support} <= {"grid_estimate", "point"}
     conservation = a.support == b.support and a.support in {"cell_mean", "flux"} and geog
@@ -249,19 +256,57 @@ def combine(left, right, task, steps, temporal):
     return recipe_trials.combine(frames, variable, steps)[0][variable].values
 
 
+def held_grid(a, b, shared, times):
+    from .holdout_plan import time_boundary
+
+    if a.times is None and a.crs != b.crs:
+        raise ValueError("两源投影不同，尚未核实空间留出块在两源上都独立")
+    limits = []
+    for grid in (a, b):
+        boundary = grid.holdout_time
+        events = grid.outbound or {}
+        for entry in events.values():
+            partition = entry.get("partition") or {}
+            expected = "time_windows" if grid.times is not None else "spatial_blocks"
+            if entry["basis"] != expected or partition.get("axis") != grid.sampling_axis:
+                raise ValueError("外发窗口与网格回检轴不一致，无法证明两者独立")
+            if grid.times is None and partition["holdout_start"] != partition["size"] - max(1, partition["size"] // 5):
+                raise ValueError("外发范围与预留空间块的边界不一致")
+            if grid.times is None:
+                start, length = ("row", "height") if grid.sampling_axis == "row" else ("column", "width")
+                if any((window["stop_index"] if "stop_index" in window else window[start] + window[length])
+                       > partition["holdout_start"] for window in entry["windows"]):
+                    raise ValueError("记录中的外发空间窗口与预留空间块重叠")
+        if grid.times is not None:
+            boundary = max(boundary, time_boundary(events, grid.sampling_axis))
+        limits.append(boundary)
+    if a.times is None:
+        return intersection(a, b, a.held, b.held, contained=True), times
+    return shared, [(i, j) for i, j in times if i >= limits[0] and
+                    (min(j[:2]) if isinstance(j, tuple) else j) >= limits[1]]
+
+
+def freeze_holdout(scan, task):
+    with ExitStack() as stack:
+        window, times = held_grid(*pair(stack, scan, task))
+    return {"window": [window.col_off, window.row_off, window.width, window.height], "times": times}
+
+
 def review(scan, task, steps, *, independent=False):
+    method = next((ALIGN[step] for step in steps if step in ALIGN), None)
+    if method is None:
+        return dict(status="pending", basis="joint_recipe_adapter_unavailable", count=0, checks=[],
+                    reason="网格方案缺少已登记的重网格步骤，无法试跑评分。")
     with ExitStack() as stack:
         a, b, shared, times = pair(stack, scan, task)
-        method = next(ALIGN[step] for step in steps if step in ALIGN)
-        if not independent and a.times is None:
-            shared = intersection(a, b, a.held, b.held, contained=True)
-        elif not independent:
-            times = [(i, j) for i, j in times if i >= a.holdout_time and (j[0] if isinstance(j, tuple) else j) >= b.holdout_time]
+        if not independent:
+            shared, times = held_grid(a, b, shared, times)
+            if (plan := task.get("locked_holdout")) is not None:
+                actual = {"window": [shared.col_off, shared.row_off, shared.width, shared.height], "times": times}
+                if plan != actual:
+                    raise ValueError("锁定的时空回检范围与当前外发记录不一致")
         cols, rows = (max(1, ceil(size/BLOCK) - int(0 < size % BLOCK < 4 and size > BLOCK)) if size else 0
                       for size in (shared.width, shared.height))
-        if a.crs != b.crs and a.times is None and not independent:
-            # A projected bounding box is insufficient proof of disjointness.
-            return recipe_trials.audit(0, "withheld_spatial_block", None)
 
         def trial(index):
             time, cell = divmod(index, rows * cols)

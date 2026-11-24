@@ -77,6 +77,8 @@ def test_default_desktop_flow_sends_values_only_after_field_request(tmp_path, mo
 
     def send(request, *args, **kwargs):
         payload = json.loads(request.summary)
+        if request.stage == "file_classification":
+            return {"classifications": [{"file": file["id"], "kind": "data"} for file in payload["files"]]}
         requests.append(payload)
         if len(requests) == 1:
             assert "local_check_results" not in payload
@@ -91,3 +93,34 @@ def test_default_desktop_flow_sends_values_only_after_field_request(tmp_path, mo
     reply, *_ = run(scan, summary, {}, False, "local-test", lambda _: None, lambda _: None)
     assert len(requests) == 2
     assert reply["local_checks"][0]["status"] == "checked"
+def test_directional_tools_keep_observations_local(tmp_path):
+    import json
+    from ecodata.desktop.file_agent import FileTools
+
+    source = tmp_path / "rain.pcp"
+    source.write_text("year,day,rain (mm)\n2020,12,87654.321\n", encoding="utf-8")
+    report = tmp_path / "README.md"
+    report.write_text("# Engineering setup\n\nUse UTC for daily rainfall.\n\n"
+                      "| time | rain |\n|---|---|\n| 2020-01-12 | 87654.321 |\n\n"
+                      "Example measurement 65432.109 mm and .635309mm. 示例降水53647.901毫米。\n", encoding="utf-8")
+    tools = FileTools(tmp_path)
+    header = tools.call("read_header", {"path": source.name})["result"]
+    assert header["header_lines"] == ["year,day,rain (mm)"]
+    assert "ref" not in header["row"] and "87654.321" not in json.dumps(header, default=str)
+    assert tools.call("read_text", {"path": source.name})["ok"] is False
+    document = tools.call("read_text", {"path": report.name})["result"]
+    assert "Use UTC for daily rainfall." in document["text"]
+    text = json.dumps(document, default=str)
+    assert all(original not in text for original in (
+        "87654.321", "65432.109", ".635309", "53647.901", "2020-01-12", "raw_base64"))
+    assert "87654.321" in tools.documents[report.name]
+
+
+def test_on_demand_numeric_request_needs_a_sampling_partition(tmp_path):
+    from ecodata.desktop.sampling_plan import export_field
+
+    path = tmp_path / "rain.csv"
+    path.write_text("rain\n12.5\n", encoding="utf-8")
+    row = dict(format="CSV", original_reader="legacy", ref=(path, "", None, None))
+    sample = export_field(row, {"name": "rain"}, require_partition=True)
+    assert sample["basis"] == "holdout_partition_unavailable" and sample["perturbed_samples"] == []

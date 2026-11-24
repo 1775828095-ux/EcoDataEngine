@@ -96,6 +96,35 @@ def test_full_fallback_build_then_approved_send_never_includes_identifiers(tmp_p
     assert not result["receipts"].read_text(encoding="utf-8").count("PRIVATE")
 
 
+def test_full_fallback_asks_deepseek_to_resolve_split_votes(tmp_path, monkeypatch):
+    from ecodata.desktop import independent_review
+
+    path = tmp_path / "rain.csv"
+    path.write_text("rain\n42\n43\n", encoding="utf-8")
+    field = dict(name="rain", unit="mm")
+    inputs = scan(path, [source(path, "CSV", [field])])
+    archive = tmp_path / "evidence.zip"
+    monkeypatch.setattr(fallback_evidence, "PART_BYTES", 16)
+    manifest = fallback_evidence.build(inputs, [(0, field)], archive)
+    options = [dict(id=f"R{i}", name=f"候选{i}", steps=["spatial.blend"], description="融合") for i in (1, 2)]
+    total = len(manifest[0]["parts"])
+    assert total >= 2
+    parts = iter(["R1", "R2", *([None] * (total - 2))])
+
+    def transport(messages, *_):
+        payload = json.loads(messages[1]["content"])
+        if "csv" in payload:
+            return {"content": json.dumps(dict(recipe=next(parts), reason="分片理由"))}, {}
+        assert payload["votes"] == {"R1": 1, "R2": 1}
+        return {"content": json.dumps(dict(recipe="R2", reason="全量汇总理由"))}, {}
+
+    result = fallback_evidence.transmit(archive, manifest, fallback_evidence.digest_file(archive),
+                                        api_key="test", recipes=options, send=transport)
+    assert result["received"] == total and result["candidate"] == "R2"
+    candidate = independent_review.start(dict(local_recipe_options=options), result)
+    assert "全量汇总理由" in candidate["reason"] and candidate["execution_release"]["status"] == "pending"
+
+
 def test_zip_engineering_missing_member_is_treated_as_evidence_gap():
     recommendation = {"steps": ["engineering.port_binding"]}
     checked = {"document_evidence_checks": [{"document": "bundle.zip!/README.md", "status": "pending"}]}

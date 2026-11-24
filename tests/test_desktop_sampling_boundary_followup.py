@@ -125,10 +125,14 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
 
     dates = pd.date_range("2021-01-01", periods=14)
     hours = pd.date_range(dates[0], periods=14 * 24, freq="h")
-    hours = hours.delete(np.arange(-7, -3) + len(hours))
+    # The fusion case has an unscoreable held day. The gap-only cases have
+    # a known gap in the execution period and paired observations for scoring.
+    gap_day = 13 if scenario == "fusion" else 4
+    hours = hours.delete(24 * gap_day + np.arange(17, 21))
+    backup_amount = 20. if scenario == "fusion" else 24.
     for name, times, step, axis, value, unit, semantic in (
         ("hourly.nc", hours, "1h", np.arange(1., 5.), 1., "mm/h", "interval_mean"),
-        ("daily.nc", dates, "1D", np.arange(.75, 4.5, .5), 20., "mm", "accumulation"),
+        ("daily.nc", dates, "1D", np.arange(.75, 4.5, .5), backup_amount, "mm", "accumulation"),
     ):
         units = "seconds since 1970-01-01"
         bounds = np.column_stack((times.values, (times + pd.Timedelta(step)).values))
@@ -143,21 +147,23 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
         ds.time.encoding["units"] = ds.time_bounds.encoding["units"] = units
         ds.to_netcdf(tmp_path / name, engine="scipy")
     scan, _ = Scanner().scan(tmp_path)
-    summary, _ = discovery.discover(scan, "data_only")
+    summary, _ = discovery.discover(scan, "swat_plus", task_goal="evaluate_gain")
+    scan.setdefault("native_model_probes", {})["swat_plus"] = dict(status="project")
     originals, details = catalog_decision.local_fields(scan, summary)
     fields = [item for item in originals.values() if item[2]["name"] == "rain"]
-    pair, local = discovery.describe_pair(scan, "C1", *fields, "data_only", details)
+    pair, local = discovery.describe_pair(scan, "C1", *fields, "swat_plus", details)
     approved = dict(summary, candidates=[pair])
     if scenario == "declared":
         approved["task_requirements"] = dict(target_grid=dict(crs="EPSG:4326", latitude_step=.5,
                                                              longitude_step=.5, extent="intersection"))
     with monkeypatch.context() as patch:
         patch.setattr("ecodata.desktop.scan.read_selected", lambda *_: pytest.fail("CF discovery read an entire source"))
-        result, gated = discovery.check(scan, {"C1": local},
-            {"decisions": [{"candidate": "C1", "action": "fusion"}]}, approved)
+        first = [{"candidate": "C1", "action": "align_space"}, {"candidate": "C1", "action": "quality_screen"}]
+        proposals = discovery.workflow_proposals(first, approved)
+        result, gated = discovery.check(scan, {"C1": local}, {"decisions": proposals}, approved, sampled_workflow=True)
     task = gated["C1", "fusion"]
     assert task["cf_daily"]
-    plan = recommendations.make_request(scan, approved, result, gated, include_samples=False)
+    plan = recommendations.make_request(scan, approved, result, gated, sampled_workflow=True)
     options = plan["tasks"][0]["allowed_recipes"]
     method = "spatial.blend" if scenario == "fusion" else "fusion.series_missing_fallback"
     picked = next(option for option in options if option["steps"][-1] == method)
@@ -189,8 +195,8 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
     with xr.open_dataset(io.BytesIO(raw), engine="scipy") as ds:
         if not report["fusion_executed"]:
             np.testing.assert_allclose(ds.precipitation.isel(time=0), 24.)
-        np.testing.assert_allclose(ds.precipitation.isel(time=-1), 20.)
-        assert np.all(ds.source_availability.isel(time=-1) != 3)
+        np.testing.assert_allclose(ds.precipitation.isel(time=gap_day), backup_amount)
+        assert np.all(ds.source_availability.isel(time=gap_day) != 3)
         if scenario == "declared":
             np.testing.assert_allclose(np.diff(ds.lat), .5)
     cards = output_review.cards(result, output_review.describe_output(result, None))
@@ -205,6 +211,7 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
             source = tmp_path / scan["rows"][index]["name"]
             path = independent / source.name
             with xr.open_dataset(source) as ds:
+                ds = ds.sel(time=slice(dates[gap_day + 1], None))
                 ds = ds.assign_coords(time=ds.time + np.timedelta64(31, "D"))
                 ds["time_bounds"] = ds.time_bounds + np.timedelta64(31, "D")
                 ds.time.attrs["bounds"] = "time_bounds"

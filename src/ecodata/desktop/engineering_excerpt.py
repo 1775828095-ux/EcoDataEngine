@@ -19,6 +19,7 @@ PRIVATE = re.compile(
 )
 FILE = re.compile(r'(?<![\w.%+~@/\\()-])[\w.%+~@/\\()-]*[\w-]\.(?:nc4?|csv|tsv|xlsx?|parquet|zip|7z|tiff?|json|ya?ml|md|txt|shp|gz)\b', re.I)
 NUMBER = re.compile(r'(?<![\w.])[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?![\w.]|\d)')
+INSPECTION_NUMBER = re.compile(r'(?<![A-Za-z0-9_.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eEdD][+-]?\d+)?')
 PRODUCTS = {
     "CMORPH": re.compile(r"\bCMORPH\b|(?<![A-Za-z])cmorph(?=_)",re.I),
     "NASA POWER": re.compile(r"\bNASA\s+POWER\b|\bPRECTOTCORR\b|(?<![A-Za-z])POWER_regional",re.I),
@@ -105,7 +106,11 @@ def associate_documents(scan, source_ids):
                 return chr(0xF0000+len(tokens)-1)
             if masked is not None:
                 masked=pattern.sub(mask_file,masked) if pattern else masked
-                masked=NUMBER.sub(perturb,FILE.sub("[文件]",masked))
+                # On-demand inspection only shares engineering wording.
+                # Numeric observations use the separate partitioned sampler.
+                masked = FILE.sub("[文件]", masked)
+                masked = (INSPECTION_NUMBER.sub("[数值]", masked) if scan.get("on_demand")
+                          else NUMBER.sub(perturb, masked))
                 if tokens:
                     masked=re.sub(r"[\U000f0000-\U000ffffd]",lambda m:f"[{tokens[ord(m[0])-0xF0000]}]"
                                   if ord(m[0])-0xF0000<len(tokens) else "[文件]",masked)
