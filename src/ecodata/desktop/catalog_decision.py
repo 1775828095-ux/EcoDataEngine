@@ -22,7 +22,15 @@ def prepare(summary, *, rejected=None):
     clean=dict(summary,candidates=[],engineering_documents=docs)
 
     def draft(block, documents):
-        request=service.preview(dict(clean,sources=block,engineering_documents=documents))
+        payload=dict(clean,sources=block,engineering_documents=documents)
+        if evidence:=payload.pop("final_evidence",None):
+            ids={field["id"] for field in fields(block)}
+            relevant=dict(evidence,results=[row for row in evidence["results"] if set(row["fields"])<=ids],
+                          previous_decisions=[row for row in evidence["previous_decisions"] if set(row["fields"])<=ids])
+            payload["final_evidence"]=relevant
+            request=service.preview(payload,local_evidence=relevant)
+        else:
+            request=service.preview(payload)
         hint=service.retry_capacity_hint(request,rejected) if rejected is not None else ""
         return request_batches.Batch(request,tuple(row["id"] for row in block),hint)
 
@@ -152,7 +160,7 @@ def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply,*,samp
                 reply["reused_batches"]+=1
                 cached=True
             else:
-                answer=service.send(draft,draft.digest,mock,api_key=key,on_receipt=markers.append)
+                answer=service.send(draft,draft.digest,mock,api_key=key,on_receipt=markers.append,on_progress=progress)
                 if sample_field is not None:
                     answer=answer_single_field_questions(sent,allowed,answer,sample_field,
                                                         mock,key,progress,current,markers.append)
@@ -203,21 +211,21 @@ def answer_single_field_questions(sent,allowed,answer,sample_field,mock,key,prog
                      previous_decisions=answer.get("decisions",[]))
         continuation=service.preview(sent,local_evidence=context)
         try:
-            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt)
+            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt,on_progress=progress)
         except service.RequestCapacityError:
             lean=dict(sent,engineering_documents=[
                 {k:v for k,v in doc.items() if k!="text"} for doc in sent.get("engineering_documents",[])])
             if lean["engineering_documents"]==sent.get("engineering_documents",[]):
                 raise
             continuation=service.preview(lean,local_evidence=context)
-            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt)
+            followup=service.send(continuation,continuation.digest,mock,api_key=key,on_receipt=on_receipt,on_progress=progress)
         previous=[row for row in answer.get("questions",[]) if isinstance(row,dict)
                   and isinstance(row.get("fields"),list) and len(row["fields"])==2]
         answer=dict(followup,decisions=followup.get("decisions") or answer.get("decisions",[]),
                     questions=[*previous,*followup.get("questions",[])])
     return dict(answer,field_checks=list(evidence.values()))
 
-def materialize(scan,summary,originals,details,responses):
+def materialize(scan,summary,originals,details,responses,*,ask_implicit=True):
     evidence=defaultdict(lambda: dict(decisions=[],questions=[]))
     for allowed,response in responses:
         for key in ("decisions","questions"):
@@ -249,11 +257,11 @@ def materialize(scan,summary,originals,details,responses):
         pairs.append(pair)
         candidates[cid]=local
         actions={row["action"] for row in decisions}
-        conflict="reject" in actions and bool(actions-{"reject"})
+        conflict={"reject","fusion"}<=actions
         if conflict:
             decisions=[dict(candidate=cid,action="insufficient",goal="unknown",
                             reason="分批判断有分歧。"+" ".join(row["reason"] for row in decisions)[:800])]
-        if not questions and (conflict or actions & {"insufficient","pending_goal"}):
+        if ask_implicit and not questions and (conflict or actions & {"insufficient","pending_goal"}):
             questions=[dict(candidate=cid,check=check) for check in ("metadata","time_coverage")]
         dialogue[cid]=dict(decisions=decisions,questions=questions)
     return candidates,dict(summary,catalog_first=False,candidates=pairs),dialogue
@@ -287,6 +295,9 @@ def decide(scan,summary,batches,cache,mock,key,progress,feedback):
     for pair in approved["candidates"]:
         cid=pair["id"]
         initial=dialogue[cid]
+        initial_quantities={row["physical_quantity"] for row in initial["decisions"] if row.get("physical_quantity")}
+        if len(initial_quantities)==1:
+            checker.quantities[cid]=next(iter(initial_quantities))
         batch=pair_batch(approved,pair)
         reviews.append(batch)
         try:
@@ -296,15 +307,18 @@ def decide(scan,summary,batches,cache,mock,key,progress,feedback):
             reply["failures"].append(dict(batch="追问",ids=[cid],reason=str(exc),stage="local_dialogue"))
             final=initial
         rows=final.get("decisions",[])
+        if len(initial_quantities)==1 and not any(row.get("physical_quantity") for row in rows):
+            rows=[dict(row,physical_quantity=next(iter(initial_quantities))) for row in rows]
         reply["decisions"].extend(rows)
         reply["local_checks"].extend(final.get("local_checks",[]))
         gate_input.extend(rows)
         if not any(row["action"] in {"reject","direct","fusion"} for row in rows):
             gate_input.append(dict(candidate=cid,action="fusion",goal="evaluate_gain",
+                                   physical_quantity=next((row["physical_quantity"] for row in rows if row.get("physical_quantity")),None),
                                    reason="保留为融合试跑候选，评估融合收益"))
     current()
     progress("正在核验 DeepSeek 提出的组合…")
-    checked,gated=discovery.check(scan,candidates,dict(decisions=gate_input),approved)
+    checked,gated=discovery.check(scan,candidates,dict(decisions=gate_input),approved,station_matches=checker.station_matches)
     review(scan,reviews,checked,reply,mock,key,progress,checker=checker)
     current()
     return reply,checked,gated,candidates,approved

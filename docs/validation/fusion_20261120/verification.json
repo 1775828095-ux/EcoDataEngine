@@ -1,0 +1,334 @@
+{
+  "status": "PASS",
+  "domain": {
+    "rule": "Complete reference cell support inside application target edges; halo remains input-only",
+    "reference_cells_before": 168,
+    "reference_cells_retained": 120,
+    "application_bounds": {
+      "lat": [
+        -8.0,
+        -5.0
+      ],
+      "lon": [
+        106.25,
+        108.75
+      ]
+    },
+    "evaluation_bounds": {
+      "lat": [
+        -8.0,
+        -5.0
+      ],
+      "lon": [
+        106.25,
+        108.75
+      ]
+    },
+    "reference_axes": {
+      "lat": [
+        -7.875,
+        -7.625,
+        -7.375,
+        -7.125,
+        -6.875,
+        -6.625,
+        -6.375,
+        -6.125,
+        -5.875,
+        -5.625,
+        -5.375,
+        -5.125
+      ],
+      "lon": [
+        106.375,
+        106.625,
+        106.875,
+        107.125,
+        107.375,
+        107.625,
+        107.875,
+        108.125,
+        108.375,
+        108.625
+      ]
+    },
+    "outside_cells": 0
+  },
+  "common_dates": [
+    "2018-02-03 00:00:00",
+    "2018-02-04 00:00:00",
+    "2018-02-05 00:00:00"
+  ],
+  "source_sha256": {
+    "src/ecodata/evaluation/fusion_protocol.py": "d185c33c94e97cbfa963d97750b6af09c883864cc6183d56318a1c70ca4c4680",
+    "src/ecodata/spatial/regridding.py": "75192dba814bad69c3f4fe063fcfa99da9c9e5fc63636428d7d7c56a31bfef44",
+    "src/ecodata/algorithms/spatial_fusion_task.py": "6c6a06417851177744abdc72fca95689fa32d26a4c3e1136f2fedf6d314ce30e",
+    "tests/test_fusion_target_domain.py": "b883f04ba748b1247d7264bcbd188ff5e85374e83271122dec94f8aa5adc73ee"
+  },
+  "graphs_unchanged": true,
+  "weights_unchanged": true,
+  "no_search": true,
+  "per_date": [
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-03 00:00:00",
+      "region": "selection_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 17.775952839670293,
+        "MAE": 9.56389562857694,
+        "Bias": -0.1936350192166129,
+        "count": 93
+      }
+    },
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-03 00:00:00",
+      "region": "frozen_outer_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 23.892761308367184,
+        "MAE": 13.997068734438983,
+        "Bias": -0.2476154854011601,
+        "count": 27
+      }
+    },
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-03 00:00:00",
+      "region": "all_target_cells",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 19.321811422943192,
+        "MAE": 10.5613595773959,
+        "Bias": -0.2057806241081361,
+        "count": 120
+      }
+    },
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-04 00:00:00",
+      "region": "selection_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 12.228960236966854,
+        "MAE": 8.85336931565017,
+        "Bias": -0.5421354026379774,
+        "count": 93
+      }
+    },
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-04 00:00:00",
+      "region": "frozen_outer_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 12.88521868771412,
+        "MAE": 8.226346512597738,
+        "Bias": -1.6317377231338934,
+        "count": 27
+      }
+    },
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-04 00:00:00",
+      "region": "all_target_cells",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 12.379651922074347,
+        "MAE": 8.712289184963375,
+        "Bias": -0.7872959247495586,
+        "count": 120
+      }
+    },
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-05 00:00:00",
+      "region": "selection_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 6.491196514440627,
+        "MAE": 3.772042330651808,
+        "Bias": -0.7126952589078853,
+        "count": 93
+      }
+    },
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-05 00:00:00",
+      "region": "frozen_outer_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 12.273353788884451,
+        "MAE": 7.456657412246847,
+        "Bias": -0.1445428703534846,
+        "count": 27
+      }
+    },
+    {
+      "control": "single_source_baseline",
+      "key": "7d1e002146f28d3bb60b",
+      "date": "2018-02-05 00:00:00",
+      "region": "all_target_cells",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 8.157698077438557,
+        "MAE": 4.601080724010692,
+        "Bias": -0.5848609714831452,
+        "count": 120
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-03 00:00:00",
+      "region": "selection_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 19.136897469077958,
+        "MAE": 9.804888999974946,
+        "Bias": -2.7380279129843634,
+        "count": 93
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-03 00:00:00",
+      "region": "frozen_outer_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 27.02568139130711,
+        "MAE": 15.851824551924917,
+        "Bias": -6.34042312568181,
+        "count": 27
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-03 00:00:00",
+      "region": "all_target_cells",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 21.169750399439092,
+        "MAE": 11.165449499163689,
+        "Bias": -3.548566835841289,
+        "count": 120
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-04 00:00:00",
+      "region": "selection_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 14.83599431215261,
+        "MAE": 10.901722556013608,
+        "Bias": -0.9088958398578286,
+        "count": 93
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-04 00:00:00",
+      "region": "frozen_outer_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 18.83263718541036,
+        "MAE": 11.352565091344992,
+        "Bias": -6.739506326081395,
+        "count": 27
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-04 00:00:00",
+      "region": "all_target_cells",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 15.823497206964607,
+        "MAE": 11.00316212646317,
+        "Bias": -2.2207831992581317,
+        "count": 120
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-05 00:00:00",
+      "region": "selection_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 9.557144285158914,
+        "MAE": 7.570057379489106,
+        "Bias": 0.3993030776810425,
+        "count": 93
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-05 00:00:00",
+      "region": "frozen_outer_region",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 12.941659684103058,
+        "MAE": 9.13986136240998,
+        "Bias": 0.8740378388067728,
+        "count": 27
+      }
+    },
+    {
+      "control": "multisource_candidate",
+      "key": "dea7c689b883e00a5734",
+      "date": "2018-02-05 00:00:00",
+      "region": "all_target_cells",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 10.414999054152577,
+        "MAE": 7.923263275646302,
+        "Bias": 0.5061183989343319,
+        "count": 120
+      }
+    }
+  ],
+  "aggregate": {
+    "single_source_baseline": {
+      "key": "7d1e002146f28d3bb60b",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 14.061012484859708,
+        "MAE": 7.958243162123321,
+        "Bias": -0.5259791734469464,
+        "count": 360
+      }
+    },
+    "multisource_candidate": {
+      "key": "dea7c689b883e00a5734",
+      "used_for_selection": false,
+      "metrics": {
+        "RMSE": 16.40135767887695,
+        "MAE": 10.030624967091052,
+        "Bias": -1.754410545388363,
+        "count": 360
+      }
+    }
+  },
+  "package_crc": "PASS",
+  "both_products_readback": "PASS",
+  "data_scope": "Original package read-only; existing 3 matched days, product reconstruction proxy, not new blind/gauge validation",
+  "earlier_failure": "Receipt client lacked resource/hash metadata; corrected using public receipt contract before any numerical run",
+  "audit_runs": "Initial two fixed controls plus final per-date report regression; same metrics, no new candidate or weight"
+}

@@ -50,7 +50,7 @@ def review(scan,batches,checked,reply,mock,key,progress,*,checker=None):
         assert_current(scan)
         try:
             receipts=reply.setdefault("api_receipts",[])
-            response=service.send(draft,draft.digest,mock,api_key=key,on_receipt=receipts.append)
+            response=service.send(draft,draft.digest,mock,api_key=key,on_receipt=receipts.append,on_progress=progress)
             if checker is not None:
                 pairs={pair["id"]:pair for pair in context["candidates"]}
                 asked=set()
@@ -69,7 +69,7 @@ def review(scan,batches,checked,reply,mock,key,progress,*,checker=None):
                 if asked:
                     context["final_round"]=True
                     revised=service.preview(context)
-                    response=service.send(revised,revised.digest,mock,api_key=key,on_receipt=receipts.append)
+                    response=service.send(revised,revised.digest,mock,api_key=key,on_receipt=receipts.append,on_progress=progress)
             results={row["candidate"]:row for row in response["reviews"] if isinstance(row,dict)
                      and isinstance(row.get("candidate"),str) and row["candidate"] in ids
                      and row.get("verdict") in ("uphold","retain","uncertain")}

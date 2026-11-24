@@ -5,7 +5,7 @@ from .service import ALGORITHMS, bundle, run_original_workbench, run_station_bat
 
 def run(scan, tasks, folder, progress=None, *, model_id=None):
     from ecodata.core.exceptions import EcoDataError
-    from . import gap_search, independent_alignment, pair_processing, reference_search
+    from . import gap_search, independent_alignment, pair_processing, reference_search, station_grid
 
     assert_current(scan)
     files, artifacts, reports, formats, outputs, notes = [], [], [], [], [], []
@@ -17,7 +17,14 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         if progress:
             progress(f"正在处理 {index}/{len(tasks)} · {task_id}")
         try:
-            if route == "pair_processing":
+            if route == "station_grid":
+                result = station_grid.run(scan,task_id,task,stage,model_id,progress)
+            elif route == "structure_conversion":
+                result = pair_processing.run_conversion(scan,task_id,task,stage,model_id,progress)
+            elif route == "statistical_preprocessing":
+                from .statistical_preprocessing import run as run_statistics
+                result=run_statistics(scan,task_id,task,stage,model_id,progress)
+            elif route == "pair_processing":
                 result = pair_processing.run(scan,task_id,task,stage,model_id,progress)
             elif route == "observation_gap_search":
                 result = gap_search.run(scan,task_id,task,stage,model_id,progress)
@@ -29,7 +36,8 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
             else:
                 raise ValueError("该任务未绑定可执行入口")
         except Exception as exc:
-            failures.append(dict(task=task_id,reason=str(exc)))
+            from .issues import exception
+            failures.append(dict(task=task_id,reason=str(exc),issues=exception(exc)))
             continue
         formats.extend(result["source_formats"])
         outputs.append(result["target_format"])
@@ -75,7 +83,7 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         source_formats=list(dict.fromkeys(formats)),target_format=" / ".join(dict.fromkeys(outputs)),
         original_report=reports,failed_tasks=failures,local=dict(artifacts=artifacts,native_ready=False,
             reason=" ".join(dict.fromkeys(notes)),
-            model_input=dict(whole_model_missing=notes)))
+            model_input=dict(whole_model_missing=notes if model_id and model_id!='data_only' else [])))
     if original:
         result["component_archive"] = original["original_archive"]
         result["archive_members"] = original["archive_members"]

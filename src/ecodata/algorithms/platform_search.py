@@ -28,6 +28,24 @@ from ecodata.io.netcdf import load_dataset
 VERSION="platform_search_v15_measured_validation_random"
 DEFAULT_BUDGET=dict(objective_limit=5,proposal_limit=50,callback_limit=100,wall_seconds=30)
 CURRENT_INPUT_BUDGET=dict(objective_limit=1800,total_call_limit=1800,proposal_limit=400000,wall_seconds=3600,probe_call_limit=600)
+
+
+def with_recommendations(request, recommendations):
+    """Bind advisory recipes to a scientific quantity, never to a winning score."""
+    selected=[]
+    for row in recommendations or []:
+        if row.get('advisory_only'):continue
+        scope=row.get('scope',{})
+        if not scope.get('variable'):
+            raise ValueError('Search recommendation requires an explicit variable scope')
+        if scope['variable']!=request['variable']:continue
+        steps=row.get('steps')
+        if not isinstance(steps,list) or not 1<=len(steps)<=8 or any(not isinstance(s,str) for s in steps):
+            raise ValueError('Invalid recommended recipe')
+        selected.append(dict(id=str(row.get('task',''))+':'+str(row.get('id','')),
+            steps=steps,reason=str(row.get('reason',''))[:600],scope=scope))
+    if len(selected)>16:raise ValueError('At most 16 recommended recipes per request')
+    return dict(request,recommended_recipes=selected) if selected else request
 FAMILIES={
     "spatial":{"single_source_scale","constrained_downscaling","learned_reconstruction","learned_climate_downscaling","terrain_downscaling","terrain_weather_downscaling","vertical_interpolation","soil_profile","observation_interpolation","raster_reconstruction","spatial_filter","geometric_alignment","spatiotemporal_reconstruction"},
     "temporal":{"temporal_scale","temporal_statistics","irregular_time","temporal_reconstruction","spatiotemporal_reconstruction"},
@@ -486,6 +504,13 @@ def submit_search(inputs,request,evaluation,folder,*,budget=None,mode="PortraitM
                     raise ValueError('Spatial current-input selection uses only internally held visible locations')
                 if {'fixed_graph','composition'}&set(request):
                     raise ValueError('Automatic spatial selection cannot receive a prescribed route')
+                replay=folder/'replay_inputs';replay.mkdir(parents=True,exist_ok=False)
+                index=[]
+                for number,item in enumerate(inputs):
+                    name=f'{number}.bin';(replay/name).write_bytes(item.content)
+                    index.append(dict(path=name,filename=item.filename,role=item.role,metadata=item.metadata,
+                        sha256=hashlib.sha256(item.content).hexdigest()))
+                save(replay/'index.json',index)
                 return spatial_submit(parsed,request,audit,folder,budget=dict(CURRENT_INPUT_BUDGET,**(budget or {})),seed=seed,progress=progress)
         if request.get('decision_policy')=='current_input':
             if mode!='PortraitMutation' or validation is not None or request.get('mutation_control','random')!='random':
@@ -599,6 +624,25 @@ def publish_development_validation(envelope):
 def calibrate_reliable_selection(development_runs,calibration_id):
     from ecodata.algorithms.reliable_calibration import calibrate
     return calibrate(development_runs,calibration_id)
+
+
+def execute_evaluated_candidate(inputs,search_folder,key,folder):
+    """User choice among measured graphs, on exactly the same visible inputs."""
+    import math
+    search_folder=Path(search_folder)
+    def load(name):return json.loads((search_folder/name).read_text(encoding='utf8'))
+    protocol=load('request.json');summary=load('summary.json')
+    row=next((r for r in load('candidate_results.json') if r['key']==key and r['status']=='PASS'),None)
+    if row is None or not row.get('fixed_support_sha256') or row['fixed_support_sha256']!=summary['best'].get('fixed_support_sha256'):
+        raise ValueError('Candidate has no passed evaluation on the same fixed support')
+    if not row['metrics']['count'] or not all(math.isfinite(row['metrics'][m]) for m in ('RMSE','MAE')):
+        raise ValueError('Candidate has no finite numerical evaluation')
+    actual=[dict(source_filename=i.filename,role=i.role,sha256=hashlib.sha256(i.content).hexdigest(),declarations=i.metadata or {}) for i in inputs]
+    expected=[{k:r[k] for k in ('source_filename','role','sha256','declarations')} for r in protocol['inputs']]
+    if actual!=expected:raise ValueError('User choice cannot reuse validation scores on changed inputs')
+    # This is same-input deployment, not current-input search or transfer to new data.
+    request=dict(protocol['request']);request.pop('decision_policy',None)
+    return execute_frozen_graph(inputs,request,dict(key=key,records=load('graphs.json')),folder)
 
 
 def execute_frozen_graph(inputs,request,graph,folder):

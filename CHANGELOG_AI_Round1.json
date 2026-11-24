@@ -1,0 +1,546 @@
+{
+  "version": "1.0.1.dev1",
+  "originals_preserved": true,
+  "files": [
+    {
+      "path": "CHANGELOG_AI_Round1.json",
+      "kind": "added",
+      "sha256": "1865d68a20ee4b7460f219ecb0f819442d8f8189724abec49f9b8cc870787ef5"
+    },
+    {
+      "path": "pyproject.toml",
+      "kind": "modified",
+      "sha256": "f95240f5612859365e87a4b687d65f932ef0ef5d88a4fdae9efaa64f3e335246"
+    },
+    {
+      "path": "README_AI_Round1.md",
+      "kind": "added",
+      "sha256": "f51c99bd6e6d840c721fa0341505defe97573897a0f0f3daa7681ea7dc0b7c41"
+    },
+    {
+      "path": "Run_First_Round.ps1",
+      "kind": "added",
+      "sha256": "a85edced0f4ec409314e4bd96e44d353776690eb89c89683b526792d838bb458"
+    },
+    {
+      "path": "start_ecodata_1_0.bat",
+      "kind": "added",
+      "sha256": "babe1d63f253f7560be36926e561ddc3cb0c5bf6f070610405947df451edd746"
+    },
+    {
+      "path": "VERSION",
+      "kind": "modified",
+      "sha256": "fe26b8c494345be45bc8207150ddaa1487a1bf812f5d342c56449456773fe09d"
+    },
+    {
+      "path": "docs/AI_Round1_Build.md",
+      "kind": "added",
+      "sha256": "f76cfd750b6a107dc18fa6393c08a634d361176c7efc329618ec854dd5b7f441"
+    },
+    {
+      "path": "docs/AI_Round1_Report.md",
+      "kind": "added",
+      "sha256": "3bb14dbfe67d3960420901398e266ef278e1d4bf8f6d5315d1f725abd4785598"
+    },
+    {
+      "path": "docs/AI_Round1_Retest.md",
+      "kind": "added",
+      "sha256": "52bd24af5023ab61163e39d947ebc852a15d79c05ed0178096b79f91e6536a41"
+    },
+    {
+      "path": "tests/test_generic_model_preparation.py",
+      "kind": "modified",
+      "sha256": "afa91207c741c392b08e0200e084823e13287458e139e224c183509a3fae6dc9"
+    },
+    {
+      "path": "tests/test_model_library.py",
+      "kind": "modified",
+      "sha256": "90dc11f2e1586cbf217250720032261fec6db97915067f6aa0141c255de4e192"
+    },
+    {
+      "path": "tests/test_p4_model_matching.py",
+      "kind": "modified",
+      "sha256": "c720e306b7648defe8d35da567a8fafc6d6fa815de15cdc0676d87bbc699ca6c"
+    },
+    {
+      "path": "tests/test_round1_cmaq_regressions.py",
+      "kind": "added",
+      "sha256": "450d8f5ce988d3139f9a456a7e424a3a28883a2a3c518997a93fe6a6c81fb6dd"
+    },
+    {
+      "path": "tests/test_round1_formats.py",
+      "kind": "added",
+      "sha256": "97fbdd75a3ac24f4f87d9777392f294e745355366533330d677ef56e18d9f41f"
+    },
+    {
+      "path": "tests/test_round1_ioapi_errors.py",
+      "kind": "added",
+      "sha256": "072e0753b116fa66e29bbc4b27057f777e25567b456b20890a3ed8be7bbc8609"
+    },
+    {
+      "path": "tests/test_round1_ui.py",
+      "kind": "added",
+      "sha256": "3e2cafcb7a8805d465eddd2759b1f8ec275aea344c437ee6c7b222d4caa7decf"
+    },
+    {
+      "path": "tests/test_unified_task.py",
+      "kind": "modified",
+      "sha256": "feed087a64ee6eeb91e445f6695d3c4955ae06f45ad310f2192bc35175f0034c"
+    },
+    {
+      "path": "examples/ai_round1/independent.py",
+      "kind": "added",
+      "sha256": "4a38cc6a5569bea4178f586ef9e9958548d613aac68bf1471728356a319b1970"
+    },
+    {
+      "path": "examples/ai_round1/normalize_sources.py",
+      "kind": "added",
+      "sha256": "53d5aee2ad7edd7dc485fc3b368047d23c3a6f31fac58b8a5d4604771976fba9"
+    },
+    {
+      "path": "examples/ai_round1/round1_results.json",
+      "kind": "added",
+      "sha256": "eec97fd0e42cc22bc7ed64e540ee216f37cf3f6c9f61976e6a911c36839aad21"
+    },
+    {
+      "path": "examples/ai_round1/run_round1.py",
+      "kind": "added",
+      "sha256": "04c3c336154d3629db5ebaa3b0d9f579111e3f4713ec6a010ab14e1423218a24"
+    },
+    {
+      "path": "examples/ai_round1/thresholds.json",
+      "kind": "added",
+      "sha256": "66a4901a98f8f77e8cd9033564abbf01d63e93570cb64d09ea9e44d54be7654c"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/A_noaa_surface.csv",
+      "kind": "added",
+      "sha256": "e8896df5e99418f1bef0318c8a895a52eb72cfcf45660e33714e0070ddac7243"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/A_reference_decoded.csv",
+      "kind": "added",
+      "sha256": "0ec5ad83c36cc7156ca4a2927f32136d76d16dbd52d340408c30e1d7d1098b7e"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/A_synthetic_complete.csv",
+      "kind": "added",
+      "sha256": "9a135aa75b8ad2aaba82b401e22755f1da598c030faaf1002a33dd53f02b8693"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/B2_official_smerge_SURF.DAT",
+      "kind": "added",
+      "sha256": "a88f71a5e2f0f13a8dd85932c113a20cb27f6279bb184303649d314d180982fa"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/comparison.json",
+      "kind": "added",
+      "sha256": "132e184688b9bfa87d49b671ee4d8a8680b3520a7f89d83d5563518bd8ef149a"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/config_noaa.json",
+      "kind": "added",
+      "sha256": "36cedd9ba03b160d6869fab89e2104446856302330e8c87702da3c367fd630b9"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/config_reference.json",
+      "kind": "added",
+      "sha256": "262f68ed599feda5f50313426052e25defdce86fa7d5e423183a80ae0978f2d0"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/config_synthetic.json",
+      "kind": "added",
+      "sha256": "6170a4b2ef5f01174d4cdf704d45a1938e8a453891d15709d65bc41c9ce81f2d"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/normalization.json",
+      "kind": "added",
+      "sha256": "0ac8cb95c84f055fe8da3c11f6edc8f48c0f4f018b4e8a043f4b1ef880f860fe"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/official_execution.json",
+      "kind": "added",
+      "sha256": "4fc4488ba2741b41c9dcc6dabf2cdb8c30594e6070addf638f2d74b01419ed2b"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/source_manifest_round1.json",
+      "kind": "added",
+      "sha256": "e59f16dbab3d0fb60d9140a06a2b0993cc68c099c86da4123906ecea5ac626b7"
+    },
+    {
+      "path": "examples/ai_round1/camx/A_photolysis_table.csv",
+      "kind": "added",
+      "sha256": "90d09d867675859f5d6d3f9c7ecdbd834e70ec0d934371584d6ad857338d2edb"
+    },
+    {
+      "path": "examples/ai_round1/camx/CAMx_LICENSE.txt",
+      "kind": "added",
+      "sha256": "e52082863d63bbbd775526fc22c95ea2b11f7ccbbedf5e67f221b52dc2dea45d"
+    },
+    {
+      "path": "examples/ai_round1/camx/comparison.json",
+      "kind": "added",
+      "sha256": "338bad5ddc62bb26ec4214aa5105b42be2f9e442c2d6963e0e037c4d28765513"
+    },
+    {
+      "path": "examples/ai_round1/camx/normalization.json",
+      "kind": "added",
+      "sha256": "4319c1037645872fb6d92a063472f7e3ddee6b76d4a463d258d65da7ff5042eb"
+    },
+    {
+      "path": "examples/ai_round1/camx/source_manifest_round1.json",
+      "kind": "added",
+      "sha256": "11d9a726c66a98f4e4d13ff1134e87f009c6cf87b86501d6bb9ddd69ece50ce5"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/candidate_ioapi_inspection.json",
+      "kind": "added",
+      "sha256": "573bf138fc9ffbaa25d586f959490204c9c39d8eb64aef44e0c288c75e02452a"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/comparison.json",
+      "kind": "added",
+      "sha256": "d5c2c2be0ef89c888dfb39925b7812c5f8245a2a7a31881d4cdd80b384a3254d"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/config.json",
+      "kind": "added",
+      "sha256": "08b01a86206a9bfa5120f032fbe90a0351e60627cde1b6717c13e116d0caf08f"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/source_manifest_original.json",
+      "kind": "added",
+      "sha256": "62d5b86f5a0f7687d74c08444700523d85e1423630d0d8c1e7e9eebe1f7cc65c"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/source_manifest_round1.json",
+      "kind": "added",
+      "sha256": "a65a35f6804a4f86de7303672df367548d1a5a3456f0d6c1ec52f70ade07e6be"
+    },
+    {
+      "path": "examples/ai_round1/swat/A_daily_weather.csv",
+      "kind": "added",
+      "sha256": "7b41ea1c7471b6a1fd9217daeeba53ab3c679f0c60d9567a7c2643363db34d62"
+    },
+    {
+      "path": "examples/ai_round1/swat/comparison.json",
+      "kind": "added",
+      "sha256": "0f07bf24ca90f0e02c8fb8394ac96b34c0d1d261b5cefb9a27f51e8f450b478b"
+    },
+    {
+      "path": "examples/ai_round1/swat/config.json",
+      "kind": "added",
+      "sha256": "9901d120c0e73b8d7edf567d60fbf8446e26066f5087d8c6ea86925e242989b1"
+    },
+    {
+      "path": "examples/ai_round1/swat/normalization.json",
+      "kind": "added",
+      "sha256": "6f2e0bf2f079407c8b1308b19a36573a779b99944ca4bc31ef4116666cea9469"
+    },
+    {
+      "path": "examples/ai_round1/swat/source_manifest_round1.json",
+      "kind": "added",
+      "sha256": "84d67b0b951f8d5083230eb7b6d3947866ff1d337239bfe857fa18ebf56a2268"
+    },
+    {
+      "path": "examples/ai_round1/wrf/A_sst_subset.nc",
+      "kind": "added",
+      "sha256": "34908a1da89ecf7dd70185743878514680ccf2571cb0939024da429bc9d6b40b"
+    },
+    {
+      "path": "examples/ai_round1/wrf/comparison.json",
+      "kind": "added",
+      "sha256": "9df6b7f380b047b17713ce47e7f3b288a9a114b5ff789eb93e207f30dd055974"
+    },
+    {
+      "path": "examples/ai_round1/wrf/config.json",
+      "kind": "added",
+      "sha256": "8aaadd672bdfa7ea3b7986cda7a4897703978e38359d5ad36372071a764bf985"
+    },
+    {
+      "path": "examples/ai_round1/wrf/normalization.json",
+      "kind": "added",
+      "sha256": "bfd5eb6ae9d84ff379d3282b87eec82eca1d0084e8f6217294399d2520233d12"
+    },
+    {
+      "path": "examples/ai_round1/wrf/source_manifest_round1.json",
+      "kind": "added",
+      "sha256": "323ff56f5587c814ee54a058e2fd19f6a5f0cd9bf8e6f63de5a26a9b71cf903b"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/B_noaa/conversion_report.json",
+      "kind": "added",
+      "sha256": "b7ce386d6b47d08792189c58352d97bd9036f9e8c4e15e5224a6f4a0f1a4fea9"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/B_noaa/SURF.DAT",
+      "kind": "added",
+      "sha256": "2439056b773ee31590c030f68487fabab2f527fce612dc3ed641aed6d61088a1"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/B_reference/conversion_report.json",
+      "kind": "added",
+      "sha256": "943282f4c7454959222ac07a33275ff064be83841e3fc2e791740695f4e22cc1"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/B_reference/SURF.DAT",
+      "kind": "added",
+      "sha256": "2a9ae3b56f24c81193cea5e93a516efbd3da3078848be6b4c4043af6b29a6c1e"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/B_synthetic/conversion_report.json",
+      "kind": "added",
+      "sha256": "5cd7dfec6fe84e10595bfb5e3f8831ba80a29e42f82437e7002ec8c111fa6da3"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/B_synthetic/SURF.DAT",
+      "kind": "added",
+      "sha256": "efc7e8e4d0d22e0f110c62ed9d38b21f5f825866275b26721528deb0869e8bb2"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/CALMET_attempt/CALMET.INP",
+      "kind": "added",
+      "sha256": "e475c3bdb647c0f830bda0bbfbfaca7eb8d9dd27b23bb1a58cfc61758c699f34"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/CALMET_attempt/cmet.dat",
+      "kind": "added",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/CALMET_attempt/cmet.lst",
+      "kind": "added",
+      "sha256": "183f40f8ad8ab6aaec917b8d04d78d76fdead1547ae7684f26a1497f9c33c1f9"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/CALMET_attempt/QAMETG.bna",
+      "kind": "added",
+      "sha256": "dcf1009e04f650cb1bd25f405aa27a6d33470faf1423a39e19ba87cd2cc13cbf"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/CALMET_attempt/stdout.log",
+      "kind": "added",
+      "sha256": "aa306f77d6d77c76336d5e742c7d353e3774a4d2e7d33214bc721611a7f8d5fa"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/CALMET_attempt/SURF.DAT",
+      "kind": "added",
+      "sha256": "2a9ae3b56f24c81193cea5e93a516efbd3da3078848be6b4c4043af6b29a6c1e"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/C_preprocessor/accepted.dat",
+      "kind": "added",
+      "sha256": "a88f71a5e2f0f13a8dd85932c113a20cb27f6279bb184303649d314d180982fa"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/C_preprocessor/candidate.dat",
+      "kind": "added",
+      "sha256": "2a9ae3b56f24c81193cea5e93a516efbd3da3078848be6b4c4043af6b29a6c1e"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/C_preprocessor/reader.inp",
+      "kind": "added",
+      "sha256": "eff024808b6aa13dea2119f6e752b13b98834c59580cac61f749a4439f68dcc1"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/C_preprocessor/reader.lst",
+      "kind": "added",
+      "sha256": "db68bc519afd2a68a5aa8f60b05c32c3c245505eb68f88729b6076b2c2fb1617"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/C_preprocessor/stdout.log",
+      "kind": "added",
+      "sha256": "5ec3355adc70649dd48a442670bcc2f782162923299ac6bdebf3b88f00060095"
+    },
+    {
+      "path": "examples/ai_round1/calpuff/raw/noaa_isd_2020.csv",
+      "kind": "added",
+      "sha256": "4c0daacf5a7399959d8043b9cfa5a8d2eecdae2e03f310ea93780592e31a4e35"
+    },
+    {
+      "path": "examples/ai_round1/camx/B/prepared_photolysis.nc",
+      "kind": "added",
+      "sha256": "da8e55c4cabd87f287a84ea53a11a34f87ee8c551425f2b4e6e63f6f762b67c7"
+    },
+    {
+      "path": "examples/ai_round1/camx/raw/CAMx_official_job.txt",
+      "kind": "added",
+      "sha256": "d842cf0fdc454c5df700922fde4135d8ca84ff6167e1d8d936a5308cb93da131"
+    },
+    {
+      "path": "examples/ai_round1/camx/raw/README_official.txt",
+      "kind": "added",
+      "sha256": "7fbe30e8d27ba91dbecb9111fb1c2904658ecfb001c6df50f24cd3843310e3c9"
+    },
+    {
+      "path": "examples/ai_round1/camx/raw/tuv.do_CB6r5.20160610",
+      "kind": "added",
+      "sha256": "2998873680a07959ecacc5ebf6e84349db88c488152b508ab883e68f862019ac"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/A_existing_case/dem.tif",
+      "kind": "added",
+      "sha256": "f9306fa8bfd5bf8a1033d6488e01bf4e9253d67dd59344cfedd7dfdace575134"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/A_existing_case/geos_cf_meteorology.nc",
+      "kind": "added",
+      "sha256": "40f8a1b62e93bf1f83497c2a5c752fbe1fca45970686f9f8548e51eabef4fd7e"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/A_existing_case/pm25_background.nc",
+      "kind": "added",
+      "sha256": "7fd41f8aee076119be73464256284e092c229ff125e17a139bacd431b5076338"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/A_existing_case/pm25_station.csv",
+      "kind": "added",
+      "sha256": "b85901170bea89f9d859055686e66c0f207a87a1de59305eecfc785e478adf39"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/B/after_profile.json",
+      "kind": "added",
+      "sha256": "490e5bbf57cd5a85bf4d1bde597a851db087859d1d616dc99aca435d68dd180c"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/B/before_profile.json",
+      "kind": "added",
+      "sha256": "255ea08e1cb3bf048feec8064a80a8a4745d63106328aaeae64b10a4375722d3"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/B/fused_PM25.nc",
+      "kind": "added",
+      "sha256": "74ddca2568ee9450a28fb2fc4be711bc704e409dfec184e72797b94e5f4e886b"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/B/input_analysis.json",
+      "kind": "added",
+      "sha256": "abd017ba24e87c8b53cab3cd4231cd81f311f03947e9ff105eae6c5d8e9f9a94"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/B/model_input.nc",
+      "kind": "added",
+      "sha256": "7061eb815b70da04cd79511fb90031fa266dbb0ace0b787f6ed9c61af0496032"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/B/processing_plan.json",
+      "kind": "added",
+      "sha256": "d9d9606ddd8af0bef2c2ce421815ab7f046a8eaeaebf738f4d8222fe0e02ff91"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/B/quality_report.json",
+      "kind": "added",
+      "sha256": "dad0ead98d5513128567b017eabc4fa9342df307a4de33355b9f72a56f0db4db"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/B/validation_report.json",
+      "kind": "added",
+      "sha256": "82b1566c9baa3a846bde70d5b86cd2e7046e424e0dff7763abcce8b065f2a117"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/reference_format_only/ic_profile_CB05_CMAQ5.0.2.dat",
+      "kind": "added",
+      "sha256": "01e02e1997cffa19799a3f960e220ef9edb200855c22d69e56f350a9df027a08"
+    },
+    {
+      "path": "examples/ai_round1/cmaq/reference_format_only/pnc_read_report.json",
+      "kind": "added",
+      "sha256": "ea977eb7083330fe7c6eb60bcb6ee4cb58e3f715b3cce5fb1ae221863d20caa9"
+    },
+    {
+      "path": "examples/ai_round1/swat/B/conversion_report.json",
+      "kind": "added",
+      "sha256": "6e0683a70ec8ff302b03fa09526c9c2acadb923f783b5d57301a8c5ffd668583"
+    },
+    {
+      "path": "examples/ai_round1/swat/B/weather.pcp",
+      "kind": "added",
+      "sha256": "73e5f577b13c5645d1cb042cb4d16a1d153feaa740690c2b0b6b71f51251d19f"
+    },
+    {
+      "path": "examples/ai_round1/swat/B/weather.tmp",
+      "kind": "added",
+      "sha256": "beeec36f26d844229ad195bed557a919801de17f8fb88f520e9b694ef5386dba"
+    },
+    {
+      "path": "examples/ai_round1/swat/raw/noaa_gsod_2020.csv",
+      "kind": "added",
+      "sha256": "420a115cbe83d4d0680388e3d35920948437bd8714cb0bfcbd6c3122a15c45b1"
+    },
+    {
+      "path": "examples/ai_round1/wrf/B/conversion_report.json",
+      "kind": "added",
+      "sha256": "400f310c3163acdb5843a2b8fc76f9fc4da4a1dab6d95122e9d133c9f9cc2c44"
+    },
+    {
+      "path": "examples/ai_round1/wrf/B/SST_2020-01-01_12.wps",
+      "kind": "added",
+      "sha256": "13971f78622105d03c5f2a5f52fc1326fcb8dcf32f85a42dbcb498d59dea6311"
+    },
+    {
+      "path": "examples/ai_round1/wrf/raw/oisst_20200101.nc",
+      "kind": "added",
+      "sha256": "11f1127a120f015a1412d44cccc5c94c364786f1f7b98615914ad5d418615ea4"
+    },
+    {
+      "path": "src/ecodata/round1.py",
+      "kind": "added",
+      "sha256": "9eca3cb9b3ccd3fb45b17a101687caa2027299d630851ec26b0ccd534ed9c880"
+    },
+    {
+      "path": "src/ecodata/interface/app.py",
+      "kind": "modified",
+      "sha256": "073492f5dabf67bbf0c63c0c7116e25b5e6a85e461b428e659ee14cfb22fdd62"
+    },
+    {
+      "path": "src/ecodata/interface/round1_page.py",
+      "kind": "added",
+      "sha256": "ea5376b722ead17a11a3136b10005d76df3e21bc7880e22d7efe5c77370bb896"
+    },
+    {
+      "path": "src/ecodata/models/adapters/calmet_surface.py",
+      "kind": "added",
+      "sha256": "bec79fdb85becab0f371c124d9b8bd0bf71c543377cff76e618832b4b1ed9fe4"
+    },
+    {
+      "path": "src/ecodata/models/adapters/cmaq.py",
+      "kind": "modified",
+      "sha256": "b54ad6ea2603374a6c21d19d840e5c407efecaeb0f8b8b3635613ddfd409ef8d"
+    },
+    {
+      "path": "src/ecodata/models/adapters/ioapi_reader.py",
+      "kind": "modified",
+      "sha256": "f53fb60d76d9f425ddffe51206972fdfe5333eb97be7aab1d155e624c5eeea48"
+    },
+    {
+      "path": "src/ecodata/models/adapters/ioapi_worker.py",
+      "kind": "modified",
+      "sha256": "cac7b189acd8bbe84e4a5854bb099b1a2a2660d60fa8b565e262b4bc266febb2"
+    },
+    {
+      "path": "src/ecodata/models/adapters/swat_weather.py",
+      "kind": "added",
+      "sha256": "39bf73808173fa14df9a24a9ca52b5b51f7e865e04dced483dc548c6268c1ed8"
+    },
+    {
+      "path": "src/ecodata/models/adapters/wps_sst.py",
+      "kind": "added",
+      "sha256": "4baf535eb50966879b97b8e16f93c59128af71467cca81ae8518fabb7d3c0561"
+    },
+    {
+      "path": "src/ecodata/models/profiles/calpuff.json",
+      "kind": "added",
+      "sha256": "03bf18d5be66be53dd150a25f8fe5f33cf7c6ba3225b26ad0ab516581717a0aa"
+    },
+    {
+      "path": "src/ecodata/models/profiles/camx.json",
+      "kind": "modified",
+      "sha256": "c1247e5fd838ab78c75ad6bffdbe5247335b312cc4e70a77888d09b2e9883525"
+    },
+    {
+      "path": "src/ecodata/models/profiles/swat.json",
+      "kind": "added",
+      "sha256": "31cef499bd619725fbd6227a621c9c97cd87ae5b03564d50e1485e6bae8c7887"
+    }
+  ]
+}

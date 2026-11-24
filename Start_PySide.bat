@@ -7,6 +7,10 @@ if errorlevel 1 goto failed
 ".venv\Scripts\python.exe" -m pip install --no-cache-dir -e ".[test,terrain-components,composition-search]" PySide6-Essentials "netCDF4>=1.6,<2" certifi
 if errorlevel 1 goto failed
 :run
+if not defined OPENBLAS_NUM_THREADS set OPENBLAS_NUM_THREADS=1
+if not defined OMP_NUM_THREADS set OMP_NUM_THREADS=1
+if not defined MKL_NUM_THREADS set MKL_NUM_THREADS=1
+if not defined NUMEXPR_NUM_THREADS set NUMEXPR_NUM_THREADS=1
 if not exist ".venv\Scripts\python.exe" goto failed
 set "TEMP=%CD%\.desktop-tmp"
 set "TMP=%TEMP%"

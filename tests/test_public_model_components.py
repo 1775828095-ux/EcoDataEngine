@@ -157,8 +157,13 @@ def test_four_models_page_and_toolkit_share_real_writers(tmp_path,model,label,op
     page=app.session_state['workbench_result']['data']
     assert page['manifest']['status']==direct['manifest']['status']=='COMPONENT_EXPORTED'
     with zipfile.ZipFile(page['archive']) as p, zipfile.ZipFile(direct['archive']) as d:
-        assert p.namelist()==d.namelist()
-        for name in p.namelist():
+        # Final-check receipt IDs are intentionally unique per invocation.
+        # Compare the real payload names and verify both receipt outcomes.
+        payload=lambda z:[n for n in z.namelist() if not n.startswith('_ecodata/final_check/')]
+        assert payload(p)==payload(d)
+        for key in ('format','project','native'):
+            assert page['manifest']['final_check'][key]['status']==direct['manifest']['final_check'][key]['status']
+        for name in payload(p):
             if name.endswith('.json'):continue
             if name.endswith('.nc'):
                 # I/O API records creation/write time: compare all scientific

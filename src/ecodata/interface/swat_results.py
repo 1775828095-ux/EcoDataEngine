@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import math
 from pathlib import Path
 import re
+from ecodata.io.record_layout import RecordLayoutError, split_declared_record
 
 LABELS = {
     'precip': '降水', 'et': '蒸散发', 'surq_gen': '地表径流',
@@ -47,15 +48,12 @@ def output_objects(path):
     return _select_output_lines(path,index_only=True)[2]
 
 
-def read_output(path,selected_identity=None):
-    path = Path(path)
-    if selected_identity is None and path.stat().st_size > 100 * 1024 * 1024:
-        raise ValueError('单个结果文件超过100 MiB，请先缩小输出范围。')
-    if selected_identity is None:
-        lines = path.read_text(encoding='utf-8-sig', errors='strict').splitlines()
-        line_numbers=list(range(1,len(lines)+1))
-    else:
-        lines,line_numbers,_=_select_output_lines(path,selected_identity)
+def has_output_header(lines):
+    return any(line.split()[:4]==["jday","mon","day","yr"] for line in lines[:20])
+
+
+def output_header(lines):
+    """Read field names and declared units from a SWAT+ result header."""
     header_index = next((i for i, line in enumerate(lines[:20])
                          if line.split()[:4] == ['jday', 'mon', 'day', 'yr']), None)
     if header_index is None:
@@ -70,6 +68,8 @@ def read_output(path,selected_identity=None):
     identity = ['jday', 'mon', 'day', 'yr', 'unit', 'gis_id', 'name']
     if columns[:7] != identity:
         raise ValueError('暂不支持此结果身份列结构；需要jday mon day yr unit gis_id name。')
+    if len(lines)<=header_index+1:
+        raise ValueError('SWAT+ 结果缺少单位行。')
     unit_tokens = lines[header_index + 1].split()
     # 62.0.0 water-balance header has two trailing non-physical diagnostics
     # (plant_cov, mgt_ops) without printed units. Keep them out of the chart selector.
@@ -80,16 +80,36 @@ def read_output(path,selected_identity=None):
     if len(unit_tokens) != len(unit_columns):
         raise ValueError('单位行与变量数不一致，拒绝猜测单位。')
     units = dict(zip(unit_columns, unit_tokens))
+    return header_index,columns,units,no_unit_tail
+
+
+
+def read_output(path,selected_identity=None):
+    path = Path(path)
+    if selected_identity is None and path.stat().st_size > 100 * 1024 * 1024:
+        raise ValueError('单个结果文件超过100 MiB，请先缩小输出范围。')
+    if selected_identity is None:
+        lines = path.read_text(encoding='utf-8-sig', errors='strict').splitlines()
+        line_numbers=list(range(1,len(lines)+1))
+    else:
+        lines,line_numbers,_=_select_output_lines(path,selected_identity)
+    header_index, columns, units, no_unit_tail = output_header(lines)
     rows = []
+    annotations=[]
+    numeric_columns=[columns.index(column) for column in units]
     for lineno, line in enumerate(lines[header_index + 2:], header_index + 3):
         lineno=line_numbers[lineno-1]
         if not line.strip():
             continue
         values = line.split()
         # Basin rows omit the two trailing HRU-only diagnostic strings in 62.
-        omitted_tail = no_unit_tail and path.name.startswith('basin_') and len(values) == len(columns)-2
-        if len(values) != len(columns) and not omitted_tail:
-            raise ValueError(f'第{lineno}行字段数错误或数值溢出。')
+        try:
+            values,extra=split_declared_record(values,len(columns),numeric_columns=numeric_columns,
+                integer_columns=range(6),optional_tail=2 if no_unit_tail and path.name.startswith('basin_') else 0)
+        except RecordLayoutError as error:
+            raise ValueError(f'第{lineno}行字段结构无效：{error.code}') from error
+        if extra:
+            annotations.append(dict(line=lineno,extra_tokens=len(extra),basis='trailing_text_annotation'))
         row = dict(zip(columns, values))
         try:
             for key in columns[:6]:
@@ -127,7 +147,7 @@ def read_output(path,selected_identity=None):
             raise ValueError('逐日结果存在缺日期；未填值或连接缺口。')
     return {'path': str(path), 'columns': columns, 'units': units,
             'validation_scope':'selected_object' if selected_identity is not None else 'all_objects',
-            'rows': rows, 'objects': list(identities)}
+            'rows': rows, 'objects': list(identities), 'trailing_annotations':annotations}
 
 def discover(directory):
     valid, rejected = [], []

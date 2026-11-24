@@ -145,6 +145,8 @@ def _source_on_port(source,port):
         from .precipitation_adaptation import native_cell_values
         grid=ds.copy(deep=False);grid[field]=converted
         values,evidence=native_cell_values(grid,field,port)
+        if source.get('recommendation_preparation'):
+            evidence.update(original_resolution_retained=False,preparation=source['recommendation_preparation'])
         output[port.quantity].values[:]=values
         sigma=[n for n in str(a.attrs.get('ancillary_variables','')).split() if n in ds and ds[n].attrs.get('uncertainty_type')=='standard_deviation']
         if len(sigma)>1:raise ValueError('同来源标准差字段不唯一')
@@ -194,9 +196,64 @@ def _source_on_port(source,port):
     return output
 
 
+def prepare_recommended_sources(sources,request):
+    """Execute requested grid preparation through the existing regrid kernel."""
+    if not any('spatial.regrid.conservative' in r['steps'] for r in request.get('recommended_recipes',[])):
+        return sources
+    from ecodata.spatial.regridding import GridRegridder,RegridConfig
+    from ecodata.core.schemas import EcoDataBundle
+    grids=[s['dataset'] for s in sources]
+    steps=[]
+    for grid in grids:
+        row=[]
+        for axis in ('lat','lon'):
+            if grid[axis].ndim!=1:raise ValueError('Recommended conservative preparation requires rectilinear grids')
+            delta=np.diff(grid[axis].values)
+            if not len(delta) or not np.all(delta>0) or not np.allclose(delta,delta[0]):
+                raise ValueError('Recommended conservative preparation requires regular increasing grids')
+            row.append(float(delta[0]))
+        steps.append(row)
+    targets=[i for i,row in enumerate(steps) if all(all(a>=b for a,b in zip(row,other)) for other in steps)]
+    if not targets:raise ValueError('Crossed grid scales require an explicit common target')
+    target=grids[targets[0]]
+    for j,axis in enumerate(('lat','lon')):
+        half=steps[targets[0]][j]/2
+        lower=max(float(g[axis][0])-step[j]/2 for g,step in zip(grids,steps))
+        upper=min(float(g[axis][-1])+step[j]/2 for g,step in zip(grids,steps))
+        mask=(target[axis]-half>=lower-1e-8)&(target[axis]+half<=upper+1e-8)
+        target=target.isel({axis:np.flatnonzero(mask.values)})
+    result=[]
+    for source,grid in zip(sources,grids):
+        field=source['field']
+        local=grid
+        for j,axis in enumerate(('lat','lon')):
+            halo=steps[targets[0]][j]
+            local=local.sel({axis:slice(float(target[axis][0])-halo,float(target[axis][-1])+halo)})
+        transformed=GridRegridder(RegridConfig('conservative',tuple(target.lat.values),tuple(target.lon.values),field)).apply(EcoDataBundle(local))
+        aligned=transformed.data.dataset
+        for axis in ('time','lat','lon'):
+            if axis not in grid:continue
+            bounds=grid[axis].attrs.get('bounds')
+            if not bounds or bounds not in grid:continue
+            if axis=='time':aligned[bounds]=grid[bounds]
+            else:
+                bounds=target[axis].attrs.get('bounds')
+                if bounds in target:aligned[bounds]=target[bounds]
+            if bounds in aligned:aligned[axis].attrs['bounds']=bounds
+        evidence=dict(operation='spatial.regrid.conservative',status='PASS',source_id=source['source_id'],
+            input_sha256=source['sha256'],record=transformed.record.as_dict(),
+            output_sha256=hashlib.sha256(aligned[field].values.tobytes()).hexdigest())
+        result.append(dict(source,dataset=aligned,recommendation_preparation=[evidence]))
+    return result
+
+
 def process_port(port,sources,folder,progress=None,*,request_builder=None):
     from ecodata.evaluation.quality_gates import RawInputQualityGate,ResultQualityGate
     folder.mkdir()
+    if request_builder is not None:
+        request=request_builder(dict(task='multisource',variable=port.quantity,unit=port.unit,
+            semantic_type='continuous',temporal_semantics=port.temporal,mutation_control='random',soft_guidance=False))
+        sources=prepare_recommended_sources(sources,request)
     original_port=port
     if any(s.get('product') for s in sources):
         from dataclasses import replace

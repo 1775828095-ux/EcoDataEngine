@@ -19,6 +19,7 @@ from ecodata.io.netcdf import load_dataset
 
 # (model, task) -> existing implementation and its documented data interface.
 CATALOG = {
+    ('swat_plus','precipitation'): ('swat_plus_precipitation','export_precipitation','bytes'),
     ('swat_plus','weather'): ('swat_plus_upload','export_uploaded_weather','bytes'),
     ('swat_plus','soil'): ('swat_plus_soil','export_soils','bytes'),
     ('swat_plus','landuse'): ('swat_plus_landuse','export_landuse','bytes'),
@@ -61,7 +62,14 @@ def generic_requirements(model):
     return dict(schema='ecodata.converter.requirements.v1',model_id=model,
         role='component',fields=[],coordinates={},dependencies=[],
         component_dispatch=True,components=capabilities(model),
-        scope='Uploaded task/resource contracts; no default station, period or engineering case')
+        scope='Uploaded task/resource contracts; no default station, period or engineering case',
+        minimum_inputs=({
+            'precipitation':dict(required=['precipitation','time','units=mm','daily accumulation interval=86400s',
+                'time_basis','EPSG:4326 station latitude/longitude/elevation'],
+                automatic=['output labels','date coverage from input','pcp.cli from actual output filenames'],
+                not_required=['file.cio','soil','landuse','temperature','complete watershed engineering'],
+                scope='Component conversion only; not a runnable watershed')
+        } if model=='swat_plus' else {}))
 
 
 def unsupported_conversion(manifest_path, output_dir):
@@ -78,7 +86,7 @@ def _auto_weather(files):
     for name in sorted(files.files):
         if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
         with files.files[name][0]() as stream, xr.open_dataset(stream) as ds:
-            if not needed <= set(ds.data_vars):continue
+            if 'precipitation' not in ds:continue
             if ds.attrs.get('crs')!='EPSG:4326':raise ValueError('SWAT+天气必须明确站点坐标基准')
             coordinates={}
             for key,aliases in [('latitude',('lat','latitude')),('longitude',('lon','longitude')),('elevation',('elevation','elevation_m'))]:
@@ -87,17 +95,17 @@ def _auto_weather(files):
                 elif key in ds.attrs:coordinates[key]=float(ds.attrs[key])
             if len(coordinates)!=3:continue  # Missing station metadata, not guessed.
             times=pd.DatetimeIndex(ds.time.values)
-            if len(times)<2 or not (times[1:]-times[:-1]==pd.Timedelta(days=1)).all():
+            if not len(times) or not (times[1:]-times[:-1]==pd.Timedelta(days=1)).all():
                 raise ValueError('SWAT+天气需明确逐日序列，小时处理需先声明聚合任务')
-            station=str(ds.attrs.get('station_id','station_'+files.identity(name)['sha256'][:10]))
-            configuration=dict(project_name='uploaded_weather',start=str(times[0].date()),end=str(times[-1].date()),
-                               station=dict(name=station,**coordinates))
+            # Common minimum-input resolver supplies traceable labels/range
+            # from the actual source, including for automatic requests.
+            configuration={}
             additional=[n for n in ('solar_radiation','relative_humidity','wind_speed') if n in ds]
             if additional:
                 if ds.attrs.get('target_model_version')!='62.0.0':
                     raise ValueError('扩展SWAT+天气字段需明确target_model_version=62.0.0')
                 configuration.update(additional_weather=additional,target_model_version='62.0.0')
-            candidates.append(dict(operation='weather',input=name,configuration=configuration))
+            candidates.append(dict(operation='weather' if needed<=set(ds.data_vars) else 'precipitation',input=name,configuration=configuration))
     if len(candidates)>1:raise ValueError('多个完整天气来源需先完成融合/选择，不能猜选写出来源')
     return candidates[0] if candidates else None
 
@@ -167,6 +175,11 @@ execute scripts or access a host pathname. Algorithms stay in the public service
         # External process dependencies are not accepted as arbitrary task data.
         if {'python','command','executable','legacy_source','legacy_python'} & set(configuration):
             raise ValueError('原生任务配置不能启动外部程序')
+        from ecodata.models.minimum_inputs import complete_configuration
+        configuration,completion=complete_configuration(model_id,operation,raw,configuration)
+        if progress:
+            for entry in completion:
+                progress('自动补齐非关键配置 · '+entry['field']+'='+str(entry['value'])+'；依据：'+entry['basis'])
         destination=folder/'components';destination.mkdir(exist_ok=False)
         context=None
         if kind=='native_update':
@@ -189,7 +202,11 @@ execute scripts or access a host pathname. Algorithms stay in the public service
             if request.get('weather_station_index'):
                 index_name,_=files.resolve(declaration_name or 'request.json',request['weather_station_index'])
                 with files.files[index_name][0]() as stream:station_index=stream.read()
-            generated,validation=convert(model_id,raw,configuration,weather_station_index=station_index)
+            if operation=='precipitation' and model_id=='swat_plus':
+                from ecodata.models.adapters.swat_plus_precipitation import export_precipitation
+                generated,validation=export_precipitation(raw,configuration)
+            else:
+                generated,validation=convert(model_id,raw,configuration,weather_station_index=station_index)
         inventory=[]
         for name,payload in generated.items():
             name=safe_name(name);path=destination/name;path.parent.mkdir(parents=True,exist_ok=True)
@@ -198,7 +215,7 @@ execute scripts or access a host pathname. Algorithms stay in the public service
             if path.read_bytes()!=payload:raise ValueError('写出产品回读不一致')
             inventory.append(dict(path=path.relative_to(folder).as_posix(),bytes=len(payload),sha256=hashlib.sha256(payload).hexdigest()))
         from ecodata.models.engineering.native import finish_project
-        validation=dict(validation,source_resource=source_identity)
+        validation=dict(validation,source_resource=source_identity,auto_completion=completion)
         if progress:progress('核对工程引用并生成经过校验的工程副本')
         attached=finish_project(uploads,model_id,folder,operation,generated,configuration,validation,context=context)
         if attached is not None:return attached

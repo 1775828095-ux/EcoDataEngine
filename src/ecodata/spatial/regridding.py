@@ -98,3 +98,60 @@ class GridRegridder:
 def _strictly_increasing(values) -> bool:
     values = np.asarray(values, dtype=float)
     return values.ndim == 1 and np.isfinite(values).all() and np.all(np.diff(values) > 0)
+
+
+def target_grid_spec(value):
+    """Explicit user grid requirement; never an algorithm preference."""
+    if not isinstance(value,dict) or set(value)!={'crs','latitude_step','longitude_step','extent'}:
+        raise ValueError('目标网格需crs、latitude_step、longitude_step、extent')
+    from pyproj import CRS
+    if not CRS.from_user_input(value['crs']).equals(CRS.from_epsg(4326)) or value['extent']!='intersection':
+        raise ValueError('此入口的目标网格目前支持EPSG:4326及共同覆盖intersection')
+    for key in ('latitude_step','longitude_step'):
+        if isinstance(value[key],bool) or not isinstance(value[key],(int,float)) or not np.isfinite(value[key]) or value[key]<=0:
+            raise ValueError('目标网格间距必须是正数，单位为度')
+    return dict(value)
+
+
+def resolve_target_grid(datasets,spec):
+    """Common supported center domain; uses geometry only, never field values."""
+    spec=target_grid_spec(spec);coords={}
+    for axis,key in (('lat','latitude_step'),('lon','longitude_step')):
+        # Keep complete target cells inside the common observed center domain.
+        # The lightweight backend does not guarantee outer-half-cell support.
+        low=max(float(normalize_grid_axes(ds)[0][axis][0]) for ds in datasets)
+        high=min(float(normalize_grid_axes(ds)[0][axis][-1]) for ds in datasets);step=spec[key]
+        count=int(np.floor((high-low)/step+1e-9))
+        if count<2:raise ValueError('目标网格在共同覆盖内不足两个像元：'+axis)
+        coords[axis]=low+step*(np.arange(count)+.5)
+    return xr.Dataset(coords=coords,attrs=dict(crs='EPSG:4326',grid_origin='common_center_domain_lower_edge'))
+
+
+def require_target_grid(dataset,target,variable):
+    from pyproj import CRS
+    if not CRS.from_user_input(dataset.attrs.get('crs','')).equals(CRS.from_epsg(4326)):
+        raise ValueError('候选输出坐标基准不符合目标网格')
+    for axis in ('lat','lon'):
+        if axis not in dataset.coords or not np.array_equal(dataset[axis].values,target[axis].values):
+            raise ValueError('候选输出不符合目标网格硬约束：'+axis)
+    if dataset[variable].dims!=('time','lat','lon'):
+        raise ValueError('候选输出维度不符合目标网格硬约束')
+    return dict(status='PASS',shape=list(dataset[variable].shape),
+        latitude_step=float(target.lat[1]-target.lat[0]),longitude_step=float(target.lon[1]-target.lon[0]))
+
+
+def contained_cell_grid(source,target):
+    """Keep whole rectilinear reference cells inside the target cell-edge footprint.
+
+    A center inside the domain is insufficient: the entire observation support
+    must be covered. Geometry only; never inspect values when selecting cells.
+    """
+    from ecodata.algorithms.raster_reconstruction_task import edges
+    out=source
+    for axis in ('lat','lon'):
+        bounds=edges(out[axis]);limit=edges(target[axis])
+        keep=(bounds[:-1]>=limit[0]-1e-9)&(bounds[1:]<=limit[-1]+1e-9)
+        out=out.isel({axis:np.flatnonzero(keep)})
+        if out.sizes[axis]<2:
+            raise ValueError('Target grid cannot fully cover enough original reference cells: '+axis)
+    return out

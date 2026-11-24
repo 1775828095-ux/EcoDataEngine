@@ -113,7 +113,9 @@ def associate_documents(scan, source_ids):
             masked=None
         for source in links:
             refs[source].append(doc_id)
-        documents.append(dict(id=doc_id,read_status=status,scope="source_reference" if links else "project_context",
+        associated=names.get(name.casefold(),set())
+        file_id=f"D{next(iter(associated))}" if len(associated)==1 else None
+        documents.append(dict(id=doc_id,file_id=file_id,read_status=status,scope="source_reference" if links else "project_context",
                               source_ids=sorted(links),link_evidence={key:sorted(value) for key,value in links.items()},
                               text=masked, sharing=document.mode if document else "unread",
                               classification_reason=document.reason if document else "未读取正文",

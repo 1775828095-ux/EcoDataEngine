@@ -51,6 +51,8 @@ def probe_sources(model, prefixes):
 
 def inspect_sources(model, files, records):
     payloads=dict(files); claims={}; issues=[]
+    unread={row['file'] for row in records if row.get('payload_read') is False}
+    partial_inventory=any(row.get('partial_inventory') for row in records)
     def claim(name,role,reason,**extra):
         if name in claims and role=='data_candidate':
             return  # A resolved engineering reference is stronger than format.
@@ -69,7 +71,7 @@ def inspect_sources(model, files, records):
             issues.append(dict(file=control,message='工程引用不是包内安全相对路径：'+key+'='+value));return
         target=(PurePosixPath(control).parent/p).as_posix()
         if target not in payloads:
-            issues.append(dict(file=control,message='工程实际引用缺失：'+key+' → '+target));return
+            issues.append(dict(file=control,message=('工程引用尚未按需核对：' if partial_inventory else '工程实际引用缺失：')+key+' → '+target));return
         claim(target,'engineering_dependency','工程控制明确引用：'+control+' / '+key)
     for row in records:
         name=row['file']; base=PurePosixPath(name).name.lower()
@@ -102,8 +104,12 @@ def inspect_sources(model, files, records):
                 reference(name,'wrfbdy_d01','boundary_state')
             except (ValueError,KeyError,UnicodeError) as exc:issues.append(dict(file=name,message='WRF控制读取失败：'+str(exc)))
         elif model=='swat_plus' and base=='file.cio':
+            if name in unread:
+                issues.append(dict(file=name,message='工程控制尚未完整读取，不能判断simulation/climate组是否存在'))
+                continue
             try:
-                local={PurePosixPath(n).name:b for n,b in files if PurePosixPath(n).parent==PurePosixPath(name).parent}
+                members={PurePosixPath(n).name:n for n in payloads if PurePosixPath(n).parent==PurePosixPath(name).parent}
+                local={base:payloads[n] for base,n in members.items()}
                 groups={}
                 for line in payloads[name].decode('utf-8-sig').splitlines()[1:]:
                     tokens=line.split('!',1)[0].split()
@@ -115,7 +121,7 @@ def inspect_sources(model, files, records):
                 for group,values in groups.items():
                     for value in values:
                         if value.lower() not in {'null','sim','0'}:reference(name,value,group)
-                check=weather_dependencies(local)
+                check=weather_dependencies(local,unread_files={base for base,n in members.items() if n in unread})
                 claims[name]['weather_dependencies']=check
                 issues.extend(dict(file=name,message=m) for m in check['errors'])
                 for climate_file in groups.get('climate',[])[2:]:

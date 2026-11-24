@@ -40,23 +40,91 @@ def identity(name, attrs):
     return None, None
 
 
-def describe_variables(facts):
+REFERENCE_ATTRIBUTES=("coordinates","bounds","climatology","grid_mapping","ancillary_variables",
+                      "cell_measures","formula_terms")
+_TERMS=re.compile(r"([^\s:]+)\s*:\s*")
+
+
+def variable_references(facts):
+    """Resolve CF references in the same group, or by an explicit group path."""
+    from posixpath import dirname, join, normpath
+
+    variables=facts["variables"]
+    graph={}
+    for name,item in variables.items():
+        references=[]
+        seen=set()
+
+        def add(relation,token,term=None):
+            token=str(token).strip()
+            if not token:
+                return
+            if token.startswith("/"):
+                candidates=[token.lstrip("/")]
+            else:
+                candidates=[]
+                group=dirname(name)
+                while group:
+                    candidates.append(normpath(join(group,token)))
+                    if "/" in token:
+                        break
+                    group=dirname(group)
+                if "/" not in token or not candidates:
+                    candidates.append(normpath(token))
+            target=next((candidate for candidate in candidates if candidate in variables),None)
+            key=(relation,target or token,term)
+            if key not in seen:
+                seen.add(key)
+                row=dict(relation=relation,reference=token,target=target)
+                if term:
+                    row["term"]=term
+                references.append(row)
+
+        attrs=item["attributes"]
+        for dim in item.get("dimensions",[]):
+            group=dirname(name)
+            candidates=[join(group,dim),dim] if group else [dim]
+            if any(key in variables and key!=name and variables[key]["dimensions"]==[dim] for key in candidates):
+                add("dimension_coordinate",dim)
+        for scale in item.get("dimension_scales",[]):
+            add("dimension_coordinate",scale)
+        for relation in REFERENCE_ATTRIBUTES:
+            value=str(attrs.get(relation) or "").strip()
+            groups=list(_TERMS.finditer(value)) if relation in {"cell_measures","formula_terms","grid_mapping"} else []
+            if not groups:
+                for token in value.split():
+                    add(relation,token)
+                continue
+            for index,match in enumerate(groups):
+                term=match[1]
+                end=groups[index+1].start() if index+1<len(groups) else len(value)
+                tokens=value[match.end():end].split()
+                if relation=="grid_mapping":
+                    add(relation,term)
+                    for token in tokens:
+                        add("grid_mapping_coordinate",token,term)
+                elif tokens:
+                    add(relation,tokens[0],term)
+        if references:
+            graph[name]=references
+    return graph
+
+
+def describe_variables(facts, *, references=None):
     """Header-only variable roles; never load arrays or assume data are valid."""
     variables = facts['variables']; dimensions = facts.get('dimensions', {})
     links = {}; coordinates = set(dimensions)
-    for name, item in variables.items():
-        attrs = item['attributes']
-        for key in ('bounds', 'climatology', 'grid_mapping', 'ancillary_variables',
-                    'coordinates', 'cell_measures', 'formula_terms'):
-            value = str(attrs.get(key, ''))
-            refs = re.findall(r'[A-Za-z_][A-Za-z_0-9]*', value)
-            for ref in refs:
-                if ref not in variables:
-                    continue
-                if key == 'coordinates':
-                    coordinates.add(ref)
-                else:
-                    links.setdefault(ref, []).append(dict(parent=name, relation=key))
+    graph=variable_references(facts) if references is None else references
+    for name,refs in graph.items():
+        for ref in refs:
+            target=ref["target"]
+            if target is None:
+                continue
+            relation=ref["relation"]
+            if relation in {"coordinates","dimension_coordinate","grid_mapping_coordinate"}:
+                coordinates.add(target)
+            else:
+                links.setdefault(target,[]).append(dict(parent=name,relation=relation))
     rows = []
     for name, item in variables.items():
         attrs = item['attributes']; evidence = []

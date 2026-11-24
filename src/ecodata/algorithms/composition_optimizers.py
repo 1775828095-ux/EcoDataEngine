@@ -15,12 +15,17 @@ def random_graph_search(search, request, selection_policy=None):
     budget_blocked = False
     while not search.exhausted():
         current = search.best()['key']
+        recommended=search.recommendation_parent() if hasattr(search,'recommendation_parent') else None
         families = ['algorithm', 'parameters', 'structure', 'source'] + (['joint'] if request.get('joint_destroy_repair', True) else [])
         family = str(search.rng.choice(families))
         plan = search.destroy(current, search.rng) if family == 'joint' else None
         strategy = str(search.rng.choice(['random', 'portrait']))
         if selection_policy is not None and not selection_policy['portraits_enabled']:
             strategy = 'random'
+        if recommended is not None:
+            current= recommended
+            family='recommendation_parameters'
+            strategy='random'
         before_calls = len(search.account.events)
         search.propose(current, family, strategy, search.rng, destruction=plan)
         if len(search.account.events) > before_calls:
@@ -34,7 +39,7 @@ def random_graph_search(search, request, selection_policy=None):
                                empty_coverage_complete=len(empty_families) == len(families))
         if budget_blocked and len(empty_families)==len(families):
             search.stopper.reason='RESOURCE_BUDGET_EXHAUSTED'
-    return dict(backend='random', parent_policy='best', shared_driver='composition_optimizers.random_graph_search')
+    return dict(backend='random', parent_policy='verified_recommendations_then_best' if getattr(search,'recommendation_receipts',None) else 'best', shared_driver='composition_optimizers.random_graph_search')
 
 
 def search_graph(engine, initial, *, seed):

@@ -9,7 +9,10 @@ from . import sample_values
 CHECKS = {
     "numeric_samples": "指定字段的随机小数扰动数值样本",
     "metadata": "物理量、单位换算、网格角色与分辨率",
+    "field_context": "字段说明、工程引用、坐标参考及标识或类别声明",
     "time_coverage": "时间支持、间隔和覆盖重叠关系",
+    "annual_mean_comparison": "核对同一工程对象的平均年度输出与同年段逐年值的均值",
+    "preprocessing_plan": "核验指定统计窗口、对象和面积依据，试算时间聚合与单位换算方案",
     "data_quality": "抽样有效率和质量标记登记",
     "spatial_coverage": "地理坐标样本的外包范围重叠",
     "position_agreement": "可对应位置的数值差异或类别一致率",
@@ -42,13 +45,18 @@ def parse_reply(raw):
 
 
 class LocalChecks:
-    def __init__(self, scan, candidates):
+    def __init__(self, scan, candidates, *, documents=()):
         self.scan = scan
         self.candidates = candidates
         self.cache = {}
         self.fields = {}
         self.values = {}
         self.exported = {}
+        self.quantities = {}
+        self.station_matches = {}
+        self.documents = [doc for doc in documents if doc.get("text")]
+        self.contexts = {}
+        self.preprocessing_plans={}
 
     def __call__(self, candidate, check, approved):
         pair = self.candidates.get(candidate)
@@ -58,7 +66,7 @@ class LocalChecks:
         if key not in self.cache:
             assert_current(self.scan)
             try:
-                result = self.inspect(pair,check)
+                result = self.inspect(pair,check,self.quantities.get(candidate))
             except (EcoDataError,OSError,ValueError,TypeError,KeyError,IndexError,OverflowError,RuntimeError,ImportError):
                 result = {"status":"unavailable","basis":"local_reader_or_metadata_unavailable"}
             assert_current(self.scan)
@@ -99,12 +107,65 @@ class LocalChecks:
             self.exported[fid]=dict(field=fid,**result)
         return self.exported[fid]
 
-    def inspect(self,pair,check):
-        from .discovery import field_identity, overlap, pair_units, public_unit_report, resolution, spacing_comparison
+    def field_context(self, item):
+        import re
+        from .discovery import field_identity, field_references, public_unit
+
+        index,fid,field=item
+        if fid in self.contexts:
+            return self.contexts[fid]
+        source=fid.partition(".")[0]
+        row=self.scan["rows"][index]
+        quantity,basis=field_identity(row,field)
+        declarations={key:field[key] for key in ("standard_name","physical_variable","long_name","var_desc","metadata_role")
+                      if field.get(key)}
+        pattern=re.compile(r"(?<!\w)"+re.escape(field["name"])+r"(?!\w)",re.I)
+        snippets=[]
+        for document in self.documents:
+            linked=source in document.get("source_ids",[])
+            if not linked and document.get("scope")!="project_context":
+                continue
+            text=document["text"]
+            if match:=pattern.search(text):
+                start=text.rfind("\n",max(0,match.start()-120),match.start())
+                end=text.find("\n",match.end(),match.end()+180)
+                snippets.append(dict(document=document["id"],source_linked=linked,
+                    text=text[start+1 if start!=-1 else max(0,match.start()-120):end if end!=-1 else match.end()+180].strip()))
+        snippets=sorted(snippets,key=lambda record:not record["source_linked"])[:4]
+        self.contexts[fid]=dict(field=fid,format=row["format"],name=field["name"],datatype=field["type"],
+                                unit=public_unit(field["unit"]),physical_quantity=quantity,
+                                identity_basis=basis,coordinate_reference=row.get("coordinate_reference"),
+                                declarations=declarations,engineering_mentions=snippets,
+                                source_role=self.scan.get("candidate_native_roles",{}).get(row["name"]),
+                                **field_references(field,fid))
+        return self.contexts[fid]
+
+    def inspect(self,pair,check,quantity=None):
+        from .discovery import field_identity, field_references, overlap, pair_units, public_unit_report, resolution, spacing_comparison
 
         left,right,_=pair
         rows=[self.scan["rows"][item[0]] for item in (left,right)]
         fields=[left[2],right[2]]
+        if check=="preprocessing_plan":
+            from .statistical_preprocessing import prepare,PlanError
+            plan=self.preprocessing_plans.get(tuple(sorted([left[1],right[1]])))
+            if not plan:
+                return dict(status="unavailable",basis="preprocessing_plan_missing")
+            try:
+                task=prepare(self.scan,plan,[left[1],right[1]],self.documents)
+            except PlanError as error:
+                return dict(status="unavailable",basis="preprocessing_evidence_missing",reason=str(error))
+            except EcoDataError:
+                return dict(status="unavailable",basis="preprocessing_evidence_missing",
+                            reason="原版单位或时间引擎未认可换算条件，请核实单位维度、完整区间及统计方法")
+            return dict(status="checked",basis="statistical_preprocessing_verified",plan=task["plan"],
+                        methods=task["recipe_steps"][0],output_records=[len(frame) for frame in task["frames"]])
+        if check=="annual_mean_comparison":
+            from .annual_output_check import compare
+            return compare(rows,fields)
+        if check=="field_context":
+            return dict(status="checked",basis="local_field_context",
+                        sources=[self.field_context(item) for item in (left,right)])
         if check=="numeric_samples":
             sources=[self.field_question(item) for item in (left,right)]
             return dict(status="checked" if any(source["status"]=="checked" for source in sources) else "unavailable",
@@ -115,16 +176,19 @@ class LocalChecks:
             return dict(status="checked" if relationship!="unknown" else "unavailable",
                         relationship=relationship, sampling_interval_seconds=durations,
                         coverage_basis=[row.get("time_coverage",(0,0,"unknown"))[2] for row in rows])
-        units=pair_units(rows[0],fields[0],rows[1],fields[1])
+        units=pair_units(rows[0],fields[0],rows[1],fields[1],quantity)
         grids=[resolution(row)[1] for row in rows]
         if check=="metadata":
             safe=public_unit_report(units)
             metadata=[]
-            for row,field in zip(rows,fields):
+            for row,field,item in zip(rows,fields,(left,right)):
                 keys=("standard_name","physical_variable","long_name","var_desc","temporal_semantics","dimensions","shape")
                 detail={k:field[k] for k in keys if field.get(k)}
+                detail.update(field_references(field,item[1]))
                 detail["variable_name"]=field["name"]
                 detail["unit"]=field["unit"]
+                if field.get("soil_depth"):
+                    detail["soil_depth"]=field["soil_depth"]
                 if row.get("header_only") and row["format"]=="NetCDF":
                     try:
                         with self.dataset(row) as dataset:
@@ -135,8 +199,13 @@ class LocalChecks:
                     except (OSError,ValueError,RuntimeError,ImportError,KeyError):
                         pass
                 metadata.append(detail)
-            return dict(status="checked", unit_status=safe["status"], metadata=metadata,
+            depth={}
+            if any(field.get("soil_depth") for field in fields):
+                from .soil_depth import compare
+                depth["soil_depth_comparison"]=compare(*(field.get("soil_depth") for field in fields))
+            return dict(status="checked", unit_status=safe["status"], metadata=metadata,**depth,
                         field_identity_basis=[field_identity(row,field)[1] for row,field in zip(rows,fields)],
+                        mapping_basis=units.get("identity_basis","local_metadata"),
                         grid_spacing=spacing_comparison(*grids),
                         grid_roles=[row.get("ioapi_grid_role") for row in rows])
         if check=="data_quality" and any(row["format"]!="NetCDF" for row in rows):
@@ -150,7 +219,25 @@ class LocalChecks:
             return dict(status="checked" if any(row["sampled"]>=MIN_SAMPLES for row in stats) else "unavailable",
                         basis="numeric_field_sample",sources=stats)
         if any(row["format"]!="NetCDF" for row in rows):
-            return dict(status="unavailable",basis="position_verification_needs_supported_coordinates")
+            from .station_grid import EXACT, NEAREST, load, task_for
+            if units["status"] not in {"equivalent","convertible"}:
+                return dict(status="unavailable",basis="physical_quantity_or_unit_unconfirmed")
+            task=task_for(self.scan,pair,"compare_station_grid",units)
+            if task is None:
+                return dict(status="unavailable",basis="position_verification_needs_supported_coordinates")
+            key=tuple(item[1] for item in (left,right)),units["quantity"]
+            if key not in self.station_matches:
+                self.station_matches[key]=load(self.scan,task)
+            frames=self.station_matches[key]
+            if check=="spatial_coverage":
+                return dict(status="checked",relationship="overlap",basis="station_points_inside_native_grid")
+            frame=frames[EXACT] if len(frames[EXACT])>=MIN_SAMPLES else frames[NEAREST]
+            if len(frame)<MIN_SAMPLES:
+                return dict(status="unavailable",basis="too_few_matching_sample_locations")
+            residual=frame.background-frame.observed
+            return dict(status="checked",basis="station_grid_collocation",sampled_pairs=len(frame),
+                        rmse=round(float((residual.pow(2).mean())**.5),3),
+                        mae=round(float(residual.abs().mean()),3))
         for item,row in zip((left,right),rows):
             if item[1] not in self.fields:
                 with self.dataset(row) as dataset:

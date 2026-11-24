@@ -8,10 +8,16 @@ def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, requ
     from ecodata.models.source_catalog import partition_uploads
     import hashlib,zipfile
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    from ecodata.models.input_context import augment
+    uploads,saved_context=augment(uploads,model_id,progress)
     active,roles=partition_uploads(uploads,folder)
     from ecodata.models.archive_inputs import normalize_archives
     active,intake=normalize_archives(active,folder)
     result=_prepare_uploads(active,model_id,folder,progress,task=task,request_builder=request_builder)
+    if saved_context:
+        result['manifest']['saved_input_context']=saved_context
+        with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('_ecodata/saved_input_context.json',json.dumps(saved_context,ensure_ascii=False,indent=2))
     if intake:
         with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
             archive.write(folder/'archive_intake.json','_ecodata/archive_intake.json')
@@ -23,6 +29,10 @@ def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, requ
             if name in archive.namelist():raise ValueError('输入角色核验路径冲突，未覆盖已有产物')
             archive.writestr(name,raw)
         result['input_roles']=roles
+    from ecodata.models.final_check import attach_final_check
+    if progress:progress('最终检查：核对原生格式、工程引用与版本，调用已登记程序进行有界试读')
+    final=attach_final_check(result,model_id,folder/'final_check')
+    if progress:progress('最终检查已记录；格式 '+final['format']['status']+'，工程 '+final['project']['status']+'，模型试读 '+final['native']['status'])
     return result
 
 

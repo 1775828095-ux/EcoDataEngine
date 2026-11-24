@@ -4,6 +4,7 @@ import json
 import re
 
 from ecodata.models.scientific_schema import compare_units, identity
+from ecodata.core.exceptions import EcoDataError
 from .scan import assert_current, kind
 from .engineering_excerpt import associate_documents
 from .service import field_type, prepare
@@ -35,7 +36,7 @@ def resolution(row):
     return interval,(x,y) if x and y else axes.get("pixel")
 
 # Public model input roles, from the teammate's preparation profiles.
-MODELS={"swat_plus":"SWAT+","wrf":"WRF","cmaq":"CMAQ","camx":"CAMx","calpuff":"CALPUFF"}
+MODELS={"data_only":"仅数据处理（融合/对齐，不生成模型工程）","swat_plus":"SWAT+","wrf":"WRF","cmaq":"CMAQ","camx":"CAMx","calpuff":"CALPUFF"}
 MODEL_USES={
     "swat_plus":{"precipitation":"气象驱动：降水","air_temperature":"气象驱动：气温"},
     "wrf":{"air_temperature":"气象分析或初始及边界资料：气温，具体类别待核验"},
@@ -73,7 +74,7 @@ def field_identity(row, field):
     return None, None
 
 
-def pair_units(ar, a, br, b):
+def pair_units(ar, a, br, b, inferred_quantity=None):
     qa, ba = field_identity(ar,a)
     qb, bb = field_identity(br,b)
     trusted={"standard_name","physical_variable","long_name","verified_ioapi_var_desc","declared_observation_schema"}
@@ -81,6 +82,9 @@ def pair_units(ar, a, br, b):
         return compare_units(qa,a["unit"],qb,b["unit"])
     if qa and qb and qa!=qb and {ba,bb}<=trusted:
         return dict(compare_units(qa,a["unit"],qb,b["unit"]),status="quantity_conflict")
+    if inferred_quantity:
+        return dict(compare_units(inferred_quantity,a["unit"],inferred_quantity,b["unit"]),
+                    identity_basis="deepseek")
     # An explicitly trusted product audit may independently establish identity later.
     return compare_units(None,a["unit"],None,b["unit"])
 
@@ -194,6 +198,20 @@ def model_field_matches(row, model_id, model_roles):
     return dict(matches)
 
 
+def field_references(field,fid):
+    if not field.get("variable_references"):
+        return {}
+    source=fid.partition(".")[0]
+    def described(edge):
+        record={key:value for key,value in edge.items() if key not in {"field_index","target_references"}}
+        if index:=edge.get("field_index"):
+            record["field_id"]=f"{source}.F{index}"
+        if children:=edge.get("target_references"):
+            record["target_references"]=[described(child) for child in children]
+        return record
+    return {"variable_references":[described(edge) for edge in field["variable_references"]]}
+
+
 def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
     family=physical(field)
     roles=[ROLE_LABELS[r] for r in row["roles"] if r in ROLE_LABELS]
@@ -210,9 +228,14 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
                 standard_name=field.get("standard_name") or None, physical_variable=field.get("physical_variable") or None,
                 long_name=field.get("long_name") or None, var_desc=field.get("var_desc") or None,
                 temporal_semantics=field.get("temporal_semantics") or None,
+                **({"time_cell_methods":field["time_cell_methods"],"time_cell_methods_basis":"CF cell_methods"}
+                   if field.get("time_cell_methods") else {}),
                 source_column=field.get("source_column"),
                 dimensions=field.get("dimensions"), shape=field.get("shape"), sheet=field.get("sheet"), axis=field["axis"],
                 raw_companion=field.get("raw_companion",False),
+                **({"metadata_role":field["metadata_role"]} if field.get("metadata_role") else {}),
+                **({"soil_depth":field["soil_depth"]} if field.get("soil_depth") else {}),
+                **field_references(field,fid),
                 physical_meaning=metadata[1] if metadata else ("叶面积与地面积之比" if family=="leaf_area_index" else None),
                 description_source="I/O API var_desc" if metadata else None,
                 grid_role=role,
@@ -227,11 +250,13 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
                 candidate_model_input=("；".join(model_matches) if model_matches else
                     MODEL_USES.get(model_id,{}).get(family,"目标模型输入类别待确认")),
                 model_input_match_basis="原版模型画像与字段单位匹配" if model_matches else None,
-                time_resolution_class=time_class(t),
+                time_resolution_class=row.get("declared_output_period") or time_class(t),
+                **({"declared_output_period":row["declared_output_period"]} if row.get("declared_output_period") else {}),
                 sampling_interval_seconds=t, time_cell_duration_seconds=row.get("time_cell_seconds"), declared_time_resolution=row.get("declared_time_resolution"), grid_interval=grid,
                 time_spacing_evidence=(
                     "P1D_declaration_and_single_cell_bounds" if t and not row["resolution"].get("time_seconds")
-                    else row.get("time_spacing_basis", "table_sample" if row["format"] in {"CSV","TSV"} else "coordinate_sample") if t else "unknown"),
+                    else row.get("time_spacing_basis", "table_sample" if row["format"] in {"CSV","TSV"} else "coordinate_sample")
+                    if t or row.get("declared_output_period") else "unknown"),
                 time_coverage_evidence=row.get("time_coverage",(None,None,"unknown"))[2],
                 grid_spacing_evidence=row.get("grid_spacing_basis","coordinate_or_raster_metadata") if g else "unknown",
                 declared_coverage_duration_seconds=(row["time_coverage"][1]-row["time_coverage"][0]
@@ -245,11 +270,18 @@ TASK_GOALS={
 }
 
 def discover(scan, model_id=None, task_goal="auto"):
+    if scan.get("shallow"):
+        return dict(stage="decision",catalog_first=True,
+                    target_model=dict(id=model_id,name=MODELS[model_id]) if model_id in MODELS else None,
+                    sources=[],candidates=[],engineering_documents=[],engineering_inventory=[],
+                    inspection_mode='on_demand_tools' if scan.get('on_demand') else 'legacy_shallow',
+                    initial_directory=scan.get('initial_directory'),
+                    **({'task_goal':task_goal} if task_goal in TASK_GOALS else {})), {}
     from .native_dispatch import inspect
     native=inspect(scan,model_id)
     native_roles={claim["file"]:claim["role"] for claim in native.get("claims",[])}
     model_roles=[]
-    if model_id in MODELS:
+    if model_id in MODELS and model_id!='data_only':
         from ecodata.algorithms.profile_matching import model_table
         model_roles=[role for role in model_table(model_id)["roles"] if not role["record_only"]]
     from .research_dispatch import discover as research_tasks
@@ -270,7 +302,12 @@ def discover(scan, model_id=None, task_goal="auto"):
         sources.append(dict(id=source,format=row["format"],fields=fields,
                             dimensions=row.get("dimensions"),roles=row["roles"],
                             engineering_reference=bool(row["evidence"]),
-                            time_coverage=coarse_time_coverage(row)))
+                            **({"coordinate_reference":row["coordinate_reference"]} if row.get("coordinate_reference") else {}),
+                            time_coverage=coarse_time_coverage(row),
+                            **({"declared_output_print_period":row["declared_output_print_period"]}
+                               if row.get("declared_output_print_period") else {})))
+        if row.get("single_average_annual_window"):
+            sources[-1]["single_average_annual_window"]=True
     docs,document_refs=associate_documents(scan,{int(source["id"][1:]):source["id"] for source in sources})
     for source in sources:
         source["engineering_documents"]=document_refs.get(source["id"],[])
@@ -279,6 +316,7 @@ def discover(scan, model_id=None, task_goal="auto"):
         stage="decision", catalog_first=True,
         **({"task_goal":task_goal} if task_goal in TASK_GOALS else {}),
         target_model=dict(id=model_id,name=MODELS[model_id]) if model_id in MODELS else None,
+        saved_input_context=scan.get('saved_input_context'),
         sources=sources,candidates=[],engineering_documents=docs,
         project_context_document_ids=[d["id"] for d in docs if d["scope"]=="project_context"],
         engineering_inventory=[dict(id=f"M{i}",kind=row["format"],nested_archive=bool(kind(row["name"])),
@@ -292,11 +330,17 @@ def coarse_time_coverage(row):
     span=row.get("time_coverage")
     if not span:
         return None
+    calendar=span[3] if len(span)>3 else "gregorian"
     try:
-        months=[datetime.fromtimestamp(value,timezone.utc).strftime("%Y-%m") for value in span[:2]]
-    except (ValueError,OverflowError,OSError):
-        return dict(basis=span[2])
-    return dict(start_month=months[0],end_month=months[1],basis=span[2])
+        if calendar in {"gregorian","proleptic_gregorian"}:
+            dates=[datetime.fromtimestamp(value,timezone.utc) for value in span[:2]]
+        else:
+            from netCDF4 import num2date
+            dates=num2date(span[:2],"seconds since 1970-01-01",calendar=calendar)
+        months=[f"{date.year:04d}-{date.month:02d}" for date in dates]
+    except (ValueError,OverflowError,OSError,ImportError):
+        return dict(basis=span[2],calendar=calendar)
+    return dict(start_month=months[0],end_month=months[1],basis=span[2],calendar=calendar)
 
 
 def describe_pair(scan,cid,left,right,model_id,details):
@@ -307,12 +351,19 @@ def describe_pair(scan,cid,left,right,model_id,details):
     t2,g2=resolution(br)
     time_spacing=spacing_comparison(t1,t2)
     grid_spacing=spacing_comparison(g1,g2)
-    actions=["fusion"]
-    if time_spacing=="different":
+    from .station_grid import eligible
+    actions=["fusion","convert_units","convert_format","preprocess"]
+    if eligible(ar,a,br) or eligible(br,b,ar):
+        actions.extend(("compare_station_grid","align_time","align_space"))
+    if time_spacing=="different" and "align_time" not in actions:
         actions.append("align_time")
-    if grid_spacing=="different" or (g1 and g2 and grid_spacing in {"unknown","not_comparable"}):
+    if "align_space" not in actions and (grid_spacing=="different" or (g1 and g2 and grid_spacing in {"unknown","not_comparable"})):
         actions.append("align_space")
     unit_check=pair_units(ar,a,br,b)
+    soil={}
+    if a.get("soil_depth") or b.get("soil_depth"):
+        from .soil_depth import compare
+        soil["soil_depth_comparison"]=compare(a.get("soil_depth"),b.get("soil_depth"))
     pair=dict(id=cid,fields=[af,bf],possible_actions=actions,target_model=MODELS.get(model_id),
               pair_details=[dict(details[af],source="A"),dict(details[bf],source="B")],
               resolution_comparison=dict(time_spacing=time_spacing,grid_spacing=grid_spacing,
@@ -320,7 +371,7 @@ def describe_pair(scan,cid,left,right,model_id,details):
               relative_spacing=dict(time=relative_spacing(t1,t2),grid=relative_spacing(g1,g2)),
               match_basis="deepseek_catalog",roles=[ar["roles"],br["roles"]],
               engineering_reference=bool(ar["evidence"] or br["evidence"]),
-              unit_check=public_unit_report(unit_check),units_equal=unit_check["status"]=="equivalent")
+              unit_check=public_unit_report(unit_check),units_equal=unit_check["status"]=="equivalent",**soil)
     return pair,(left,right,actions)
 
 def local_overview(scan,candidates):
@@ -332,7 +383,10 @@ def local_overview(scan,candidates):
                 candidate_scan_limit=scan.get("candidate_scan_limit",False),
                 local_field_inventory=[dict(file=r["name"],format=r["format"],total_fields=len(r["fields"]),
                     resolution=r["resolution"],pending=r["pending"],roles=r["roles"],
-                    fields=[dict(name=f.get("original_header",f["name"]),type=f["type"],unit=f["unit"]) for f in r["fields"]])
+                    fields=[dict(name=f.get("original_header",f["name"]),type=f["type"],unit=f["unit"],
+                                **({"soil_depth":f["soil_depth"]} if f.get("soil_depth") else {}),
+                                **({"variable_references":f["variable_references"]} if f.get("variable_references") else {}))
+                            for f in r["fields"]])
                     for r in scan["rows"] if r["fields"] or r["pending"]],
                 candidates=[dict(id=k,actions=actions,fields=[
                     dict(file=scan["rows"][i]["name"],field=f["name"],unit=f["unit"],
@@ -373,7 +427,7 @@ def audit_precipitation(scan,row,field,raw,dataset):
                 pass
     return dict(product=audit["product"],**detail)
 
-def check(scan,candidates,reply,approved_summary):
+def check(scan,candidates,reply,approved_summary,*,station_matches=None):
     from .scan import read_selected
     from ecodata.recognition import recognise_file
     assert_current(scan)
@@ -401,21 +455,68 @@ def check(scan,candidates,reply,approved_summary):
     model_id=target.get("id") if isinstance(target,dict) else None
     task_goal=approved_summary.get("task_goal","auto")
     from .reference_search import plan as reference_plan
-    proposals=reply.get("decisions",[])
+    proposals=list(reply.get("decisions",[]))
+    if task_goal=='evaluate_gain':
+        # A QA suggestion is a prerequisite, not a replacement for the explicit
+        # user task. No algorithm, score or winner is introduced here.
+        for cid in sorted(allowed.keys() & candidates.keys()):
+            related=[row for row in proposals if row.get('candidate')==cid]
+            if related and any(row.get('action')=='quality_screen' for row in related) and not any(
+                row.get('action') in {'fusion','insufficient','pending_goal','reject','direct'} for row in related):
+                proposals.append(dict(candidate=cid,action='insufficient',goal=task_goal,
+                    reason='显式用户目标仍需比较处理价值；质量筛查建议交给公共质量门，不能替代工程任务核验。'))
+    proposed_quantities={}
+    for proposal in proposals:
+        if quantity:=proposal.get("physical_quantity"):
+            proposed_quantities.setdefault(proposal["candidate"],set()).add(quantity)
     blocked={p["candidate"] for p in proposals if p["action"]=="reject"}
+    proposed_plans={proposal["candidate"]:proposal["preprocessing_plan"] for proposal in proposals
+                    if proposal.get("preprocessing_plan") and proposal["candidate"] not in blocked}
+    if proposed_plans:
+        from .statistical_preprocessing import prepare as prepare_statistics,references
+        approved_fields={field["id"] for source in approved_summary.get("sources",[]) for field in source["fields"]}
+        for cid,plan in proposed_plans.items():
+            if cid not in candidates or cid not in allowed:
+                continue
+            result=dict(candidate=cid,action="preprocess",status="条件不足",block_code="preprocessing_evidence_pending",
+                        next_step="recommendation_only")
+            results.append(result)
+            try:
+                if not references(plan)<=approved_fields:
+                    raise ValueError("换算依据引用了未审核的字段")
+                task=prepare_statistics(scan,plan,allowed[cid]["fields"],approved_summary.get("engineering_documents",[]))
+                prepared[(cid,"preprocess")]=task
+                result.update(status="通过",reason="已核实对象、完整统计窗口和换算依据，可执行时间聚合与单位换算组合。")
+                result.pop("next_step")
+            except (EcoDataError,ValueError,OSError,KeyError,TypeError,RuntimeError) as error:
+                result["reason"]=str(error)
     work=[]
     for proposal in proposals:
         cid,action=proposal["candidate"],proposal["action"]
-        if cid in blocked:
-            if action=="reject":
-                results.append(dict(candidate=cid,action=action,status="未核验",
-                                    reason="DeepSeek 明确反对处理"))
+        if action=="preprocess":
+            if cid not in proposed_plans:
+                results.append(dict(candidate=cid,action=action,status="条件不足",block_code="preprocessing_plan_missing",
+                                    next_step="recommendation_only",reason="需补齐具体的统计窗口、面积引用和换算步骤"))
+            continue
+        if action=="reject":
+            results.append(dict(candidate=cid,action=action,status="未核验",
+                                reason="DeepSeek 明确反对融合"))
+            continue
+        if cid in blocked and action=="fusion":
             continue
         if cid not in allowed or cid not in candidates:
+            continue
+        if action=='quality_screen':
+            results.append(dict(candidate=cid,action=action,status='待执行质量核验',next_step='runtime_quality_gate',
+                reason='质量筛查建议不是融合目标。若同一候选进入公共工程处理，将由原始输入和输出质量门实际检查；额外QA规则缺少实现或证据时仍拒绝执行。'))
             continue
         goal=task_goal if isinstance(task_goal,str) and task_goal in TASK_GOALS else proposal.get("goal","unknown")
         ready_reference = reference_plan(scan,candidates[cid],model_id)
 
+        if action=="pending_goal" and task_goal in TASK_GOALS:
+            # A declared user goal is separate from missing validation evidence.
+            # Continue the same unit/time/support checks as an insufficient proposal.
+            action="insufficient"
         if action=="pending_goal" and not ready_reference:
             results.append(dict(candidate=cid,action=action,status="待确认用途",
                                 reason="暂缺融合用途依据，继续本地核验候选的时间和空间对齐条件。"))
@@ -423,35 +524,47 @@ def check(scan,candidates,reply,approved_summary):
             results.append(dict(candidate=cid,action=action,status="无需新增处理",
                                 reason="DeepSeek 建议按当前任务目标分别使用。"))
             continue
-        allowed_actions={"align_space","align_time","fusion"}
+        allowed_actions={"align_space","align_time","fusion","compare_station_grid","convert_units","convert_format"}
         if action=="pending_goal" or (action=="insufficient" and goal not in TASK_GOALS):
-            allowed_actions={"align_space","align_time"}
+            allowed_actions={"align_space","align_time","compare_station_grid","convert_units","convert_format"}
             if ready_reference:
                 allowed_actions.add("fusion")
         if action in {"insufficient","pending_goal"}:
             approved_options=allowed[cid].get("possible_actions",[])
             if isinstance(approved_options,list):
                 work.extend((cid,option,action) for option in candidates[cid][2]
-                            if option in approved_options and option in allowed_actions)
+                            if option in approved_options and option in allowed_actions and option!="convert_format"
+                            and (option!="fusion" or cid not in blocked))
         elif action in allowed_actions:
             work.append((cid,action,action))
+            if action=="fusion" and "compare_station_grid" in candidates[cid][2]:
+                work.append((cid,"compare_station_grid",action))
         else:
             results.append(dict(candidate=cid,action=action,status="与任务目标不符",
                                 reason="逐格比较只需核验对齐。评估融合需明确补缺、订正或对比收益的目标。"))
     seen=set()
+    station_matches={} if station_matches is None else station_matches
     for cid,action,online_action in work:
         if (cid,action) in seen:
             continue
         seen.add((cid,action))
+        if (cid,"preprocess") in prepared and action in {"align_time","convert_units"}:
+            continue
         row=dict(candidate=cid,action=action,online_action=online_action,status="条件不足",block_code="scope")
         results.append(row)
+        if (cid,"preprocess") in prepared and action=="fusion":
+            row.update(block_code="preprocessing_first",next_step="recommendation_only",status="先执行已核实前处理",
+                       reason="可先执行统计窗口统一和换算，再依据对象空间支持与可用留出样本评估融合。")
+            continue
         approved=allowed.get(cid,{})
         actions=approved.get("possible_actions",[])
-        if cid not in candidates or not isinstance(actions,list) or action not in actions:
+        delegated=(isinstance(actions,list) and action in {'fusion','align_space','align_time'} and task_goal in TASK_GOALS and
+            scan.get('native_model_probes',{}).get(model_id,{}).get('status')=='project' and 'fusion' in actions)
+        if cid not in candidates or not isinstance(actions,list) or (action not in actions and not delegated):
             row["reason"]="建议不在本地扫描且经审核的候选范围内"
             continue
         left,right,detected=candidates[cid]
-        if approved.get("fields")!=[left[1],right[1]] or action not in detected:
+        if approved.get("fields")!=[left[1],right[1]] or (action not in detected and not delegated):
             row["reason"]="建议的字段或操作与本地候选不符"
             continue
         ai,_,a=left
@@ -461,13 +574,16 @@ def check(scan,candidates,reply,approved_summary):
         if a["axis"] or b["axis"]:
             row.update(block_code="coordinate_field",reason="坐标轴可用于对齐，不能作为待融合的观测变量")
             continue
-        unit_check=pair_units(ar,a,br,b)
+        guesses=proposed_quantities.get(cid,set())
+        inferred=next(iter(guesses)) if len(guesses)==1 else None
+        unit_check=pair_units(ar,a,br,b,inferred)
         _,basis_a=field_identity(ar,a)
         _,basis_b=field_identity(br,b)
         same_quantity=bool(unit_check["quantity"])
         row["unit_check"]=unit_check
-        row["physical_identity"]=dict(left_basis=basis_a,right_basis=basis_b,match=same_quantity)
-        if unit_check["status"] not in {"equivalent","convertible","physical_identity_unconfirmed"}:
+        row["physical_identity"]=dict(left_basis=basis_a,right_basis=basis_b,match=same_quantity,
+                                      mapping_basis=unit_check.get("identity_basis","local_metadata"))
+        if action!="convert_format" and unit_check["status"] not in {"equivalent","convertible","physical_identity_unconfirmed"}:
             row["block_code"]={"quantity_conflict":"quantity_conflict","unit_not_convertible":"unit_conflict"}.get(
                 unit_check["status"],"unit_unknown")
             row["reason"]=("两份元数据明确声明了不同物理量" if row["block_code"]=="quantity_conflict"
@@ -478,6 +594,35 @@ def check(scan,candidates,reply,approved_summary):
             row["reason"]="I/O API 边界和内部字段承担不同模型角色。只有经工程确认来源及角色后才能拿来比较或融合。"
             continue
         try:
+            if delegated:
+                prepared[(cid,action)]=dict(action=action,route='original_engineering',fields=[(ai,a['name']),(bi,b['name'])])
+                row.update(status='待工程核验',next_step='original_workbench',reason='已识别实际工程控制与同物理量候选；交由公共工程输入端口服务核验日界、依赖、拟合隔离及真实数值效果。此状态不是融合或质量PASS。')
+                continue
+            if action in {"convert_units","convert_format"}:
+                from .pair_processing import conversion_task
+                if action=="convert_units" and unit_check["status"] not in {"convertible","equivalent"}:
+                    row["block_code"]="quantity_unknown"
+                    raise ValueError("还需确定可共同换算的物理量和单位")
+                if action=="convert_units" and unit_check["status"]=="equivalent":
+                    results.pop()
+                    continue
+                task=conversion_task(scan,[(ai,a),(bi,b)],action,unit_check)
+                prepared[(cid,action)]=task
+                row.update(status="通过",reason="可独立转换字段并回读核对，供后续配对和融合使用。")
+                continue
+            if "compare_station_grid" in detected and action in {"compare_station_grid","align_time","align_space","fusion"}:
+                from .station_grid import load, plan, task_for
+                if unit_check["status"] not in {"equivalent","convertible"}:
+                    row["block_code"]="quantity_unknown"
+                    raise ValueError("请识别共同物理量并检查单位后进行站点配对")
+                task=task_for(scan,(left,right),action,unit_check)
+                evidence_key=tuple(item[1] for item in (left,right)),unit_check["quantity"]
+                if evidence_key not in station_matches:
+                    station_matches[evidence_key]=load(scan,task)
+                task["recipe_steps"]=plan(station_matches[evidence_key],action)
+                prepared[(cid,action)]=task
+                row.update(status="通过",reason="原始站点与网格时空配对通过。可运行已登记的组合。")
+                continue
             if physical(a)==physical(b)=="precipitation":
                 read_for_check(ai,a)
                 read_for_check(bi,b)
@@ -539,7 +684,8 @@ def check(scan,candidates,reply,approved_summary):
                 if not ("observations" in ar["roles"] and "background" in br["roles"] or
                         "observations" in br["roles"] and "background" in ar["roles"]):
                     task=dict(action=action,route="pair_processing",fields=[(ai,a["name"]),(bi,b["name"])],
-                        quantity=unit_check["quantity"],unit=unit_check["target_unit"])
+                        quantity=unit_check["quantity"],unit=unit_check["target_unit"],
+                        identity_basis=unit_check.get("identity_basis"),field_metadata=[a,b])
                     task["methods"]=pair_processing.methods([read_for_check(ai,a),read_for_check(bi,b)],task)
                     prepared[(cid,action)]=task
                     row.update(status="通过",next_step="alignment_then_fusion",
@@ -567,7 +713,8 @@ def check(scan,candidates,reply,approved_summary):
                     raise ValueError("核验输入超过 64 MiB，请准备字段子集")
                 from .pair_processing import methods
                 task=dict(action=action,route="pair_processing",fields=[(ai,a["name"]),(bi,b["name"])],
-                    quantity=unit_check["quantity"],unit=unit_check["target_unit"])
+                    quantity=unit_check["quantity"],unit=unit_check["target_unit"],
+                        identity_basis=unit_check.get("identity_basis"),field_metadata=[a,b])
                 task["methods"]=methods([read_for_check(ai,a),read_for_check(bi,b)],task)
                 prepared[(cid,action)]=task
                 detail=("时间重采样采用共同覆盖内较粗的原始采样间隔。" if action=="align_time" else
@@ -577,7 +724,33 @@ def check(scan,candidates,reply,approved_summary):
         except Exception as exc:
             row["reason"]=str(exc)
     assert_current(scan)
+    target=approved_summary.get('task_requirements',{}).get('target_grid')
+    if target:
+        from ecodata.spatial.regridding import target_grid_spec
+        target=target_grid_spec(target)
+        for key,task in prepared.items():
+            if task.get('route') not in {'independent_grid_search','independent_alignment'}:
+                for row in results:
+                    if (row.get('candidate'),row.get('action'))==key:
+                        row.update(status='条件不足',next_step=None,block_code='target_grid_unsupported',reason='此任务适配器尚未消费目标网格硬约束，不能按默认网格继续')
+            else:
+                task['target_grid']=target
+                for row in results:
+                    if (row.get('candidate'),row.get('action'))==key:
+                        row['target_grid']=target
+                        row['reason']='已声明目标网格硬约束：纬向 '+str(target['latitude_step'])+'°、经向 '+str(target['longitude_step'])+'°；仅在共同覆盖内执行，所有候选先生成目标网格再评价，不按默认粗网格交付。原始粗参考只能验证回聚合代理误差，不能证明细节准确。'
     return results,prepared
+
+
+def deferred_quality_check(row,rows):
+    """A pending QA obligation is safe to defer only to a bound checked route."""
+    return (row.get('action')=='quality_screen' and row.get('next_step')=='runtime_quality_gate'
+        and any(other.get('candidate')==row.get('candidate') and other.get('next_step')=='original_workbench' for other in rows))
+
+
+def blocking_checks(rows):
+    return [row for row in rows if row.get('status')!='通过' and row.get('next_step')!='original_workbench'
+        and not deferred_quality_check(row,rows)]
 
 def parse_decisions(raw):
     rows=raw.get("decisions")
@@ -587,12 +760,21 @@ def parse_decisions(raw):
         if not isinstance(item,dict): continue
         candidate,action=item.get("candidate"),item.get("action")
         if not isinstance(candidate,str) or not re.fullmatch(r"C[1-9]\d*",candidate): continue
-        if action not in ("fusion","align_time","align_space","direct","insufficient","reject","pending_goal"): continue
+        if action not in ("fusion","align_time","align_space","compare_station_grid","convert_units","convert_format","preprocess","quality_screen","direct","insufficient","reject","pending_goal"): continue
         goal=item.get("goal")
         if not isinstance(goal,str) or goal not in TASK_GOALS or goal=="auto":
             goal="unknown"
-        out.append(dict(candidate=candidate,action=action,goal=goal,
-                        reason=str(item.get("reason",""))[:1000]))
+        quantity=item.get("physical_quantity")
+        if not isinstance(quantity,str) or not re.fullmatch(r"[a-z][a-z0-9_]{1,71}",quantity) or quantity in {"unknown","uncertain"}:
+            quantity=None
+        steps=item.get("algorithm_steps",[])
+        steps=[list(group) for group in steps if isinstance(group,list) and group and
+               all(isinstance(step,str) and len(step)<=100 for step in group)] if isinstance(steps,list) else []
+        from .statistical_preprocessing import parse_plan
+        plan=parse_plan(item.get("preprocessing_plan"))
+        out.append(dict(candidate=candidate,action=action,goal=goal,physical_quantity=quantity,
+                        algorithm_steps=steps,algorithm_name=str(item.get("algorithm_name",""))[:100],
+                        reason=str(item.get("reason",""))[:1000],**({"preprocessing_plan":plan} if plan else {})))
     return out
 
 

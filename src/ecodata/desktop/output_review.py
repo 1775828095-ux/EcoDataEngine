@@ -15,8 +15,8 @@ METHODS = {
 FORMATS = {
     ".nc": "NetCDF", ".nc4": "NetCDF", ".csv": "CSV", ".tsv": "TSV", ".xlsx": "Excel",
     ".xls": "Excel", ".tif": "GeoTIFF", ".tiff": "GeoTIFF", ".parquet": "Parquet",
-    ".json": "JSON", ".geojson": "GeoJSON", ".txt": "文本", ".pcp": "SWAT 降水",
-    ".cli": "SWAT 气象索引", ".dat": "模型数据", ".in": "模型配置", ".inp": "模型输入",
+    ".json": "JSON", ".geojson": "GeoJSON", ".txt": "文本", ".pcp": "SWAT+ 降水文本（.pcp）",
+    ".cli": "SWAT+ 气象索引（.cli）", ".dat": "模型数据（具体编码待原生核验）", ".in": "模型配置", ".inp": "模型输入",
 }
 PUBLIC_AXES = {
     "time": "时间", "tstep": "时间", "lat": "纬度", "lon": "经度",
@@ -52,6 +52,8 @@ def searches(result):
 
 
 def conversion_reason(result, output, axes):
+    if result.get('manifest',{}).get('native_writeback_verified') and result.get('manifest',{}).get('changes'):
+        return f'已将处理结果写回工程副本的{output}；原始文件保留。实际格式和模型试读分别核验。'
     mode = result.get("mode")
     if mode in {"independent_grid_search", "independent_alignment"}:
         return ("将降水率按经核验的 UTC 日区间积分成日累计量，再保守对齐到共同网格。"
@@ -77,6 +79,58 @@ def conversion_reason(result, output, axes):
     return "按目标流程交付已生成的文件，具体可用性见输出包检查。"
 
 
+def format_conversion(result):
+    """Explain actual written products; a ZIP container is not a data encoding."""
+    manifest=result.get('manifest',{})
+    changes={r['path'] for r in manifest.get('changes',[]) if r.get('path')}
+    source=list(dict.fromkeys(f for f in result.get('source_formats',[]) if f not in {'ZIP','TGZ','TAR','JSON','Markdown'}))
+    rows=[];seen=set()
+    for task in manifest.get('preparation',{}).get('tasks',[]):
+        port=task.get('port',{});target=port.get('resource')
+        if target not in changes:continue
+        for origin in task.get('sources',[]):
+            name=origin.get('resource')
+            if not name:continue
+            before=FORMATS.get(PurePosixPath(name).suffix.lower(),'编码待确认')
+            after=FORMATS.get(PurePosixPath(target).suffix.lower(),'编码待确认')
+            key=(name,target)
+            if key in seen:continue
+            seen.add(key)
+            rows.append(dict(source=name,source_format=before,target=target,target_format=after,
+                status='SAME_FORMAT_CONTENT_UPDATED' if before==after else 'CONVERTED' if '编码待确认' not in (before,after) else 'UNCONFIRMED',
+                basis='已写回changes及实际任务来源；格式标签来自文件后缀，精确原生结构另见最终检查'))
+    targets=list(dict.fromkeys(FORMATS.get(PurePosixPath(r['name']).suffix.lower(),'编码待确认')
+                 for r in result.get('local',{}).get('artifacts',[]) if r.get('name')))
+    if not targets:targets=list(dict.fromkeys(r['target_format'] for r in rows))
+    if not targets:targets=list(dict.fromkeys(FORMATS.get(PurePosixPath(n).suffix.lower(),'编码待确认') for n in changes))
+    # A validated source format list is preferable to guessing from a ZIP name.
+    input_formats=source
+    if rows:source=list(dict.fromkeys(r['source_format'] for r in rows))
+    explicit=result.get('target_format')
+    if not targets and explicit and explicit not in {'ZIP','原版工程交付包','模型专用产物'}:targets=[explicit]
+    return dict(schema='ecodata.format-conversion.v1',source_formats=source,input_document_formats=input_formats,target_formats=targets,files=rows,changed_files=sorted(changes),
+        scientific_status=manifest.get('final_check',{}).get('scientific_definitions',{}).get('status'),
+        written_files_without_source_mapping=sorted(changes-{r['target'] for r in rows}),
+        native_writeback_verified=manifest.get('native_writeback_verified'),delivery_container='ZIP',
+        scope='说明实际文件编码和写回，不代表模型已读入或融合精度提升')
+
+
+def conversion_text(report):
+    source='、'.join(report['source_formats']) or '未取得足够格式证据'
+    target='、'.join(report['target_formats']) or '未确认；不能仅凭ZIP认定原生格式'
+    lines=['格式与写回说明',f'原始数据格式：{source}',f'实际输出格式：{target}']
+    for before,after in dict.fromkeys((r['source_format'],r['target_format']) for r in report['files']):
+        lines.append(f'转换路径：{before} → {after}')
+    if report['source_formats'] and report['source_formats']==report['target_formats']:
+        lines.append('输入与输出格式相同；数据处理或内容更新不等于编码格式改变。')
+    if report['native_writeback_verified']:lines.append('已核验模型原生文件写回；模型实际试读状态另列。')
+    if report.get('scientific_status')=='WORKING_ASSUMPTIONS':lines.append('科学边界：采用明确的历史联调假设，不等于原始时间定义已证实或精度提升。')
+    if report['changed_files']:
+        lines.append(f"实际写回文件：{len(report['changed_files'])}个（完整路径见下载包中的格式转换记录）")
+    lines.append('ZIP是下载容器，不是模型数据格式。')
+    return '\n'.join(lines)
+
+
 def describe_output(result, profile):
     from ecodata.models.adaptation import field_requirements
 
@@ -99,13 +153,19 @@ def describe_output(result, profile):
             axes=public_axes, variable_count=len(row.get("fields", [])),
             has_ioapi_tflag="TFLAG" in row.get("fields", []), readback=True))
     direct = manifest.get("native_ready") is True or local.get("native_ready") is True
+    gate=manifest.get('final_check')
+    if gate:
+        direct=direct and all(gate.get(k,{}).get('status')=='PASS' for k in ('format','project')) and bool(gate.get('native',{}).get('model_read_confirmed'))
     source = list(dict.fromkeys(result.get("source_formats", [])))
-    output = result.get("target_format") or ("模型专用产物" if direct else "原版工程交付包")
+    format_report=format_conversion(result)
+    if format_report['source_formats']:source=format_report['source_formats']
+    output = result.get("target_format") or (' / '.join(format_report['target_formats']) if format_report['target_formats'] else "模型专用产物" if direct else "原版工程交付包")
     fields = {k.casefold() for row in artifact_rows for k in row.get("fields", [])}
     blocks = []
     profile = profile or {}
     role_specs = profile.get("preparation_scenario", {}).get("inputs") or profile.get("inputs", [])
-    for role in role_specs:
+    component_only=manifest.get('status')=='COMPONENT_EXPORTED'
+    for role in ([] if component_only else role_specs):
         if not role.get("required"):
             continue
         required = [f for f in field_requirements(role) if f.get("required", True)]
@@ -116,6 +176,9 @@ def describe_output(result, profile):
                            missing=missing, structure_needs_check=not required or not artifact_rows))
     local_notes = [f"{item['task']} 处理失败：{item['reason']}"
                    for item in result.get("failed_tasks",[])]
+    if gate:
+        local_notes.extend('最终格式检查：'+str(e) for e in gate.get('format',{}).get('errors',[])[:10])
+        local_notes.extend('最终工程检查：'+str(e) for e in gate.get('project',{}).get('validation',{}).get('errors',[])[:10])
     if not direct:
         preparation = manifest.get("preparation", {})
         admission = preparation.get("source_admission", {})
@@ -126,6 +189,9 @@ def describe_output(result, profile):
         match = local.get("model_input") or {}
         local_notes.extend(map(str, match.get("whole_model_missing", [])))
     return dict(model=(profile or {}).get("id"), native_ready=direct, zip_readable=True,
+                component_only=component_only,
+                format_conversion=format_report,
+                final_check=manifest.get('final_check'),
                 files=output_files, archive_formats=archive_counts, source_formats=source, target_format=output,
                 requirements=blocks, notes=list(dict.fromkeys(local_notes)),
                 conversion_reason=conversion_reason(result, output, axes))
@@ -138,7 +204,7 @@ def cards(result, check):
 
     items = []
     for task, search in searches(result).items():
-        proxy = search["evidence"].get("reference_basis") == "PRIMARY_GRID_RECONSTRUCTION_PROXY"
+        proxy = search["evidence"].get("reference_basis") in {'PRIMARY_GRID_RECONSTRUCTION_PROXY','REDUCED_SCALE_PRODUCT_RECONSTRUCTION','COARSE_PRODUCT_RECONSTRUCTION_ONLY'}
         for row in search["rankings"]:
             methods = row.get("steps") or [row["algorithm"]]
             labels = [METHODS.get(op, (op, ""))[0] for op in methods]
@@ -155,6 +221,22 @@ def cards(result, check):
                                 if name in {"power", "weight"} and isinstance(value, (int, float)))
             audit = []
             if row["selected"]:
+                evidence=search['evidence'];protocol=evidence.get('evaluation_protocol') or {}
+                if protocol.get('mode')=='REDUCED_SCALE_PRODUCT_RECONSTRUCTION':
+                    audit.extend(['评价：所有来源先面积聚合变粗，再恢复原细产品；参考只在评价侧使用',
+                        '参考 '+protocol['reference_source']+'（按网格粗细选取，不是独立实测真值）',
+                        f"选型 {protocol['selection_count']} 样本；方案冻结后复核 {protocol['test_count']} 样本；多源无额外加分"])
+                    for omitted in evidence.get('source_ablations',[]):
+                        score=omitted.get('metrics')
+                        audit.append('去掉 '+omitted['omitted_source']+'：'+(f"RMSE {score['RMSE']:.4g}" if score else '未评价'))
+                    for name,score in evidence.get('coarse_diagnostics',{}).items():
+                        if score:audit.append(f"{FAMILY_NAMES[name]}粗主产品诊断 RMSE {score['RMSE']:.4g}（不参与选图）")
+                    paired=evidence.get('paired_selection')
+                    if paired and paired['RMSE_change_percent'] is not None:
+                        audit.append(f"多源相对最佳单源RMSE变化 {paired['RMSE_change_percent']:+.2f}%（负数为改善）；改善空间块 {paired['improved_blocks']}/{len(paired['blocks'])}")
+                    audit.append('仅为降尺度产品重建试验；跨尺度有效性、独立实测精度及稳定增益未证实')
+                elif protocol.get('missing_evidence'):
+                    audit.append('细尺度评价条件不足：'+'；'.join(protocol['missing_evidence']))
                 for family, score in search["evidence"].get("selection_scores", {}).items():
                     if score:
                         audit.append(f"{FAMILY_NAMES[family]}最佳 RMSE {score['RMSE']:.4g}")
@@ -172,6 +254,25 @@ def cards(result, check):
                               reason=(benefit + "。" if benefit else "") + check["conversion_reason"]))
     for entry in result.get("original_report", []) if result.get("mode")=="selected_operations" else []:
         for report in entry["report"] if isinstance(entry["report"],list) else []:
+            if entry.get("backend")=="station_grid":
+                methods=report["methods"]
+                title=recipe_name(methods)
+                score=report.get("heldout_correction")
+                baseline=report.get("heldout_baseline")
+                if not score:
+                    items.append(dict(task=entry["task"],title=title,selected=False,metrics={},methods=methods,
+                        parameters="",proxy=False,format_line=format_line,
+                        reason=f"配对成功，共 {report['matched_records']} 条。"))
+                    continue
+                selected=report["selected"]
+                for rank,(name,metrics) in enumerate(sorted(
+                        [("background",baseline),("corrected",score)],key=lambda item:item[1]["rmse"]),1):
+                    items.append(dict(task=entry["task"],title=title if name=="corrected" else "原始格点单源基线",
+                        family="订正试跑" if name=="corrected" else "单源",rank=rank,selected=name==selected,
+                        metrics=dict(RMSE=metrics["rmse"],MAE=metrics["mae"],count=metrics["count"]),
+                        methods=methods,parameters="",proxy=False,format_line=format_line,
+                        reason="在同一批站点留出时刻比较误差，适用范围为已配对站点。"))
+                continue
             weighted = str(report.get("method","")).startswith("fusion.uncertainty_weighted.")
             if report.get("operation") not in {"align_time","align_space"} and not weighted:
                 continue
@@ -196,7 +297,28 @@ def cards(result, check):
 def review_request(check, items):
     """Only fixed format/category labels and bundled model-profile fields can leave the machine."""
     known_formats = set(FORMATS.values()) | {"Text", "原版工程交付包", "模型专用产物", "其他产物"}
+    final=check.get('final_check') or {}
+    native=final.get('native',{})
+    weather=final.get('format',{}).get('weather_files',{})
     return dict(stage="output_check", target_model=check["model"], zip_readable=check["zip_readable"],
+                task_scope='component_conversion' if check.get('component_only') else 'data_only' if not check['model'] else 'model_project',
+                final_model_check=dict(model_requirements=final.get('model_requirements'),
+                    format_status=final.get('format',{}).get('status'),format_errors=final.get('format',{}).get('errors',[])[:10],
+                    format_scope=final.get('format',{}).get('scope'),
+                    native_files_checked=final.get('format',{}).get('native_files',{}),
+                    project_status=final.get('project',{}).get('status'),
+                    project_reason=final.get('project',{}).get('reason'),
+                    project_errors=final.get('project',{}).get('validation',{}).get('errors',[])[:10],
+                    declared_version=final.get('project',{}).get('validation',{}).get('declared_version'),
+                    weather_files_checked=len(weather),weather_failures=sum(r['status']=='FAIL' for r in weather.values()),
+                    native_resources=final.get('input_dependency_scope',{}).get('resources',[])[:200],
+                    omitted_native_resources=max(0,len(final.get('input_dependency_scope',{}).get('resources',[]))-200),
+                    active_control_bindings=final.get('input_dependency_scope',{}).get('control_bindings',[])[:200],
+                    native={key:native.get(key) for key in ('status','reason','engine_id','program_sha256','returncode','fresh_success_marker','model_read_confirmed','trial_start','trial_end','full_simulation_verified')},
+                    native_log_tail=native.get('log_tail','')[-1800:],
+                    scientific_status=final.get('scientific_definitions',{}).get('status'),
+                    working_assumptions=[{key:a.get(key) for key in ('status','rule','original_model_day_verified')}
+                        for a in final.get('scientific_definitions',{}).get('assumptions',[])]),
                 local_native_ready=check["native_ready"], files=check["files"][:60],
                 omitted_file_count=max(len(check["files"])-60, 0),
                 archive_formats=check["archive_formats"],
@@ -227,20 +349,34 @@ def availability_text(check, review=None):
     model = {"swat_plus":"SWAT+", "wrf":"WRF", "cmaq":"CMAQ", "camx":"CAMx",
              "calpuff":"CALPUFF"}.get(check["model"], "目标模型")
     if not check["model"]:
-        lines = ["模型可用性 · 尚未指定目标模型"]
+        lines = ["本次仅进行数据处理；未请求模型工程转换或运行。"]
     elif check["native_ready"]:
         lines = [f"模型可用性 · 已通过 {model} 本地原生输入校验"]
     else:
         lines = [f"模型可用性 · 尚不能确认可直接供 {model} 使用"]
+    gate=check.get('final_check')
+    if gate:
+        labels={'PASS':'通过','FAIL':'未通过','UNKNOWN':'未确认','ERROR':'检查异常','NOT_RUN':'未运行','NOT_REQUESTED':'本次未请求（仅组件转换）','NOT_RECHECKED':'原流程已有运行记录，本关卡未复核'}
+        native=gate.get('native',{})
+        lines=[f"原生格式检查 · {labels.get(gate['format']['status'],gate['format']['status'])}",
+            f"工程引用检查 · {labels.get(gate['project']['status'],gate['project']['status'])}",
+            f"模型实际试读 · {labels.get(native['status'],native['status'])}"]
+        if native.get('model_read_confirmed'):
+            lines.append('已由匹配版本模型完成短时试运行；原模拟期完整运行和精度未验证。')
+        elif native.get('reason'):lines.append('试读说明 · '+native['reason'])
+        if gate.get('project',{}).get('reason'):lines.append('工程说明 · '+gate['project']['reason'])
+        if gate.get('scientific_definitions',{}).get('status')=='WORKING_ASSUMPTIONS':
+            lines.append('科学定义 · 含明确工作假设，不等于作者原始定义已证实。')
     missing = [f"{r['title']}（{', '.join(r['missing'])}）" for r in check["requirements"] if r["missing"]]
     if missing and not check["native_ready"]:
         lines.append("数据待补或待映射 · " + "；".join(missing))
     pending = list(check["notes"])
     unresolved = [r["title"] for r in check["requirements"] if r["structure_needs_check"]]
-    if unresolved and not check["native_ready"]:
+    trial_passed=bool(gate and gate.get('native',{}).get('model_read_confirmed'))
+    if unresolved and not check["native_ready"] and not trial_passed:
         pending.append("需核对的输入结构包括 " + "、".join(unresolved))
-    if not check["native_ready"] and check["model"]:
-        pending.append("目标模型的原生文件、输入绑定和完整工程配置仍需核验")
+    if not check["native_ready"] and check["model"] and not check.get('component_only'):
+        pending.append('原模拟期完整运行、未覆盖的条件和科学定义仍需核验' if trial_passed else '目标模型的原生文件、输入绑定和完整工程配置仍需核验')
     if review:
         if review["verdict"]=="ready" and not check["native_ready"]:
             pending.append("完整模型输入仍以本地校验为准")

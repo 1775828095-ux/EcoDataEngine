@@ -27,6 +27,8 @@ def mark(size=40):
 
 STYLE = """
 QMainWindow { background: #edf4ef; }
+QDialog, QMessageBox { background: #edf4ef; color:#20382e; }
+QMessageBox QLabel { background:transparent; color:#20382e; }
 QWidget { color:#20382e; font-size:13px; }
 QWidget:disabled { color:#819087; }
 QLabel#title { font-size:24px; font-weight:700; color:#18372a; }

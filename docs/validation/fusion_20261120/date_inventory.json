@@ -1,0 +1,250 @@
+{
+  "original_members": [
+    {
+      "member": "03_SWAT_Saguling/sources_original/CMORPH_V1.0_ADJ_0.25deg-DLY_00Z_20180203.nc",
+      "sha256": "0e48dd4ab76c7761b65d0414135b7053c79d8adbd704469b221cb4c50b716c36",
+      "bytes": 373379,
+      "dates": [
+        "2018-02-03 00:00:00"
+      ],
+      "product": "NOAA_CMORPH",
+      "fields": [
+        {
+          "field": "cmorph",
+          "quantity": "precipitation",
+          "unit": "mm/day",
+          "original_attributes": {
+            "standard_name": "lwe_precipitation_rate",
+            "long_name": "NOAA Climate Data Record (CDR) of CPC Morphing Technique (CMORPH) High Resolution Global Precipitation Estimates",
+            "units": "mm/day",
+            "valid_min": "0",
+            "valid_max": "32767",
+            "comment": "!!! CMORPH estimate is rainrate !!!"
+          },
+          "time_basis": "UTC",
+          "interval_seconds": 86400,
+          "value_semantics": "daily_mean_precipitation_rate",
+          "time_start": "2018-02-03 00:00:00",
+          "time_end": "2018-02-03 00:00:00",
+          "time_bounds": "time_bounds",
+          "coordinates": {
+            "lat": {
+              "min": -59.875,
+              "max": 59.875,
+              "units": "degrees_north",
+              "bounds": "lat_bounds",
+              "size": 480
+            },
+            "lon": {
+              "min": 0.125,
+              "max": 359.875,
+              "units": "degrees_east",
+              "bounds": "lon_bounds",
+              "size": 1440
+            }
+          },
+          "missing_cells": 0,
+          "finite_cells": 691200,
+          "blockers": []
+        }
+      ]
+    },
+    {
+      "member": "03_SWAT_Saguling/sources_original/CMORPH_V1.0_ADJ_0.25deg-DLY_00Z_20180204.nc",
+      "sha256": "81f3a3eec30c78aff3296a110f5510309753ed917c556f92b760ca5d4301aad0",
+      "bytes": 361335,
+      "dates": [
+        "2018-02-04 00:00:00"
+      ],
+      "product": "NOAA_CMORPH",
+      "fields": [
+        {
+          "field": "cmorph",
+          "quantity": "precipitation",
+          "unit": "mm/day",
+          "original_attributes": {
+            "standard_name": "lwe_precipitation_rate",
+            "long_name": "NOAA Climate Data Record (CDR) of CPC Morphing Technique (CMORPH) High Resolution Global Precipitation Estimates",
+            "units": "mm/day",
+            "valid_min": "0",
+            "valid_max": "32767",
+            "comment": "!!! CMORPH estimate is rainrate !!!"
+          },
+          "time_basis": "UTC",
+          "interval_seconds": 86400,
+          "value_semantics": "daily_mean_precipitation_rate",
+          "time_start": "2018-02-04 00:00:00",
+          "time_end": "2018-02-04 00:00:00",
+          "time_bounds": "time_bounds",
+          "coordinates": {
+            "lat": {
+              "min": -59.875,
+              "max": 59.875,
+              "units": "degrees_north",
+              "bounds": "lat_bounds",
+              "size": 480
+            },
+            "lon": {
+              "min": 0.125,
+              "max": 359.875,
+              "units": "degrees_east",
+              "bounds": "lon_bounds",
+              "size": 1440
+            }
+          },
+          "missing_cells": 0,
+          "finite_cells": 691200,
+          "blockers": []
+        }
+      ]
+    },
+    {
+      "member": "03_SWAT_Saguling/sources_original/CMORPH_V1.0_ADJ_0.25deg-DLY_00Z_20180205.nc",
+      "sha256": "93edb543fd3f6bb0430bbe0b9dc9f0c5aaa984c569608ad26184be89b66179f2",
+      "bytes": 350794,
+      "dates": [
+        "2018-02-05 00:00:00"
+      ],
+      "product": "NOAA_CMORPH",
+      "fields": [
+        {
+          "field": "cmorph",
+          "quantity": "precipitation",
+          "unit": "mm/day",
+          "original_attributes": {
+            "standard_name": "lwe_precipitation_rate",
+            "long_name": "NOAA Climate Data Record (CDR) of CPC Morphing Technique (CMORPH) High Resolution Global Precipitation Estimates",
+            "units": "mm/day",
+            "valid_min": "0",
+            "valid_max": "32767",
+            "comment": "!!! CMORPH estimate is rainrate !!!"
+          },
+          "time_basis": "UTC",
+          "interval_seconds": 86400,
+          "value_semantics": "daily_mean_precipitation_rate",
+          "time_start": "2018-02-05 00:00:00",
+          "time_end": "2018-02-05 00:00:00",
+          "time_bounds": "time_bounds",
+          "coordinates": {
+            "lat": {
+              "min": -59.875,
+              "max": 59.875,
+              "units": "degrees_north",
+              "bounds": "lat_bounds",
+              "size": 480
+            },
+            "lon": {
+              "min": 0.125,
+              "max": 359.875,
+              "units": "degrees_east",
+              "bounds": "lon_bounds",
+              "size": 1440
+            }
+          },
+          "missing_cells": 2,
+          "finite_cells": 691198,
+          "blockers": []
+        }
+      ]
+    },
+    {
+      "member": "03_SWAT_Saguling/sources_original/POWER_regional_original.nc",
+      "sha256": "87e1a0690d5dfb63c54e80871b92c578b5f3782177b2dc3479a050c63cc22774",
+      "bytes": 21273,
+      "dates": [
+        "2018-02-01 00:00:00",
+        "2018-02-02 00:00:00",
+        "2018-02-03 00:00:00",
+        "2018-02-04 00:00:00",
+        "2018-02-05 00:00:00",
+        "2018-02-06 00:00:00",
+        "2018-02-07 00:00:00"
+      ],
+      "product": "NASA_POWER",
+      "fields": [
+        {
+          "field": "PRECTOTCORR",
+          "quantity": "precipitation",
+          "unit": "mm/day",
+          "original_attributes": {
+            "long_name": "Precipitation Corrected",
+            "standard_name": "Precipitation_Corrected",
+            "definition": "The average MERRA-2 bias corrected total precipitation at the surface of the earth.",
+            "base": "float32",
+            "units": "mm/day",
+            "valid_min": 0.0,
+            "valid_max": 12000.0,
+            "significant_digits": "2",
+            "cell_methods": "time: sum",
+            "status": "official"
+          },
+          "time_basis": "UTC",
+          "interval_seconds": 86400,
+          "value_semantics": "daily_mean_precipitation_rate",
+          "time_start": "2018-02-01 00:00:00",
+          "time_end": "2018-02-07 00:00:00",
+          "time_bounds": null,
+          "coordinates": {
+            "lat": {
+              "min": -8.0,
+              "max": -5.0,
+              "units": "degrees_north",
+              "bounds": null,
+              "size": 7
+            },
+            "lon": {
+              "min": 106.25,
+              "max": 108.75,
+              "units": "degrees_east",
+              "bounds": null,
+              "size": 5
+            }
+          },
+          "missing_cells": 0,
+          "finite_cells": 245,
+          "blockers": [],
+          "initial_time_basis": "UNKNOWN"
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "source": "NASA_POWER",
+      "dates": [
+        "2018-02-01 00:00:00",
+        "2018-02-02 00:00:00",
+        "2018-02-03 00:00:00",
+        "2018-02-04 00:00:00",
+        "2018-02-05 00:00:00",
+        "2018-02-06 00:00:00",
+        "2018-02-07 00:00:00"
+      ]
+    },
+    {
+      "source": "NOAA_CMORPH",
+      "dates": [
+        "2018-02-03 00:00:00",
+        "2018-02-04 00:00:00",
+        "2018-02-05 00:00:00"
+      ]
+    }
+  ],
+  "common_dates": [
+    "2018-02-03 00:00:00",
+    "2018-02-04 00:00:00",
+    "2018-02-05 00:00:00"
+  ],
+  "common_count": 3,
+  "no_missing_day_imputation": true,
+  "single_source_only_dates": {
+    "NASA_POWER": [
+      "2018-02-01 00:00:00",
+      "2018-02-02 00:00:00",
+      "2018-02-06 00:00:00",
+      "2018-02-07 00:00:00"
+    ],
+    "NOAA_CMORPH": []
+  },
+  "interpretation": "All existing package dates, fixed graphs. Prior development day remains exposed; no new blind test claim"
+}

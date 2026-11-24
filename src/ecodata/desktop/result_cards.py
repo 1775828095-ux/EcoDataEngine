@@ -4,7 +4,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QFrame, QGraphicsDropShadowEffect, QLabel, QPlainTextEdit,
                                QScrollArea, QVBoxLayout, QWidget)
 
-from .output_review import availability_text
+from .output_review import availability_text,conversion_text
 
 
 def label(text, name=None):
@@ -24,10 +24,25 @@ class ResultCards(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.status = label("")
         layout.addWidget(self.status)
+        self.formats=label('')
+        self.formats.setAccessibleName('原始与输出格式说明')
+        layout.addWidget(self.formats)
+        self.progress_title=label('处理过程 · 等待开始', 'recommendationTitle')
+        layout.addWidget(self.progress_title)
+        self.progress_log=QPlainTextEdit()
+        self.progress_log.setReadOnly(True)
+        self.progress_log.setMaximumBlockCount(300)
+        self.progress_log.setMinimumHeight(135)
+        self.progress_log.setMaximumHeight(220)
+        self.progress_log.setAccessibleName('真实处理与搜索进度')
+        self.progress_log.setPlaceholderText('执行后显示真实检查、候选评价和写回进度；尚未执行的步骤不会预判通过。')
+        layout.addWidget(self.progress_log)
         scroller = QScrollArea()
+        scroller.setStyleSheet('QScrollArea, QScrollArea > QWidget > QWidget { background:#fbfdfa; }')
         scroller.setWidgetResizable(True)
         scroller.setFrameShape(QFrame.Shape.NoFrame)
         panel = QWidget()
+        panel.setStyleSheet('background:#fbfdfa;')
         self.cards = QVBoxLayout(panel)
         self.cards.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.cards.setContentsMargins(0, 0, 6, 0)
@@ -45,23 +60,35 @@ class ResultCards(QWidget):
         self.output_check.setGraphicsEffect(shadow)
         self.reset()
 
-    def reset(self, status="处理完成后在这里查看方案排名和输出包检查。"):
+    def reset(self, status="处理完成后在这里查看方案排名和输出包检查。", *, keep_progress=False):
         while self.cards.count():
             widget = self.cards.takeAt(0).widget()
             widget.hide()
             widget.deleteLater()
         self.status.setText(status)
+        self.formats.clear()
         self.notes = []
         self.output_check.clear()
         self.output_check.hide()
+        if not keep_progress:
+            self.progress_title.setText('处理过程 · 等待执行反馈')
+            self.progress_log.clear()
+
+    def append_progress(self,message):
+        from datetime import datetime
+        self.progress_title.setText('处理过程 · '+message[:100])
+        self.progress_log.appendPlainText(datetime.now().strftime('%H:%M:%S')+'  '+message)
 
     def render(self, items, check):
-        self.reset("方案排名 · 各任务按本地评分排列" if any(row["metrics"] for row in items) else "输出结果")
+        self.reset("方案排名 · 各任务按本地评分排列" if any(row["metrics"] for row in items) else "输出结果",keep_progress=True)
+        if check.get('format_conversion'):self.formats.setText(conversion_text(check['format_conversion']))
         task = None
+        task_number=0
         for row in items:
             if row["task"] and row["task"] != task:
                 task = row["task"]
-                name = task.replace(":fusion", " · 融合评估")
+                task_number+=1
+                name = f'工程输入处理 · 任务 {task_number}' if '/' in task or '\\' in task else task.replace(":fusion", " · 融合评估")
                 self.cards.addWidget(label(name, "recommendationTitle"))
             card = QFrame()
             card.setObjectName("recommendationCard")
