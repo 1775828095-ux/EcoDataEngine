@@ -34,7 +34,7 @@ def inspect_upload_archives(uploads, converter, folder, *, native_required=True)
                     issues.append(dict(file=name,message='压缩包路径重复'));continue
                 seen.add(name.casefold());total+=item.file_size
                 members.append(dict(file=name,bytes=item.file_size))
-                if total>limit:
+                if limit is not None and total>limit:
                     issues.append(dict(file=upload.name,message=f'ZIP声明展开总量{total}字节超过部署接收配额{limit}字节'))
                     break
                 with archive.open(item) as stream:

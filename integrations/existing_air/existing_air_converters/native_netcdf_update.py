@@ -23,23 +23,22 @@ def _open_native(path, mode):
     if str(path).isascii():
         with Dataset(path, mode) as dataset:
             yield dataset
-    elif mode == 'r':
-        with Dataset('native-read', memory=path.read_bytes()) as dataset:
-            yield dataset
     else:
-        # Only the newly created destination is edited. Copy bytes, not a
-        # reconstructed dataset, to preserve native groups/storage/attributes.
+        # Stream to an ASCII path rather than materialize the native container
+        # in memory. Read-only originals are never copied back or edited.
         with tempfile.TemporaryDirectory(prefix='ecodata_native_') as directory:
             staged = Path(directory) / 'update.nc'
             if not str(staged).isascii():
                 raise ValueError('Native writeback needs an ASCII temporary directory; set TMP/TEMP accordingly')
+            if shutil.disk_usage(directory).free < path.stat().st_size:
+                raise OSError('Insufficient temporary disk space for native I/O')
             shutil.copyfile(path, staged)
             try:
                 with Dataset(staged, mode) as dataset:
                     yield dataset
             finally:
                 # Preserve partial output for diagnosis on failure, as before.
-                shutil.copyfile(staged, path)
+                if mode != 'r':shutil.copyfile(staged, path)
 
 
 def _digest(path):

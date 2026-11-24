@@ -5,12 +5,14 @@ import hashlib
 import io
 import zipfile
 
-# Shared with native bundle converters; retain the deployed 10 GiB policy.
-MAX_FILE_BYTES = 10 * 1024 * 1024 * 1024
-MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024
-# Generic tabular inference retains byte payloads. Large native engineering
-# routes use streaming ProjectFiles before reaching this bounded fallback.
-MAX_EAGER_SCAN_BYTES = 256 * 1024 * 1024
+# Eager fallback holds input bytes and downstream copies. Check current memory,
+# not a fixed dataset-size cap; native routes remain streaming.
+def ensure_scan_memory(size, retained=0):
+    import psutil
+    available=psutil.virtual_memory().available
+    if size<0 or 3*size+retained>available:
+        raise ValueError('当前资料未匹配可用的流式工程适配器；预计内存不足，'
+            f'本步数据{size}字节，已保留{retained}字节，可用内存{available}字节；未继续整包加载')
 
 
 SUPPORTED_SUFFIXES = {".csv", ".tsv", ".txt", ".rdb", ".gz", ".isd", ".xlsx",
@@ -106,11 +108,9 @@ def _members(upload, *, expand_archives=True):
         source=Path(local) if local is not None else io.BytesIO(upload.getvalue())
         with zipfile.ZipFile(source) as archive:
             declared=sum(i.file_size for i in archive.infolist() if not i.is_dir())
-            if declared>MAX_EAGER_SCAN_BYTES:
-                raise ValueError('当前资料未匹配可用的流式工程适配器，不能回退整包内存扫描：'
-                    f'声明展开{declared}字节，通用扫描上限{MAX_EAGER_SCAN_BYTES}字节；请核对工程控制格式与依赖')
-    elif local is not None and Path(local).stat().st_size>MAX_EAGER_SCAN_BYTES:
-        raise ValueError('该大文件未匹配流式读取器；未整文件加载内存')
+            ensure_scan_memory(declared)
+    elif local is not None:
+        ensure_scan_memory(Path(local).stat().st_size)
     if PurePosixPath(name).suffix.casefold() != ".zip" or not expand_archives:
         content=upload.getvalue()
         return [(name, content, None)]
@@ -144,8 +144,7 @@ def scan_model_uploads(uploads, *, classify_wasp=False, expand_archives=True, in
                 result.ignored.append({"file": name, "reason": "不安全路径"})
                 continue
             total_bytes+=len(content)
-            if total_bytes>MAX_EAGER_SCAN_BYTES:
-                raise ValueError('通用内存扫描累计超过256MiB；需匹配流式数据/工程适配器，未继续加载')
+            ensure_scan_memory(0,retained=total_bytes)
             group, reason = _group(name)
             if include_all:
                 reason=None  # Native content/reference checks decide its role.

@@ -77,7 +77,7 @@ def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, req
     from ecodata.models.project_inventory import prepare_project_inventory
     # The old converter probe rejects all C-shell syntax. The public bounded
     # binder validates supported declarations before that legacy fallback.
-    if model_id=='cmaq':
+    if model_id in {'cmaq','camx'}:
         from ecodata.models.project_binding import prepare_project_binding
         bound=prepare_project_binding(uploads,model_id,folder,progress=progress)
         if bound is not None:return bound

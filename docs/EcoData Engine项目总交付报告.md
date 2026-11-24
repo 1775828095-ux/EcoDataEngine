@@ -8332,3 +8332,175 @@ CALPUFF使用平台当前产物和已校验安装的CALMET5.8.5/CALPUFF5.8.4，�
 证据集中D:\codex\EcoDataEngine\output\wrfda_3dvar_integration_20261105：initial_github_sync.json、官方tag/commit、运行下载校验、编译与失败日志、page_acceptance.json、independent_readback.json、cold_start_signedoff.json、原生QC/代价/分析场及回归日志。两套可交接结果放D:\codex\交付\WRFDA_3DVAR_真实验收_20261105，包含两份分析结果ZIP、验收摘要与运行说明。模型程序真实运行、分析场有效、后续预报与独立精度是不同验收项。
 
 官方代码：https://github.com/wrf-model/WRF/tree/v4.7.1/var ；官方数据：https://www2.mmm.ucar.edu/wrf/users/wrfda/download/testdata.html ；北极资料：https://www2.mmm.ucar.edu/wrf/users/wrfda/Tutorials/2015_Aug/class/wrfda_testdata.html 。
+
+
+## 2026-11-05 桌面CMAQ首日输入与多源LAI原包只读实测
+
+用户要求测试C:/Users/LX/Desktop/01_CMAQ_官方首日输入与多源LAI.zip。本轮未改平台源码或原始资料，未新增科学声明、改运行日期、截断脚本、替换工程或启动CCTM。原包2527092725字节，70个文件，展开10398067609字节，完整ZIP CRC通过，测试前后SHA256相同。
+
+实际app.py页面使用原包本地路径、选择CMAQ并点击自动处理，无处理函数模拟；耗时约87.7秒，未抛页面异常，最终ENGINEERING_INSPECTED，并生成实际诊断下载。融合、随机变异搜索、原生写回及CCTM运行均未发生，不能称为融合成功。
+
+确认的第一阻塞是控制范围不一致：保留的官方run_cctm_Bench_2018_12NE3_CRACMM2.csh请求2018-07-01和07-02两日，但包只收集首日。当前绑定器实际展开到了第二日，GRID_CRO_2D和MET_CRO_2D缺20180702文件，返回“核心气象/网格声明不能覆盖各运行日”。这是资料打包范围与原控制脚本不一致，不是压缩包损坏。平台也没有根据首日子集自动形成经确认的首日运行范围。本轮没有擅自截短日期来绕过。
+
+独立直接读取了真实MCIP LAI和随包MODIS解码数组。MCIP METCRO2D的LAI维度25×1×105×100，262500个有限值，范围0至8；原生TFLAG从2018-07-01 00UTC至07-02 00UTC，网格12km。卫星解码LAI维度401×401，实际像元约463.31m，145293个有限值、15508个缺测，有限范围0.1至7.0；原元数据声明四日合成区间2018-06-30至07-04，覆盖宾夕法尼亚子区，保留原质量位。该解码NetCDF是派生副本，原始ORNL JSON也在原包中，不能冒称官方原始NetCDF。存在真实尺度/覆盖差异，但不能直接制造逐小时卫星真值；QA、合成时段与模型LAI/VEG支持仍需科学适配。
+
+确认的另一个平台缺口：只读直接调用现有source_fields检查原解码NetCDF（没有添加任何声明或改值），返回0个可用来源，audit为UNRECOGNIZED_SOURCE/SOURCE_ROLE_UNCONFIRMED；当前产品适配器未将MCD15A3H与现有MCIP LAI端口贯通。完整页面source_admission.json同样为外部来源0。因此修好运行范围也不能直接宣称LAI融合链已通，这不是随机变异选优失败。页面下载另有反馈问题：required_information.json为空数组，而真实绑定失败保存在binding_failure.json及manifest.binding_failure；页面未集中展开该原因。本轮仅记录，没有扩大修复。
+
+原脚本还存在其他声明/官方文件名约定与GRIDCRO3D启用性待核查，本轮没有将静态声明一概认定为必需缺文件，也不据此认证整套CCTM工程。附带臭氧观测不能直接作为LAI融合真值，本轮未用它计算精度。
+
+实际任务目录D:/codex/EcoDataEngine/output/workbench/1440aac856964884bde78ab53a831c50。证据集中D:/codex/EcoDataEngine/output/desktop_cmaq_lai_20261105：input_inventory.json、documents.json、lai_arrays.json、source_admission_probe.json、page_result.json、findings.json、page.log及实际页面下载_工程盘点与错误.zip。当前结论为原包可读、工程盘点完成，新增LAI未融合、未写回、未运行CCTM；本轮无算法效果结论。
+
+
+## 2026-11-05 CALPUFF官方多源气象与演示工程原包实测
+
+原包03_CALPUFF_官方多源气象与演示工程.zip共19697197字节；外层及五个官方内层ZIP均通过CRC，测试前后原包SHA256为2e9b3d3e07ba31656b1426108c1d34bbacf758da815d353a804b98eee346ca0c，未修改原始资料或平台源码。实际app.py页面提交原包并选择CALPUFF，约76.45秒完成，无页面异常，最终CONVERTED；这代表处理与原生SURF文件转换完成，不代表原生模型模拟完成。
+
+平台依赖检查选择了完整的旧版DEMO控制与资料，未将缺本地依赖的新版CODE示例冒充完整工程。读取168小时、5站、840记录及8个地面字段，并核对原控制的时区与小时结束标签；真正多源搜索发生在原工程1990-01-09四小时窗口的风场。东向、北向分量共用平台随机变异搜索（random_graph_search），候选真实执行，所选图包含MM4背景与保留站点观测；没有人为指定赢家。融合评估为PLATFORM_SELECTION_COMPLETED，但独立参考未确认、单独来源影响未做干预检验，accuracy_improvement=NOT_ESTABLISHED，不能从内部验证RMSE或稳定性宣称独立精度收益。
+
+直接比较处理前后真实数组，风速11个值发生数值变化、最大约1.078m/s，变化限于上述四小时；风向按圆周差核查，10个值变化超过1e-6度，最大约167.49度，不能把0/360度跨界的普通差当成误差。其余六个字段保持原值，opaque_cover的168个原始缺测保留。原生SURF.DAT回读一致、缺测掩码保持，未改科学设置。输出包含新SURF、处理NetCDF、谱系和CALMET/CALPUFF控制与依赖副本；未执行上传EXE，未复用作者历史模型输出。CALMET尚未重新生成气象场，CALPUFF尚未运行，native_ready=false、full_model_ready=false；因此不能交付为已完成污染扩散模拟，也不证明整套原生模型运行有效性。
+
+实际任务目录D:/codex/EcoDataEngine/output/workbench/738367b6d96c4de3a32283c717665920。证据集中D:/codex/EcoDataEngine/output/calpuff_official_package_20261105，含原包和内层清单、真实数组检查、页面日志与结果、搜索摘要、逐字段变化及findings.json；可交接CALPUFF_平台处理结果.zip已再次CRC核验。
+
+
+## 2026-11-05 教师Windows免安装试用包与展开大小限制修正
+
+用户要求老师电脑无需安装Python、完整解压后双击一个文件打开。交付D:/codex/交付/EcoDataEngine_教师免安装版_20261105.zip，1703161517字节，展开4419050999字节，82325个文件，SHA256 90295b38d8a9044f9820891dca12751afc716b550bfcc3da61eb63390ca63c1d，完整CRC通过。包内自带Python3.12.14、主要科学依赖、已有外部组件、转换插件及CALPUFF示例；未包含用户密钥、Streamlit凭据、历史结果、WRFDA虚拟机或其他独立算法环境。界面与随机变异/评分/模型选择机制未改。入口为EcoDataEngine/打开平台.bat，日志在output/launcher。
+
+原启动服务在当前Windows环境出现Proactor套接字失败，打包专用teacher_server.py仅设置Windows Selector事件循环后调用原Streamlit CLI；未改科学源码。启动器使用包内解释器与相对路径、关闭用户site-packages并从包内加载两组转换插件，绑定loopback、检测端口及健康状态、自动打开浏览器。老师需Windows10/11 x64，完整解压到可写短路径，保留运行文件；专用模型求解、缺元信息、可选算法与WRFDA后端边界均写入使用说明和补充说明。
+
+用户另明确要求取消10GiB限制：移除公共嵌套接收archive_inputs.py中的固定累计展开门槛及未使用的engineering_upload.py大小常量，保留路径、CRC、声明长度、成员数、嵌套层数等检查。ZIP/TAR/7z的旧边界计数回归、成员长度完整性及工程输入测试合计39项通过。边界测试使用超过10GiB的累计计数及小真实成员，不冒充十余GB完整负载验收。现有平面扫描原本不引用这些常量，之前“所有入口均有10GiB限制”的概括不准确；本次修正实际生效的嵌套展开限制。浏览器上传仍沿用框架既有设置，大资料建议本地路径；内存和磁盘不足仍会失败，不能解释为无限资源。修改同步到运行目录、协作目录和教师包，没有推送远端。
+
+包内独立Python已实际调用app.py页面完成CALPUFF示例，CONVERTED、原生SURF回读通过；大小限制修改后再次确认包内页面及旧边界检查通过。最终ZIP完整解压到D:/codex/teacher_portable_unpack_20261105，全部82325成员展开成功；异路径启动健康ok，页面无错误或异常，ecodata及两转换插件来源均在新解压目录，关键源码/启动文件SHA与包内验收记录一致。未在老师的实际电脑上测试，不能保证其组织安全策略和硬件条件；不认证任意模型数据适配或原生求解。压缩中断和恢复记录保留，最终全包CRC及完整解压均重新完成。
+
+打包、初次示例、包内验收、重定位验收与收据证据集中D:/codex/交付/EcoData_教师试用_20261105；校验文件位于ZIP同目录、后缀.zip.sha256。
+
+
+## 2026-11-05 队友读取与工程解析改进本地合入（本轮不跑测试）
+
+按用户“ok把这个补上”授权，将队友分支codex/camx-template-intake-20261105（0f5f5d9）快进合入本地协作checkout，包含流式文件身份、有限文件头识别、中文NetCDF I/O、嵌套压缩包/磁盘检查、CAMx静态模板与LAI来源诊断。修改前checkout与运行目录30个受影响文件指纹一致；备份、原本地未提交补丁、完整stash和合并记录保留在output/reading_integration_20261105及Git stash。本轮没有推送远程，也没有覆盖用户原始数据或历史产物。
+
+与本地上一轮取消10GiB限制的改动发生两处冲突，已保留双方意图：默认不设固定累计展开门槛，只有服务器显式设置ECODATA_ARCHIVE_LIMIT_GIB时才使用正整数GiB预算；上传资料不能提高该预算。保留声明长度、路径/链接、成员数、嵌套层数和磁盘不足检查。去除队友新加的固定256MiB内存回退门槛，改为按当前psutil可用内存检查预计常驻开销（本步数据三倍加既存字节）；这是保守资源预估，不是数据大小政策，不保证任意大文件可执行。原生流式路线不经该内存回退；尚未匹配流式适配器且内存不足的数据仍明确拒绝，不强行加载。
+
+中文路径的原生netCDF4读取不再使用memory=read_bytes整容器加载，改为流式复制到ASCII临时文件再读取，只有写模式才复制回新目标；原文件只读。component_service复用同一上下文管理器，不再另做整模板memory读取。目标临时盘不足或临时目录不具备ASCII路径时明确失败；完整数值字段和产品字节仍由既有writer持有，因此不宣称全平台任意规模零内存。
+
+用户明确要求“不用跑”，本轮未执行单元测试、数据处理、模型运行或新端到端验收；只做Python AST静态语法检查、冲突标记检查和运行目录逐文件SHA对照。队友分支已有测试记录保留作历史证据，不能替代这次冲突解决与内存策略修改后的测试。相关测试定义已随明确的新资源策略调整，但未运行，不标PASS。
+
+现有公共页面/工具包路径保持，未改融合内核、评分、搜索或质量语义。CAMx模板增强依然属于受支持语法下的解析和依赖盘点，不代表任意脚本、嵌套气象融合、多日重启执行或原生求解已接通。教师免安装旧ZIP未重打包，本轮更新目标为D:/codex/EcoDataEngine本地平台及协作源码。后续如要发布该旧ZIP，需另行更新和验证，不能当作已同步。
+
+
+## 2026-11-05 桌面CAMx两日嵌套原包：本次公共入口重测
+
+使用桌面`02_CAMx_两日嵌套工程与站点观测.zip`原包（3,292,398,499字节），不改资料、不换样本、不运行上传脚本，通过现有prepare_uploads(model_id=camx)实际重测。累计展开16,149,465,033字节；原包前后SHA一致。先发现本轮资源策略整合遗漏：archive_preflight仍以整数比较None导致TypeError；已最小改为limit is not None再比较，同步运行目录和协作目录。中间一次补丁缩进错误及失败日志保留，修正后静态语法检查通过。不是数据格式错误，也未恢复固定大小门槛。
+
+为避免再次解包16GB，后续仅复用本次公共规范化产物expanded_inputs.zip，先完整SHA核对与archive_intake记录一致，再从同一公共入口继续；这不是重复宣称第二次原外层接收。继续处理约49.04秒，返回ENGINEERING_INSPECTED，下载报告ZIP的CRC通过。没有融合、原生写回或CAMx求解结果。
+
+实际发现：MPICH3和noMPI两份官方模板均解析两日、2网格；每份47条外部输入BOUND、0条UNKNOWN/缺失、2条GENERATED_DEPENDENCY。这2条为首日运行后生成的重启文件，未伪装为已存在，也不算上传缺件。该结论只针对已识别声明，不等于全模型可执行闭包认证。模板解析结果目前仍由project_inventory输出，尚未升级为实际多日/多网格融合及writeback绑定驱动。
+
+NOAA气温65条记录、63条QA接受、2条按原标记拒绝，唯一站点1个，未重复平均。现有气温空间融合准入要求至少3站且非共线，因此此数据不足以支持当前方法；不是所有融合在数学上都需要3站，单站局部校正需要相应合法执行契约，不能拿已有3站方法直接冒充。第二个明确阻塞是当前气温原生写回仅有唯一二维网格路径，未完成本包嵌套双网格融合。包内EPA臭氧不能充当额外气温站；本轮未做O3输出融合或精度评价。
+
+所以当前是“输入读取和模板解析通过；嵌套执行能力仍缺、气象观测空间支持有限”，不能笼统归为缺工程文件或数据不可用。没有新增算法、改阈值、删站点、截取单网格或放松质量规则凑成功。未跑单元/全量测试，只有本次真实数据入口复测；原生模型未运行，数值精度未评价。
+
+证据目录：output/camx_desktop_retest_20261105，含原包指纹、外层清单、首轮失败、规范化收据、continued_v2_result.json、findings.json及下载检查包。源码补丁为src/ecodata/models/archive_preflight.py。无远程推送，教师旧免安装ZIP未重打包。
+
+
+## 2026-11-05 通用多运行段／嵌套工程执行补齐与桌面CAMx原包写回验收
+
+### 范围、复用与真实调用链
+
+先核对适用AGENTS、队友接入说明、转换接口、当前总报告及源码。已有公共工程上下文、来源身份、单位／时间契约、端口识别、残差数学内核、类型化DAG执行器、双层质量门和原生副本writer均复用。本次不新增科学算法ID、不改随机变异／评分、不运行研究搜索，不执行上传Shell或CAMx程序。新增的只是缺失的绑定驱动、运行依赖编排、局部观测支持契约和多端口写回连接，没有包名、站号、日期、固定网格尺寸等案例分支。
+
+真实链路：页面与工具包既有prepare_uploads → 工程声明绑定 → 有限C-shell模板展开／f90nml → 多运行段依赖计划 → 逐气象端口的时间、单位、计算区／存储网格校验 → 真实背景采样和观测残差 → Registry的fusion.residual适配与NumericalDAGExecutor → RawInputQualityGate＋ResultQualityGate → 原生副本更新／逐变量回读 → 派生控制与工程ZIP。这里使用Pipeline同源数值DAG执行器，未假称调用旧GOLEM图搜索或另建优化器。该局部契约只有一条合法残差路线，不作精度选优宣称。既有三站凸包空间融合函数及准入条件保留，没有降低其门槛。
+
+|通用机制|检查前|本轮处理及证据|状态与边界|
+|---|---|---|---|
+|大包与身份／单位／时间／质量|已有|复用公共normalize、SHA、NOAA字段QA、UTC及K单位；不设案例大小阈值|PASS；资源不足仍会拒绝|
+|模板至真实执行|只有盘点|engineering/schedule.py连接现有Csh解析、f90nml和project_binding，声明前序状态依赖|PASS；有限语法，不是任意Shell执行器|
+|等价及冲突配置|多份MPI／noMPI模板|按实际科学参数判等，科学配置冲突明确拒绝|PASS；不凭文件名猜选|
+|多日／嵌套网格|唯一二维路径|逐运行段／端口处理，核对时间覆盖、网格倍率／父域、跨文件重复时刻一致性|PASS于当前二维气温契约；未声称所有变量通用|
+|缓冲格与有效网格|把NCOLS当存储长度|按NCOLS_BUF／NROWS_BUF／XORIG_BUF／YORIG_BUF和实际X/Y单位、维度验证；有效计算区外不更新|PASS；不裁剪或改工程尺寸凑形状|
+|稀疏观测|现有凸包法不适用单站|通用collocation定位同刻同量观测，以已有残差差分／相加内核作最邻近原生单格局部校正|PASS局部处理，不是全域重建|
+|多文件原生写回|已有单文件writer|依赖副本、逐文件写回、控制重定位、独立SciPy读回及完整ZIP验证|PASS；非原生模型求解|
+|3D耦合／动力平衡／求解|未证明|不伪造层间转换或重启产物，其他字段保留|未验收／未运行|
+
+成熟成果核对并复用现有依赖：[f90nml](https://github.com/marshallward/f90nml)负责Fortran读写；[CAMx官方NetCDF说明](https://www.camx.com/Files/CAMxUsersGuide_v7.20.pdf)明确缓冲维度／原点字段，[官方嵌套说明](https://www.camx.com/files/camxusersguide_v7.10.pdf)说明气象输入需要缓冲格。复核了[官方推荐PseudoNetCDF](https://www.camx.com/download/pseudonetcdf/)及[源码](https://github.com/barronh/pseudonetcdf)；本包实际为NetCDF3，继续用现有netCDF4无损副本写回、另用SciPy独立读取，不为复用之名改成另一格式，也没安装大型环境。来源及使用边界见sources.json。
+
+### 原包实际执行与独立验证
+
+使用桌面02_CAMx_两日嵌套工程与站点观测.zip，原始3,292,398,499字节。首次外层规范化历史收据保留；本轮先核对原包SHA及既有expanded_inputs.zip完整SHA，再把完全一致的规范化文件交同一prepare_uploads入口，没有再解包16GB或更换资料。未修改用户数据。两份等价官方job声明2日、2网格；实际47个BOUND引用、45份唯一依赖、2条GENERATED_DEPENDENCY。首日冷启动、次日重启顺序保留；2个生成依赖只登记为模型运行屏障，未伪造文件。f90nml重新读取派生控制，47条输入指向真实复制资源，除路径外科学参数不变。
+
+NOAA资料唯一站点1个，65行中63条通过原QA、2条拒绝；只使用原生UTC整点实际存在的观测。15个独立匹配时刻，两个域合计30个唯一网格－时刻。跨日00点在相邻文件均存在，因此四个文件更新数相加32，不冒充32个独立观测。偏离原生时刻的报告没有挪时、平均或借值。局部定义为 b(cell)＋[observation−b(station)]，b(station)由实际网格双线性采样；只将该点残差转移到有效支持内的最邻近原生单格，不把一个站扩散到全域，不宣称格内或域内独立精度。
+
+|原生文件|存储形状T×L×Y×X|更新数|最大绝对变化K|独立读取／质量门|
+|---|---|---:|---:|---|
+|36km，2016-06-10|25×1×91×158|9|1.517120|PASS|
+|12km，2016-06-10|25×1×149×152|9|1.824036|PASS|
+|36km，2016-06-11|25×1×91×158|7|2.846283|PASS|
+|12km，2016-06-11|25×1×149×152|7|2.255188|PASS|
+
+12km有效计算区147×150与存储149×152的差异由原文件BUF字段及官方格式共同证实；没有修改控制尺寸。四文件均保持NETCDF3_CLASSIC、全部非t2数组与属性、原TFLAG、未处理位置和缓冲格。独立scipy.io.netcdf_file逐变量对照原副本，核对局部输出与真实残差计算吻合。观测／背景／残差／更新／质量节点的真实父边和指纹保存在四份processing_*.json；没有旁路替代上游。
+
+真实公共处理（含依赖复制、压缩、CRC、输入哈希与读回，初始原包／规范化SHA预检查不计其中）耗时235.89秒。每个DAG节点的真实耗时、缓存命中单列delivery_receipt.json；工程I/O不伪装成算法运行成本。交付包3,312,825,859字节，45份绑定输入累计10,762,664,386字节；生产端CRC、逐依赖SHA和客户端再次CRC均通过。最终ZIP SHA256为1165da1e936719d15380dc3c1682f17fc1cf0edf9d8447e538d59371f00631c9。结论PROJECT_UPDATED、native_writeback_verified=true、native_model_executed=false、native_ready=false。该包是绑定依赖与更新原生输入，仍须合法运行CAMx才会生成后续重启状态，不是已完成模拟的结果。
+
+站点经纬度按EPSG:4326作明确操作约定，原生投影复用CAMx球体LCC。站点测量高度／地形代表性与2米场的可比性没有独立核实；这是探索性局部校正，accuracy_improvement=NOT_ESTABLISHED。单站不满足既有全域凸包插值，也无独立留出气温真值，因此不计算或伪造融合精度提升。三维气温、风场、湿度、排放和臭氧均未改；臭氧观测未冒充额外气温站。没有认证3D物理平衡、任意投影、移动网格、任意脚本或五模型全功能通用。
+
+### 测试、失败保护与交付路径
+
+55项新增及受影响定向测试通过，0失败、0错误、0跳过（tests_final.xml）；未跑无关全量回归或任何正式搜索实验。测试含真实父边消费、上游改变下游响应、局部有效域／缓冲掩码、无背景／域外／同格重复观测拒绝、不递增时间拒绝、重启依赖、等价／冲突控制、缓冲网格与原生限制写回，以及另一日期／名称／尺寸的纯namelist双网格公共入口合成工程。合成测试仅证明行为，不是环境精度证据。既有页面绑定测试也通过，但本轮没有浏览器提交这份3GB包，不把AppTest当浏览器验收。现有页面与工具包仍共同调用prepare_uploads，无新界面或用户配置。
+
+保留首次缓冲形状冲突、第二次新增编排中年份变量覆盖y坐标造成的异常、初次DAG外部Artifact类型错误，以及pytest旧临时目录无权限的失败；分别按BUF契约、消除变量遮蔽、已有Artifact协议和新的测试临时目录修复，没有隐藏异常或删除失败。独立验证脚本初次将JSON中的numpy整数序列号当索引失败，其后显式转整型再核验通过。普通namelist双网格的绑定结构差异另由最终新增测试修复；真实v3源快照保留，最终差异不影响已执行模板路径，未重做大包处理凑次数。
+
+源码修改：src/ecodata/models/camx_templates.py、project_binding.py、native_meteorology.py、algorithms/automatic_preparation.py；新增models/engineering/schedule.py、meteorology_schedule.py、collocation.py及algorithms/collocated.py；测试tests/test_generic_engineering_execution.py。此前archive_preflight的可选资源限制修正保持。历史协议、数据、结果和修改前快照未覆盖，不删除更多数据。
+
+证据总目录：D:/codex/EcoDataEngine/output/generic_engineering_execution_20261105，含before/、real_v3_source/、real_v3_input.json、real_v3_result.json、delivery_receipt.json、mechanism_audit.json、sources.json、independent_native_readback.json、tests_final.xml和全部失败日志。实际产品：real_v3/EcoData-updated-project.zip；真实原生副本：real_v3/native_project；逐图与产品：real_v3/meteorology_schedule。最终版本再保存final_source/及逐文件SHA。当前D盘可用约34.88GiB，清理量0。
+
+复核命令：.venv/Scripts/python.exe output/generic_engineering_execution_20261105/verify_native.py；定向回归命令及JUnit已在tests_final.txt/xml中固定。真实入口复现脚本run_real_v3.py使用经SHA验证的原始规范化文件，重新执行须另设新输出目录，不覆盖real_v3。运行目录及协作checkout同步本次代码；未推送GitHub，教师旧免安装ZIP未重打包，不将旧发布包当作已更新。
+
+
+## 2026-11-05 页面执行状态文案修正
+
+按实际manifest拆分融合、原生写回／回读及模型运行状态。workbench_page.py复用当前执行收据：只有tasks中真实LOCAL_RESIDUAL_EXECUTED且processed_observations>0时显示局部观测融合；部分成功单列，不因PROJECT_UPDATED或CONVERTED就宣称融合。原生写回校验依据native_writeback_verified；模型运行依据native_model_executed，缺字段显示未确认。已完成写回不再显示“格式转化接入口已预留”；未转化／失败显示本次状态，不再宣称队友模块不存在。保持布局、控件、算法、数据与历史结果不变。
+
+新增tests/test_workbench_execution_messages.py，覆盖无处理证据不冒充融合、部分处理、单源、局部融合、仅写回、未知模型状态、待转化和失败文案；结合既有原生写回页面与工程绑定页面，实际8项通过，0失败／错误／跳过。页面测试通过AppTest完成，不冒称浏览器验收；未重跑CAMx大包、搜索或数值实验。测试及修改前快照保存在output/page_status_20261105。运行目录和协作checkout同步页面、测试和报告；未推送GitHub，教师免安装ZIP未更新。现有服务健康HTTP200，未强制重启以保护当前页面会话。
+
+
+## 2026-11-05 教师包最新更新合入与1GB内发布
+
+用户要求合入当前平台更新并将发送ZIP压到1GB内，保留无需安装Python、双击一个入口启动。运行目录与协作目录src/integrations/tools初核无差异；基于0f5f5d9及本地未提交更新，将24个新增/变更文件同步到原教师运行目录，后续合入最后一处workbench_page.py状态说明更新。最终以382个源码/配置文件SHA固定快照，并对最终自动释放出的文件逐项核对一致。主要更新为通用工程调度/多日多网格原生输入处理、单站局部校正、实际资源接收与页面执行状态说明；本次仅打包，不改这些科学逻辑或另调评分、随机变异。
+
+保留原教师包主要运行组件，使用7-Zip官方26.05 Extra的独立7za.exe，将约4.419GB运行文件作整体LZMA2压缩，外层仍是标准ZIP；根目录只有打开平台.bat、使用说明.txt和_bundle程序目录。老师首次双击由随包7za自动校验并释放运行文件，随后用随包Python3.12.14启动原平台；后续同版本启动复用已准备运行目录。不需要安装Python、7-Zip、管理员权限或联网下载运行环境。首次释放可能需数分钟，压缩变小不代表解压或运算占用同样变小。版本化运行目录避免新旧源码混装；最后页面更新作为受SHA核验的发布覆盖文件，在首次准备完成前写入，随后才启动Python。没有把用户密钥、WRFDA虚拟机或额外独立深度学习环境塞进包。
+
+官方下载页https://www.7-zip.org/download.html，原工具包https://github.com/ip7z/7zip/releases/download/26.05/7z2605-extra.7z；许可/readme与来源SHA随包保留。最初urllib遇证书链问题，改用Windows受信任TLS下载；py7zr不支持工具原包BCJ2，使用官方7zr解出独立工具，未关闭证书验证。首次启动发现目标PowerShell缺Get-FileHash，改用.NET内置SHA256并从真正批处理入口复验；失败记录保留。
+
+最终ZIP为C:/Users/LX/Desktop/EcoDataEngine_教师免安装更新版_20261105_1GB内.zip，959365019字节（十进制约959.37MB，严格小于1000000000字节），SHA256 4bf5f3a15022520445f6ee429ed5331474ad9d8793c0edbcebf34f5e8878d337；桌面副本SHA再次核验相同，.zip.sha256同目录。内层7z完整测试PASS，外层ZIP CRC PASS。桌面位置用于避免D盘不足1GB的空间压力，未删除用户原数据或历史成果。旧1.70GB包保留为历史版本，不当作已更新。
+
+实际验收：更新源码的29项相关定向测试通过；包内Python对18项工程/资源机制测试通过；最终页面文案与流式身份14项测试通过。首次真实ZIP解包、双击批处理自动释放、健康检查和后续直接启动均通过；最终页面无异常或错误，模块来源均在独立释放目录，382项源文件SHA一致。CALPUFF随包示例由独立包内Python实际点击app.py页面，CONVERTED且无页面错误；之后仅追加页面状态文案，未重复数值搜索，最终状态文案另经页面测试和源码核对。不能把本次打包验收称为所有模型原生求解或独立精度验证。README保留默认无固定10GiB累计展开门槛但受真实资源约束、模型/产品支持边界、WRFDA后端未包含及原生模拟未普遍运行等说明。
+
+证据目录C:/Users/LX/.codex/visualizations/2026/11/05/EcoData_teacher_small_20261105，含来源、source_snapshot.json、packaged_tests.xml、final_page_tests.xml、真实final_page_acceptance.json、latest_release_acceptance.json、final_delivery.json及压缩收据。独立首次准备验收目录C:/Users/LX/EcoDataTeacher_959MB_Check。未推送GitHub。
+
+
+## 2026-11-06 磁盘占用盘点与待手动永久清理
+
+用户要求清理无用新产物及RLV，仅保留后续EcoData研究有用的内容。盘点EcoDataEngine约312.39GiB，其中output约267.35GiB、data约37.74GiB；D:/codex/数据约48.19GiB。主要占用来自重复解压、工作副本、旧打包和工程原生副本，不能归因于几MB源码。原始数据、平台及Git源码/环境/算法权重、WRFDA后端、总报告与关键实验指标/负结果日志均保留。
+
+工具自动审批对直接批量删除、单独RLV删除、隔离区永久删除均拒绝，提示blocked by policy。没有换用其他删除机制绕过。先前采用可恢复隔离移动：RLV、旧教师包/解压验收副本/旧平台更新副本，以及27个大型archive_intake接收中间目录共约107.76GiB移入C盘清理隔离区。此举释放D盘但增加C盘负担，未等同永久删除；用户指出C盘空间问题后停止转移，并承认仅搬移未完成清理目标。D盘当前可用约119GB，C盘约43GB。
+
+已生成固定白名单永久清理计划，包含C盘隔离区、两轮教师运行验收副本、重复压缩包与发布运行副本、pip下载缓存，以及D盘旧handoff/dist和剩余小型接收中间目录；C盘待清约121.75GiB，D盘待清约7.24GiB。新教师包已由用户改名为桌面EcoDataEngine.zip，SHA256与4bf5f3a15022520445f6ee429ed5331474ad9d8793c0edbcebf34f5e8878d337相符；脚本会确认仍有该完整副本，否则跳过可能成为最后发布副本的目标。保留C盘Python基础运行时以免破坏D盘.venv。
+
+用户手动入口C:/Users/LX/Desktop/清理已确认无用副本.bat；调用C:/Users/LX/.codex/visualizations/2026/11/06/EcoData_disk_cleanup/purge_verified_junk.ps1。脚本按绝对路径逐项验证，仅对白名单目标使用Remove-Item，不跟随目标目录链接，不允许父目录覆盖受保护资源；无需再确认，执行后生成permanent_delete_results.json并报告两盘剩余空间。本轮只做语法检查与-Preview只读检查，134个目标预览PASS；受自动审批限制，没有代为执行永久删除，不得称为已经全部删除。未新增平台自动清理逻辑或改科学/模型设置。
+
+盘点、隔离映射、清理计划和摘要集中C:/Users/LX/.codex/visualizations/2026/11/06/EcoData_disk_cleanup，保留在待删除隔离区之外。实际是否完成以permanent_delete_results.json和文件是否仍存在为准。
+
+
+## 2026-11-06 用户进一步授权仅保留平台：清理范围扩展（待手动执行）
+
+用户再次明确D:/codex仅留平台。此指令取代前一轮保留独立原始实验数据与旧文档的较保守范围：新的计划保留EcoDataEngine、EcoDataEngine-GitHub、.ecodata-wrfda、.github-tools；D:/codex其他独立项目、数据目录、旧图表/文档/临时脚本与安装包均列入固定白名单。平台内部data、external、runtime、各运行环境、src/docs及必要示例仍保留，避免删除权重/依赖而破坏功能。
+
+对src进行AST常量路径核查，保留output中的algorithm_library_expansion、capability_models、plan_ranking_models、reliable_selection_calibrations、score_calibrations、three_task_routing_20261020与配置引用的taiwan_2017_preparation_20261019。其余历史输出、交付副本、临时缓存列入清理；不改算法或挪动模型路径。WRFDA配置未引用平台output，独立后端整目录保留。目录链接只删除链接本身，使用非递归链接移除，绝不递归进入链接目标。
+
+清理前已将167684份实验摘要/配置/指标/日志/负结果/小型图表与源快照归入docs/实验记录_清理前保留_20261106.zip，1552287067字节，完整CRC通过，SHA256 14dcf8df0eef094c8e7d7b0583a69c1b2ae2653d55322979ed88dd264853ece4。压缩包不保存全部大数组、原始数据或大型原生工程产品，不能声称清理后仍可完全复现实验；它保留的是记录与证据摘要。手动清理脚本必须先校验该记录包，否则停止。
+
+上次用户手动清理日志仅记录完成第一个隔离区，其余133项PENDING；当前未发现清理进程。C盘已恢复约149GiB空闲，说明隔离区确实由用户运行脚本删除；不能把其余尚未完成项写成已删除。原日志和旧计划均备份在C盘清理审计目录。
+
+更新后的桌面清理已确认无用副本.bat仍调用同一明确白名单脚本，新计划686个目标，预计C盘再清约13.99GiB、D盘约222.97GiB。新增逐项目进度提示与请勿提前关闭提示，大目录可能需数分钟。语法与Windows PowerShell -Preview通过，链接处理、平台/权重保护以及记录包校验均检查通过；Preview没有删除文件。直接永久删除此前被工具自动审批blocked by policy拒绝，本代理未改用其他执行方式绕过，仍需用户双击脚本实际运行。不得把“脚本准备完毕/预览通过”写成“全部清理完成”。
+
+清理映射、旧日志、新白名单与结果准备记录：C:/Users/LX/.codex/visualizations/2026/11/06/EcoData_disk_cleanup。后续以permanent_delete_results.json和实际磁盘空间为准。当前平台源码与运行文件未更改。

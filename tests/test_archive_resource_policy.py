@@ -6,15 +6,15 @@ from ecodata.interface.engineering_upload import LocalUpload
 from ecodata.models import archive_inputs as module
 
 
-@pytest.mark.parametrize('value',['0','65','unlimited','1.5'])
+@pytest.mark.parametrize('value',['0','-1','unlimited','1.5'])
 def test_invalid_deployment_limit_rejected(monkeypatch,value):
     monkeypatch.setenv('ECODATA_ARCHIVE_LIMIT_GIB',value)
-    with pytest.raises(ValueError,match='1至64'):module.deployment_limit()
+    with pytest.raises(ValueError,match='正整数'):module.deployment_limit()
 
 
-def test_default_limit_retained_and_server_override_bounded(monkeypatch):
+def test_no_fixed_default_limit_and_explicit_server_override(monkeypatch):
     monkeypatch.delenv('ECODATA_ARCHIVE_LIMIT_GIB',raising=False)
-    assert module.deployment_limit()==10*1024**3
+    assert module.deployment_limit() is None
     monkeypatch.setenv('ECODATA_ARCHIVE_LIMIT_GIB','32')
     assert module.deployment_limit()==32*1024**3
 

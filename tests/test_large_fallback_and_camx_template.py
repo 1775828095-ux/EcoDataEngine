@@ -12,7 +12,9 @@ def test_large_zip_never_calls_getvalue_in_generic_fallback(tmp_path,monkeypatch
         name=path.name
         def __init__(self):self.path=path
         def getvalue(self):raise AssertionError('Whole archive loaded')
-    monkeypatch.setattr(intake,'MAX_EAGER_SCAN_BYTES',32)
+    from types import SimpleNamespace
+    import psutil
+    monkeypatch.setattr(psutil,'virtual_memory',lambda:SimpleNamespace(available=32))
     with pytest.raises(ValueError,match='未匹配可用的流式工程适配器'):
         intake.scan_model_uploads([StreamingOnly()],include_all=True)
 

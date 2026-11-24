@@ -220,9 +220,8 @@ execute scripts or access a host pathname. Algorithms stay in the public service
 def _update_field(files, declaration_name, raw, configuration, destination):
     """Existing lossless native patcher, bound to THIS uploaded target fingerprint."""
     import numpy as np
-    from netCDF4 import Dataset
     from ecodata.engines.units import UnitEngine
-    from existing_air_converters.native_netcdf_update import update_variable
+    from existing_air_converters.native_netcdf_update import update_variable,_open_native
     required={'target','target_sha256','variable'}
     if not required <= set(configuration):raise ValueError('字段写回缺目标资源、内容指纹或变量')
     target_name,_=files.resolve(declaration_name or 'request.json',configuration['target'])
@@ -241,7 +240,7 @@ def _update_field(files, declaration_name, raw, configuration, destination):
     with files.files[target_name][0]() as stream,template.open('wb') as dest:
         import shutil
         shutil.copyfileobj(stream,dest,8*1024**2)
-    with Dataset('native-template', memory=template.read_bytes()) as native:
+    with _open_native(template,'r') as native:
         if variable not in native.variables or source_variable not in source:raise ValueError('指定目标字段不存在')
         v=native[variable]
         if source[source_variable].dims!=v.dimensions or source[source_variable].shape!=v.shape:

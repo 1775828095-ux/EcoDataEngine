@@ -13,7 +13,7 @@ import zipfile
 import os
 import psutil
 
-from ecodata.interface.engineering_upload import LocalUpload, MAX_TOTAL_BYTES
+from ecodata.interface.engineering_upload import LocalUpload
 from ecodata.models.project_binding import safe_name as _safe_name
 
 
@@ -32,10 +32,10 @@ def _kind(name):
 def deployment_limit():
     """Server policy only; uploads cannot raise their own extraction budget."""
     value=os.environ.get('ECODATA_ARCHIVE_LIMIT_GIB')
-    if value is None:return MAX_TOTAL_BYTES
+    if value is None:return None
     try:amount=int(value)
-    except ValueError:raise ValueError('ECODATA_ARCHIVE_LIMIT_GIB必须是1至64的整数') from None
-    if not 1<=amount<=64:raise ValueError('ECODATA_ARCHIVE_LIMIT_GIB必须是1至64的整数')
+    except ValueError:raise ValueError('ECODATA_ARCHIVE_LIMIT_GIB必须是正整数') from None
+    if amount<1:raise ValueError('ECODATA_ARCHIVE_LIMIT_GIB必须是正整数')
     return amount*1024**3
 
 
@@ -92,7 +92,8 @@ class _Reader:
         self.limit=deployment_limit();self.indexes=[]
 
     def check_size(self,expected):
-        if expected<0 or self.total+expected>self.limit:
+        if expected<0:raise ValueError('压缩成员声明大小为负值')
+        if self.limit is not None and self.total+expected>self.limit:
             raise ValueError(f'压缩资料累计展开超过{self.limit/1024**3:g} GiB接收上限：'
                              f'已展开{self.total}字节，本步声明{expected}字节；嵌套容器与内容均计入；未运行模型')
         ensure_disk_space(self.stage,expected)
@@ -108,7 +109,7 @@ class _Reader:
         with path.open('wb') as out:
             while block:=stream.read(1024*1024):
                 size+=len(block);self.total+=len(block)
-                if size>expected or self.total>self.limit:raise ValueError('压缩资料实际展开大小超过声明或接收上限')
+                if size>expected or (self.limit is not None and self.total>self.limit):raise ValueError('压缩资料实际展开大小超过声明或接收上限')
                 out.write(block)
         if size!=expected:raise ValueError('压缩成员长度与声明不符')
 
@@ -199,7 +200,7 @@ class _Reader:
                 def __init__(self,path,expected):self.stream=path.open('w+b');self.expected=expected;self.written=0
                 def write(self,data):
                     self.written+=len(data);owner.total+=len(data)
-                    if self.written>self.expected or owner.total>owner.limit:raise ValueError('7z实际展开大小超过声明或接收上限')
+                    if self.written>self.expected or (owner.limit is not None and owner.total>owner.limit):raise ValueError('7z实际展开大小超过声明或接收上限')
                     return self.stream.write(data)
                 def read(self,size=None):return self.stream.read(size)
                 def seek(self,offset,whence=0):return self.stream.seek(offset,whence)

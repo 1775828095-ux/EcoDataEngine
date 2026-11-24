@@ -137,6 +137,9 @@ def bind_project(uploads, model_id):
             if prefix.lstrip().lower().startswith(('&' + group_name).encode()):
                 controls.append(name)
         if not controls:
+            if model_id=='camx':
+                from .engineering.schedule import bind_templates
+                return bind_templates(files)
             return None
         if len(controls) != 1:
             raise ValueError('多个工程控制文件，不能自动猜选：' + '、'.join(controls))
@@ -214,7 +217,7 @@ def prepare_project_binding(uploads, model_id, folder, progress=None):
     try:
         binding = bind_project(uploads, model_id)
     except ValueError as exc:
-        if model_id != 'cmaq':raise
+        if model_id not in {'cmaq','camx'}:raise
         # Unresolved declarations still receive the existing read-only report;
         # never turn a partial binding into a native product.
         from .project_inventory import prepare_project_inventory

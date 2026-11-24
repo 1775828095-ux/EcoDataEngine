@@ -37,8 +37,9 @@ class Templates(ShellDeclarations):
         return super().value(s,env)
 
 
-def inspect_template(files,control,text):
+def inspect_template(files,control,text,identities=None):
     import f90nml
+    identities={} if identities is None else identities
     match=re.search(r'(?m)^\s*cat\s+<<\s*(\w+)\s*>\s*CAMx\.in\s*\r?\n',text)
     if not match:return None
     ending=re.search(r'(?m)^'+re.escape(match[1])+r'\s*$',text[match.end():])
@@ -51,7 +52,7 @@ def inspect_template(files,control,text):
     engine.execute(parse(logical_lines(declaration)),{},control)
     if not engine.captures:raise ValueError('CAMx没有确定执行路径的控制模板')
     runs=[];all_bindings=[];unknown=[];produced={}
-    for env in engine.captures:
+    for run_index,env in enumerate(engine.captures):
         # A shell heredoc expands even text quoted for the later Fortran reader.
         rendered=re.sub(r'\$\{\w+\}|\$\w+(?:\[[0-9]+\])?',
             lambda m:engine.expand(m[0],env).text,template)
@@ -72,10 +73,11 @@ def inspect_template(files,control,text):
             for indexes,reference in _values(group[key]):
                 if not reference:continue
                 if not isinstance(reference,str):raise ValueError('CAMx文件引用不是字符串')
-                row=dict(control=control,parameter=key,indexes=list(indexes),original=reference,day=start[:3],activation='ACTIVE')
+                row=dict(control=control,parameter=key,indexes=list(indexes),original=reference,day=start[:3],run_index=run_index,activation='ACTIVE')
                 try:
                     target,reason=files.resolve(control,reference)
-                    row.update(status='BOUND',target=target,sha256=files.identity(target)['sha256'],reason=reason)
+                    if target not in identities:identities[target]=files.identity(target)
+                    row.update(status='BOUND',target=target,sha256=identities[target]['sha256'],reason=reason)
                 except ValueError as exc:
                     # Runtime restart output is a dependency, never pretend it exists.
                     expected=produced.get(reference) if key in restart_keys else None

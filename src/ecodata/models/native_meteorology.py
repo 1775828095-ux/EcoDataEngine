@@ -127,27 +127,49 @@ def native_times(ds):
         for day, clock in values])
 
 
+def native_axes(ds):
+    """Validate CAMx computational versus buffered storage coordinates (met I/O)."""
+    a={k:ds.getncattr(k) for k in ds.ncattrs()}
+    axes=[]
+    for axis,size,dim,cell in [('X','NCOLS','COL','XCELL'),('Y','NROWS','ROW','YCELL')]:
+        n=int(a[size]);stored=len(ds.dimensions[dim]);origin=float(a[axis+'ORIG']);step=float(a[cell])
+        if step<=0:raise ValueError('原生网格间距必须为正')
+        if size+'_BUF' in a or axis+'ORIG_BUF' in a:
+            if size+'_BUF' not in a or axis+'ORIG_BUF' not in a:raise ValueError('缓冲网格元数据不完整')
+            if int(a[size+'_BUF'])!=stored:raise ValueError('缓冲网格声明与存储维度冲突')
+            start=float(a[axis+'ORIG_BUF'])
+            if not ((stored==n and np.isclose(start,origin)) or
+                    (stored==n+2 and np.isclose(start,origin-step))):
+                raise ValueError('不支持的CAMx缓冲网格布局')
+        else:
+            if stored!=n:raise ValueError('存储维度不同但没有缓冲网格元数据')
+            start=origin
+        values=start+(np.arange(stored)+.5)*step
+        if str(ds[axis].units).strip()!='km' or ds[axis].shape!=(stored,) or not np.allclose(ds[axis][:],values/1000,rtol=0,atol=1e-4):
+            raise ValueError('原生X/Y与声明网格中心或单位不一致')
+        axes.append(values)
+    return tuple(axes)
+
+
 def geometry(ds):
     """Reuse CAMx's existing sphere-LCC grid implementation with actual header."""
     from ecodata.models.adapters.camx_emissions import _grid
     a = {k:ds.getncattr(k) for k in ds.ncattrs()}
     if int(a.get('GDTYP',-1)) != 2 or int(a.get('CPROJ',-1)) != 2 or int(a.get('ITZON',99)) != 0:
         raise ValueError('当前原生气象适配支持明确UTC的CAMx球体LCC网格')
-    g, _, _, lon, lat = _grid(dict(projection='LCC', ncols=int(a['NCOLS']), nrows=int(a['NROWS']),
-        xorig=a['XORIG'], yorig=a['YORIG'], xcell=a['XCELL'], ycell=a['YCELL'],
+    x,y=native_axes(ds)
+    g, _, _, lon, lat = _grid(dict(projection='LCC', ncols=len(x), nrows=len(y),
+        xorig=x[0]-a['XCELL']/2, yorig=y[0]-a['YCELL']/2, xcell=a['XCELL'], ycell=a['YCELL'],
         coordinate_units='m', xcent=a['XCENT'], ycent=a['YCENT'], p_alp=a['P_ALP'],
         p_bet=a['P_BET'], itzon=0))
-    expected_x=(g['xorig']+(np.arange(g['ncols'])+.5)*g['xcell'])/1000
-    expected_y=(g['yorig']+(np.arange(g['nrows'])+.5)*g['ycell'])/1000
-    if not np.allclose(ds['X'][:],expected_x) or not np.allclose(ds['Y'][:],expected_y):
-        raise ValueError('原生X/Y与投影网格中心不一致')
     return lon, lat
 
 
 def write_native_copy(source, target, variable, updates, time_indices, cell_indices):
     """Lossless container copy + restricted native-variable patch and full readback."""
     shutil.copyfile(source, target)
-    with Dataset(source) as original, Dataset(target, 'r+') as native:
+    from existing_air_converters.native_netcdf_update import _open_native
+    with _open_native(source,'r') as original, _open_native(target,'r+') as native:
         if native[variable].dimensions != ('TSTEP','LAY','ROW','COL') or native[variable].shape[1] != 1:
             raise ValueError('写回仅支持明确单层二维气象场')
         if updates.shape != (len(time_indices),len(cell_indices)) or not np.isfinite(updates).all():
@@ -156,7 +178,7 @@ def write_native_copy(source, target, variable, updates, time_indices, cell_indi
             plane=np.asarray(native[variable][ti,0,:,:]).copy()
             plane.flat[cell_indices]=updates[k]
             native[variable][ti,0,:,:]=plane
-    with Dataset(source) as original, Dataset(target) as native:
+    with _open_native(source,'r') as original, _open_native(target,'r') as native:
         if original.data_model!=native.data_model or original.ncattrs()!=native.ncattrs():
             raise ValueError('原生格式或全局属性发生变化')
         for key in original.ncattrs():
@@ -202,6 +224,11 @@ def materialize_project(uploads, binding, folder):
             raw=stream.read()
         if hashlib.sha256(raw).hexdigest()!=binding['control']['sha256']:raise ValueError('原控制已变化')
         (folder/'original_control.txt').write_bytes(raw)
+        if binding.get('runs'):
+            from .engineering.schedule import materialize_controls
+            schedule=materialize_controls(binding,mapping,folder)
+            save(folder/'execution_schedule.json',schedule)
+            return mapping,inventory
         nml=f90nml.read(io.StringIO(raw.decode('utf-8-sig')))
         group=nml['camx_control']
         for row in binding['bindings']:
@@ -224,6 +251,9 @@ def prepare_meteorology(uploads, binding, folder, progress=None):
     decoded=_load_observations(uploads)
     if decoded is None:return None
     rows=[r for r in binding['bindings'] if r['parameter']=='met2d_grid']
+    if binding.get('runs') or len(rows)>1:
+        from .engineering.meteorology_schedule import prepare_schedule
+        return prepare_schedule(uploads,binding,folder,decoded,progress)
     if len(rows)!=1:raise ValueError('气象处理需唯一二维气象绑定，嵌套网格尚未支持')
     folder=Path(folder);stage=folder/'meteorology';stage.mkdir(exist_ok=False)
     source=stage/'original_met2d.nc'
