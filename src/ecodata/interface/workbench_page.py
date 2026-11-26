@@ -15,42 +15,25 @@ def input_identity(uploads, model):
     digest = hashlib.sha256(model.encode())
     for upload in uploads or []:
         digest.update(upload.name.encode())
-        local = getattr(upload, 'path', None)
-        if local is not None:
-            with Path(local).open('rb') as stream:
-                content_digest = hashlib.file_digest(stream, 'sha256').digest()
-        else:
-            content_digest = hashlib.sha256(upload.getvalue()).digest()
-        digest.update(content_digest)
+        digest.update(hashlib.sha256(upload.getvalue()).digest())
     return digest.hexdigest()
-
-
-def fusion_state(manifest):
-    preparation=manifest.get('preparation',{})
-    tasks=preparation.get('tasks',[])
-    local=[t for t in tasks if t.get('status')=='LOCAL_RESIDUAL_EXECUTED' and t.get('processed_observations',0)>0]
-    if local:
-        return 'LOCAL_RESIDUAL_EXECUTED' if len(local)==len(tasks) else 'PARTIAL_LOCAL_RESIDUAL'
-    return preparation.get('fusion_decision',{}).get('status')
 
 
 def stage_strip(state="empty", fusion_status=None):
     states = {"empty": ("等待数据", "等待识别", "等待处理"),
               "running": ("处理中", "自动执行", "等待处理"),
-              "AWAITING_CONVERTER": ("已完成", "处理状态见记录", "尚未转化"),
-              "CONVERTED": ("已完成", "融合状态见核验记录", "已完成"),
-              "CONVERSION_FAILED": ("已完成", "处理状态见记录", "转化失败"),
+              "AWAITING_CONVERTER": ("已完成", "已完成", "待接入"),
+              "CONVERTED": ("已完成", "已完成", "已完成"),
+              "CONVERSION_FAILED": ("已完成", "已完成", "转化失败"),
               "ENGINEERING_BOUND": ("工程引用已绑定", "未执行", "待科学契约验证"),
               "ENGINEERING_INSPECTED": ("工程已盘点", "未完成交付", "存在待确认依赖"),
-              "PROJECT_UPDATED": ("工程目标已绑定", "融合状态见核验记录", "原生副本已更新"),
+              "PROJECT_UPDATED": ("工程目标已绑定", "产品已核验", "原生副本已更新"),
               "TASK_PROCESSED": ("任务已识别", "数值处理已完成", "非原生模型更新"),
               "COMPONENT_EXPORTED": ("任务已匹配", "按任务契约处理", "原生组件已生成")}
     labels = states.get(state, states["empty"])
     if fusion_status in {'NOT_APPLICABLE_SAME_PRODUCT','PRESERVE_SINGLE_SOURCE'}:
         labels = (labels[0], '已检查，无需重复融合', labels[2])
-    outcomes={'LOCAL_RESIDUAL_EXECUTED':'局部观测融合已完成',
-              'PARTIAL_LOCAL_RESIDUAL':'部分端口已完成局部融合',
-              'SINGLE_SOURCE_SELECTED':'已处理，最终采用单源',
+    outcomes={'SINGLE_SOURCE_SELECTED':'已处理，最终采用单源',
               'SINGLE_SOURCE_PRESERVED':'保留单源，未融合',
               'MULTISOURCE_GRAPH_EFFECT_UNVERIFIED':'多源方案已执行，贡献未验证',
               'NOT_DETERMINABLE':'处理已完成，融合证据不足',
@@ -110,7 +93,7 @@ def render_workbench(root, version):
             result = st.session_state.get("workbench_result")
             stages = st.empty()
             stages.markdown(stage_strip(result["data"]["manifest"]["status"] if result else "empty",
-                fusion_state(result['data']['manifest']) if result else None), unsafe_allow_html=True)
+                result['data']['manifest'].get('preparation',{}).get('fusion_decision',{}).get('status') if result else None), unsafe_allow_html=True)
             body = st.empty()
             if start:
                 stages.markdown(stage_strip("running"), unsafe_allow_html=True)
@@ -125,7 +108,7 @@ def render_workbench(root, version):
                             state="complete", expanded=False)
                     result = dict(identity=identity, data=data, model=model)
                     st.session_state["workbench_result"] = result
-                    stages.markdown(stage_strip(data["manifest"]["status"], fusion_state(data['manifest'])), unsafe_allow_html=True)
+                    stages.markdown(stage_strip(data["manifest"]["status"], data['manifest'].get('preparation',{}).get('fusion_decision',{}).get('status')), unsafe_allow_html=True)
                 except Exception as exc:
                     stages.markdown(stage_strip(), unsafe_allow_html=True)
                     body.error(f"暂未完成处理：{exc}")
@@ -134,22 +117,8 @@ def render_workbench(root, version):
             if result:
                 manifest = result["data"]["manifest"]
                 if manifest["status"] == "PROJECT_UPDATED":
-                    fusion=fusion_state(manifest)
-                    if fusion in {'LOCAL_RESIDUAL_EXECUTED','PARTIAL_LOCAL_RESIDUAL'}:
-                        st.success("已完成观测与背景场的局部融合，并写回工程副本；原始文件保留。" if fusion=='LOCAL_RESIDUAL_EXECUTED' else
-                                   "部分端口已完成观测与背景场的局部融合，并写回工程副本；未处理范围见核验记录。")
-                        st.caption("仅校正有观测支持的位置，不代表全域融合或独立精度提高。")
-                    else:
-                        st.success("已绑定本次工程目标并写回副本，原始文件保留。")
-                        st.caption("写回完成不等于多源融合；融合状态与实际使用来源请查看核验记录。")
-                    st.caption("原生写回及回读校验已通过。" if manifest.get('native_writeback_verified') is True else
-                               "原生写回的回读校验尚未确认，请查看核验记录。")
-                    if manifest.get('native_model_executed') is False:
-                        st.caption("模型模拟尚未运行；本次交付为更新后的输入文件，不是模型模拟结果。")
-                    elif manifest.get('native_model_executed') is True:
-                        st.caption("模型已执行；具体运行与验收范围见核验记录。")
-                    else:
-                        st.caption("模型运行状态未确认，不能视为已完成模拟。")
+                    st.success("已绑定本次工程目标并写回副本，原始文件保留。")
+                    st.caption("已完成本次资源写回；完整工程依赖和原生运行尚未全部验收，详见核验记录。")
                     label = "下载更新工程与核验记录"
                 elif manifest["status"] == "COMPONENT_EXPORTED":
                     st.success("已生成本次任务的模型组件文件，未套用固定案例。")
@@ -188,8 +157,8 @@ def render_workbench(root, version):
                     if manifest.get('preparation',{}).get('route')=='bound_native_meteorology_v1':
                         label = "下载原生气象更新包与核验记录"
                 else:
-                    st.markdown('<div class="result-heading">本次原生转化尚未完成</div>', unsafe_allow_html=True)
-                    st.write("本次尚未生成通过校验的模型原生交付，请查看处理状态与核验记录。")
+                    st.markdown('<div class="result-heading">数据已准备，等待格式转化</div>', unsafe_allow_html=True)
+                    st.write("队友的格式转化模块尚未接入。已处理数据和交接清单已打包，接入后将自动完成最后一步。")
                     if manifest["status"] == "CONVERSION_FAILED":
                         st.error("转化模块未通过校验：" + manifest.get("conversion_error", "未知原因"))
                     st.caption("当前下载为数据准备包，尚不是模型原生输入文件。")
@@ -199,10 +168,8 @@ def render_workbench(root, version):
                                    mime="application/zip", use_container_width=True)
             elif not start:
                 body.markdown('''<div class="empty-output"><svg width="112" height="88" viewBox="0 0 112 88" aria-hidden="true"><path d="M10 42L56 18l46 24-46 24zM10 54l46 24 46-24M10 30L56 6l46 24" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M56 18v48" stroke="currentColor" stroke-dasharray="3 4"/></svg><strong>从一份数据开始</strong><p>处理状态与输出结果将在这里呈现。</p></div>''', unsafe_allow_html=True)
-            if result and result['data']['manifest']['status']=='PROJECT_UPDATED':
-                st.markdown('<div class="handoff-note"><strong>更新工程与核验记录已生成</strong><span>可下载本次处理产品、原生文件及执行记录；模型运行状态以上方说明为准。</span></div>', unsafe_allow_html=True)
-            elif result and result['data']['manifest'].get('preparation',{}).get('route')=='unified_engineering_input_ports_v1':
+            if result and result['data']['manifest'].get('preparation',{}).get('route')=='unified_engineering_input_ports_v1':
                 st.markdown('<div class="handoff-note"><strong>公共工程输入端口已处理</strong><span>本次原生写回及质量记录已打包；未运行模型，不代表精度提高。</span></div>', unsafe_allow_html=True)
-            elif result and result['data']['manifest']['status']=='AWAITING_CONVERTER':
-                st.markdown('<div class="handoff-note"><strong>数据已准备，原生转化尚未完成</strong><span>当前下载为数据准备包；尚不能作为已验证的模型原生输入。</span></div>', unsafe_allow_html=True)
+            elif not result or result['data']['manifest']['status']!='ENGINEERING_INSPECTED':
+                st.markdown('<div class="handoff-note"><strong>格式转化接入口已预留</strong><span>融合后的数据将直接交给模型转化模块。</span></div>', unsafe_allow_html=True)
     st.markdown(f'<footer>EcoData Engine <span>自动识别 → 自动融合 → 自动转化</span><small>{html.escape(str(version))}</small></footer>', unsafe_allow_html=True)

@@ -1,3 +1,5 @@
+> 当前协作基准：`main` / `platform-baseline-20261126`。使用 `launch_platform.ps1` 启动 PySide 桌面平台；页面、工具包与研究客户端复用 `src/ecodata` 公共服务。历史分支仅供复现，不作为默认运行版。详见 `PLATFORM_BASELINE.json` 的代码/配置指纹。密钥与本机运行环境不入库；CAMx融合和原生写回回读已验收，原生模型求解未运行。
+
 # EcoData Engine
 
 P1 implements one reproducible file pipeline:

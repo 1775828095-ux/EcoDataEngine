@@ -43,9 +43,14 @@ def classification_request(scan,approved):
     return dict(stage="file_classification",target_model=approved.get("target_model"),files=files)
 
 
-def classify(scan,summary,cache,mock,key,progress,feedback,reply):
-    first=classification_request(scan,summary)
-    pending=deque([first["files"]])
+def classify(scan,summary,cache,mock,key,progress,feedback,reply,*, request=None):
+    if request is None:
+        first = classification_request(scan, summary)
+        pending = deque([first["files"]])
+    else:
+        first = request
+        files = first["files"]
+        pending = deque(files[offset:offset + 60] for offset in range(0, len(files), 60))
     kinds={}
     index=0
     while pending:
@@ -130,7 +135,8 @@ def complete_catalogue(scan,summary,kinds):
     consent.pop("max_questions",None)
     return dict(summary,sources=sources,engineering_documents=docs,automatic_local_checks=consent,
                 project_context_document_ids=[doc["id"] for doc in docs if doc["scope"]=="project_context"],
-                algorithm_registry=recommendations.algorithm_registry())
+                algorithm_registry=recommendations.algorithm_registry(),
+                shared_algorithm_catalogue=recommendations.shared_algorithm_catalogue())
 
 
 def questions(scan,responses,catalogue,originals,details):
@@ -231,14 +237,15 @@ def run(scan,summary,cache,mock,key,progress,feedback):
         failure=reply["failures"][0]
         raise ValueError("文件分类未完成："+failure["reason"])
     progress("正在准备完整字段目录和工程说明…")
+    refresh = scan.get("shallow") or not (summary["sources"] or summary.get("engineering_documents"))
     if scan.get("shallow"):
         first_inventory=[(row["name"],row["ref"],row["bytes"]) for row in scan["rows"]]
         scan,_=Scanner().scan(scan["path"],progress=progress)
         if first_inventory!=[(row["name"],row["ref"],row["bytes"]) for row in scan["rows"]]:
             raise ValueError("浅读与完整扫描的文件清单不一致，请检查归档读取警告后重试")
-        summary,_=discovery.discover(scan,summary["target_model"]["id"])
-    elif not summary["sources"] and not summary.get("engineering_documents"):
-        summary,_=discovery.discover(scan,summary["target_model"]["id"])
+    if refresh:
+        refreshed,_=discovery.discover(scan,summary["target_model"]["id"],task_goal=summary.get("task_goal","auto"))
+        summary=dict(refreshed, task_requirements=summary.get("task_requirements", {}))
     catalogue=complete_catalogue(scan,summary,kinds)
     originals,details=catalog_decision.local_fields(scan,catalogue)
     responses=catalog_decision.read_catalogue(catalog_decision.prepare(catalogue),cache,mock,key,progress,
@@ -301,12 +308,10 @@ def run(scan,summary,cache,mock,key,progress,feedback):
         rows=[row for row in dialogue[cid]["decisions"] if row["action"]!="convert_format"]
         reply["decisions"].extend(rows)
         gate.extend(rows)
-        if rows and not any(row["action"] in {"reject","direct","fusion","quality_screen","preprocess"} for row in rows):
-            gate.append(dict(candidate=cid,action="fusion",goal="evaluate_gain",
-                             physical_quantity=next((row["physical_quantity"] for row in rows if row.get("physical_quantity")),None),
-                             reason="条件允许时保留融合试跑"))
+    gate = discovery.workflow_proposals(gate, approved)
     progress("正在核对本地执行入口并整理算法组合…")
-    checked,gated=discovery.check(scan,candidates,dict(decisions=gate),approved,station_matches=checker.station_matches)
+    checked,gated=discovery.check(scan,candidates,dict(decisions=gate),approved,
+                                 station_matches=checker.station_matches,sampled_workflow=True)
     from .fusion_review import HARD_STOPS
     for row in checked:
         if row["action"]=="fusion" and row["status"]!="通过" and row.get("block_code") and row["block_code"] not in HARD_STOPS:

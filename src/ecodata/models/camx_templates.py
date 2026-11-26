@@ -51,12 +51,22 @@ def inspect_template(files,control,text,identities=None):
     declaration=text[:match.start()]+'\nset ECODATA_CAPTURE = __ECODATA_CAPTURE__\n'+text[tail:]
     engine.execute(parse(logical_lines(declaration)),{},control)
     if not engine.captures:raise ValueError('CAMx没有确定执行路径的控制模板')
-    runs=[];all_bindings=[];unknown=[];produced={}
-    for run_index,env in enumerate(engine.captures):
+    controls=[]
+    for env in engine.captures:
         # A shell heredoc expands even text quoted for the later Fortran reader.
         rendered=re.sub(r'\$\{\w+\}|\$\w+(?:\[[0-9]+\])?',
             lambda m:engine.expand(m[0],env).text,template)
         if re.search(r'\$|`',rendered):raise ValueError('CAMx模板包含未解析变量或命令，未生成控制文件')
+        controls.append((control,rendered))
+    return bind_rendered_controls(files,controls,identities,trace=engine.trace)
+
+
+def bind_rendered_controls(files,controls,identities=None,*,trace=None):
+    """Bind actual namelists with the same dependency rules as rendered ones."""
+    import f90nml
+    identities={} if identities is None else identities
+    runs=[];all_bindings=[];unknown=[];produced={}
+    for run_index,(control,rendered) in enumerate(controls):
         group=f90nml.read(io.StringIO(rendered))['camx_control']
         start=group.get('start_date_hour');restart=group.get('restart')
         if not isinstance(start,list) or len(start)!=4 or type(restart) is not bool:
@@ -92,8 +102,8 @@ def inspect_template(files,control,text,identities=None):
             for suffix in ('.inst','.finst'):
                 produced[output+suffix]=dict(run_start=start,output_root=output,
                     native_model_executed=False,note='preceding declared output; requires successful integration')
-    return dict(control=files.identity(control),bindings=all_bindings,unknown=unknown,
+    return dict(control=files.identity(controls[0][0]),bindings=all_bindings,unknown=unknown,
         runs=runs,parser='bounded C-shell declarations + f90nml '+f90nml.__version__,
         commands_executed=False,native_control_generated=True,source_modified=False,
-        native_model_executed=False,trace=engine.trace,
+        native_model_executed=False,trace=trace or [],
         scope='Rendered derivative controls; runtime restart dependencies are not uploaded missing inputs')

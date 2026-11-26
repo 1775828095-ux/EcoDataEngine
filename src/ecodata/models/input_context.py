@@ -12,6 +12,14 @@ STORE=Path(__file__).resolve().parents[3]/'data/approved_input_contexts'
 def find(path,model=None):
     path=Path(path)
     if not path.is_file() or not STORE.is_dir():return None
+    if model:
+        # A context for a different model cannot apply; avoid hashing GB inputs
+        # merely to discover that fact. Same-model matches still require SHA256.
+        records=[]
+        for candidate in STORE.glob('*.json'):
+            try:records.append(json.loads(candidate.read_text(encoding='utf8')))
+            except (OSError,ValueError):continue
+        if not any(item.get('model_id')==model for item in records):return None
     with path.open('rb') as stream:sha=hashlib.file_digest(stream,'sha256').hexdigest()
     record=STORE/(sha+'.json')
     if not record.is_file():return None

@@ -39,6 +39,15 @@ def fit_affine_frames(prediction, reference):
     return slope,intercept,int((~okay).sum())
 
 
+def fit_ratio_frames(prediction, reference):
+    """Existing spatial ratio of sums, with explicit identifiable-date mask."""
+    valid=np.isfinite(prediction)&np.isfinite(reference)
+    denominator=np.where(valid,prediction,0).sum(axis=1,keepdims=True)
+    numerator=np.where(valid,reference,0).sum(axis=1,keepdims=True)
+    okay=(valid.sum(axis=1,keepdims=True)>=2)&(denominator>0)
+    return np.divide(numerator,denominator,out=np.ones_like(numerator),where=okay),okay
+
+
 class QualityAwareFusionPlugin:
     """Bias-correct gridded sources and weight them using held-out validation observations."""
 

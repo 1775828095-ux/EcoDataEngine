@@ -23,7 +23,6 @@ from ecodata.algorithms.golem_generation import TypedGolemFactory
 from ecodata.core.schemas import EcoDataBundle
 from ecodata.recognition import recognise_file,inspect_dataset
 from ecodata.evaluation.quality_gates import RawInputQualityGate
-from ecodata.io.netcdf import load_dataset
 
 VERSION="platform_search_v15_measured_validation_random"
 DEFAULT_BUDGET=dict(objective_limit=5,proposal_limit=50,callback_limit=100,wall_seconds=30)
@@ -113,10 +112,40 @@ def parse_inputs(inputs):
             for key,value in attrs.items():
                 if key in ds[name].attrs and str(ds[name].attrs[key])!=str(value):raise ValueError(f"Conflicting {name}.{key}")
                 ds[name].attrs[key]=value
+        if item.role=='primary':
+            for name in list(ds.data_vars):
+                mask=ds[name].attrs.get('recovery_mask')
+                if not mask:continue
+                if mask not in ds or ds[mask].dims!=ds[name].dims or ds[mask].dtype.kind not in 'biu' or not np.isin(ds[mask].values,[0,1]).all():
+                    raise ValueError('原始真值/估计值掩码契约不完整：'+name)
+                ds[name]=ds[name].where(ds[mask]==0)
         parsed.append((item.role,ds))
         audit.append(dict(role=item.role,descriptor=replace(inspect_dataset("parsed_input",ds),format=info.format).as_dict(),
                           source_filename=item.filename,sha256=hashlib.sha256(item.content).hexdigest(),declarations=meta))
     return parsed,audit
+
+
+def process_cross_variable(inputs,request,folder):
+    """Same public semantic alignment service for desktop and toolkit clients."""
+    from ecodata.algorithms.cross_scale import align_variables
+    started=perf_counter();folder=Path(folder)
+    if (folder/'alignment.json').exists():raise ValueError('Immutable alignment request already exists')
+    parsed,audit=parse_inputs(inputs)
+    variables=request.get('variables',[])
+    if len(variables)!=len(parsed):raise ValueError('Each input needs an explicitly bound variable')
+    if any(role not in {'primary','background','auxiliary'} for role,_ in parsed):
+        raise ValueError('Validation/test resources cannot be cross-variable processing inputs')
+    outputs,report=align_variables([ds for _,ds in parsed],variables,
+        target_grid=request.get('target_grid'),target_frequency=request.get('target_frequency'))
+    folder.mkdir(parents=True,exist_ok=True);products=[]
+    for i,ds in enumerate(outputs):
+        path=folder/f'aligned-{i+1}.nc';ds.to_netcdf(path,engine='h5netcdf')
+        with xr.open_dataset(path) as restored:xr.testing.assert_allclose(ds,restored)
+        products.append(dict(path=str(path),sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
+    report.update(products=products,inputs=audit,request=request,algorithm='scale.semantic_stack',
+        seconds=perf_counter()-started,original_data_modified=False)
+    save(folder/'alignment.json',report)
+    return report
 
 
 class DatasetReference:
@@ -150,6 +179,32 @@ class SearchValidation(DatasetReference):
     def __call__(self,ds):
         # A fixed subset of timestamps; no successful-subset scoring.
         return super().__call__(ds.sel(time=self.reference.time))
+
+
+class BlockedReference(DatasetReference):
+    """Independent temporal-block scoring; labels remain on evaluation side."""
+    def __init__(self,reference,variable,*,role='independent_validation',axes=None):
+        super().__init__(reference,variable,role=role)
+        from ecodata.evaluation.blocked_confirmation import reference_blocks
+        self.blocks=reference_blocks(self.reference,axes or ['time'])
+        self.protocol.update(blocked_confirmation=self.blocks)
+
+    def __call__(self,ds):
+        from ecodata.evaluation.blocked_confirmation import score
+        return score(ds,self.reference,self.variable,self.blocks)
+
+
+class BlockedSearchValidation(SearchValidation):
+    """Same public error protocol, using all fixed required temporal blocks."""
+    def __init__(self,reference,variable,*,axes=None):
+        super().__init__(reference,variable)
+        from ecodata.evaluation.blocked_confirmation import reference_blocks
+        self.blocks=reference_blocks(self.reference,axes or ['time'])
+        self.protocol.update(blocked_confirmation=self.blocks)
+
+    def __call__(self,ds):
+        from ecodata.evaluation.blocked_confirmation import score
+        return score(ds,self.reference,self.variable,self.blocks)
 
 
 class EngineeringMetric:
@@ -242,6 +297,12 @@ def make_context(parsed,request,*,allow_unaligned_time=False):
         ax=overlap_weights(edges(request["target_lon"]),edges(coarse.lon))
         params.update(degradation_operator=sparse.kron(ay,ax,format="csr"),coarse_reference=coarse)
     if state is not None:params["fitted_state"]=state
+    if params.get('observation_state_update'):
+        if observations is None or state is None or not request.get('allow_training'):
+            raise ValueError('Observation state update requires explicit observations, bound prior state and training permission')
+        from ecodata.fusion.observation_state import conditioning_pairs
+        params['observation_state_update']=dict(params['observation_state_update'],nonnegative=bool(request.get('nonnegative',False)))
+        conditioning_pairs(state,sources[0].dataset,observations,variable,params['observation_state_update'])
     if target_grid is not None:params["target_grid"]=target_grid
     constraints=dict(request.get("constraints",{}),unit=unit,output_unit=request.get("output_unit",unit),nonnegative=bool(request.get("nonnegative",False)))
     context=AlgorithmContext(tuple(sources),variable,semantic,
@@ -489,10 +550,48 @@ class RegistryEvaluator:
 
 
 def submit_search(inputs,request,evaluation,folder,*,budget=None,mode="PortraitMutation",seed=11,progress=None,validation=None):
+    from ecodata.core.recovery import session,search_inputs,attach,failed
+    with session(progress=progress) as recovery:
+        try:
+            prepared=search_inputs(inputs)
+            result=_submit_with_review(prepared,request,evaluation,folder,budget=budget,mode=mode,seed=seed,progress=progress,validation=validation)
+        except Exception as exc:
+            failed(exc,folder,recovery);raise
+        return attach(result,folder,recovery)
+
+
+def _submit_with_review(inputs,request,evaluation,folder,*,budget=None,mode="PortraitMutation",seed=11,progress=None,validation=None):
+    """Common review boundary for every backend, page and toolkit request."""
+    started=perf_counter()
+    modern=request.get('review_policy')!='legacy_v1'
+    if modern and mode=='PortraitMutation' and validation is not None and not isinstance(validation,BlockedSearchValidation):
+        ref=validation.reference
+        spatial=ref.sizes.get('lat',1)*ref.sizes.get('lon',1)>1
+        axes=['time'] if request.get('task')=='temporal' or not spatial else ['space','time'] if ref.sizes.get('time',1)>1 else ['space']
+        validation=BlockedSearchValidation(ref,request['variable'],axes=axes)
+        if isinstance(evaluation,DatasetReference):
+            evaluation=BlockedReference(evaluation.reference,request['variable'],role='independent_validation',axes=axes)
+    result=_submit_search(inputs,request,evaluation,folder,budget=budget,mode=mode,seed=seed,progress=progress,validation=validation)
+    backend_finished=perf_counter()
+    from ecodata.evaluation.blocked_confirmation import finalize
+    result=finalize(result,request,folder,inputs=inputs,validation=validation,evaluation=evaluation)
+    result['review_cost']=dict(backend_seconds=backend_finished-started,
+        finalization_seconds=perf_counter()-backend_finished,total_public_service_seconds=perf_counter()-started,
+        note='Wall time includes review/reference metrics; scientific execution, fitting and cache counts stay in total_cost. Not a speed advantage claim')
+    save(Path(folder)/'summary.json',result)
+    return result
+
+
+def _submit_search(inputs,request,evaluation,folder,*,budget=None,mode="PortraitMutation",seed=11,progress=None,validation=None):
     """Single public service used by pages, toolkit and research clients."""
     started=perf_counter();folder=Path(folder)
     if any((folder/name).exists() for name in ("request.json","summary.json")):raise ValueError("Immutable request directory already exists")
     try:
+        if request.get('adapter')=='paired_station_calibration':
+            if evaluation is not None or validation is not None:
+                raise ValueError('Paired adapter owns isolated chronological references')
+            from ecodata.algorithms.paired_station_search import submit
+            return submit(inputs,request,folder,budget=budget,seed=seed,progress=progress)
         if mode=='PortraitMutation':
             request=dict(request,soft_guidance=request.get('soft_guidance',False))
             if type(request['soft_guidance']) is not bool:raise ValueError('soft_guidance must be boolean')
@@ -542,6 +641,8 @@ def submit_search(inputs,request,evaluation,folder,*,budget=None,mode="PortraitM
 def submit_file_request(config,folder):
     """Toolkit JSON client. Scientific policy remains exclusively in submit_search."""
     inputs=[SearchInput(Path(item["path"]).name,item["role"],Path(item["path"]).read_bytes(),item.get("metadata")) for item in config["inputs"]]
+    if config['request'].get('task')=='cross_variable_alignment':
+        return process_cross_variable(inputs,config['request'],folder)
     if config.get('decision_policy')=='current_input' or config['request'].get('decision_policy')=='current_input':
         if config.get('search_validation') or config.get('evaluation'):raise ValueError('Current-input toolkit requests do not consume external selection/test references')
         return process_current_input(inputs,config['request'],folder,budget=config.get('budget'),seed=config.get('seed',11))
@@ -555,10 +656,21 @@ def submit_file_request(config,folder):
     if config.get('search_validation'):
         path=Path(config['search_validation']['path']);data,_=recognise_file(path.name,path.read_bytes())
         validation=SearchValidation(data[variable],variable)
-    return submit_search(inputs,config["request"],evaluation,folder,budget=config.get("budget"),mode=config.get("mode","C-local"),seed=config.get("seed",11),validation=validation)
+    return submit_search(inputs,config["request"],evaluation,folder,budget=config.get("budget"),mode=config.get("mode","PortraitMutation"),seed=config.get("seed",11),validation=validation)
 
 
 def process_current_input(inputs,request,folder,*,budget=None,seed=11,progress=None):
+    from ecodata.core.recovery import session,search_inputs,attach,failed
+    with session(progress=progress) as recovery:
+        try:
+            prepared=search_inputs(inputs)
+            result=_process_with_stability(prepared,request,folder,budget=budget,seed=seed,progress=progress)
+        except Exception as exc:
+            failed(exc,folder,recovery);raise
+        return attach(result,folder,recovery)
+
+
+def _process_with_stability(inputs,request,folder,*,budget=None,seed=11,progress=None):
     result=_process_current_input(inputs,request,folder,budget=budget,seed=seed,progress=progress)
     from .stability import attach
     if progress:progress('方案已冻结；执行有界无真值稳定性检查（不参与选型）')
@@ -680,7 +792,7 @@ def execute_frozen_graph(inputs,request,graph,folder):
         from ecodata.algorithms.current_input import validate_output
         output,checks=validate_output(output,context,request)
         path=folder/'product.nc';clean(output).to_netcdf(path,engine='h5netcdf')
-        xr.testing.assert_allclose(clean(output),load_dataset(path))
+        with xr.open_dataset(path) as f:xr.testing.assert_allclose(clean(output),f.load())
     except Exception as exc:
         save(folder/'deployment.json',dict(status='FAILED',product=None,error=str(exc),graph=graph,
             inputs=audit,input_quality=quality,trace=getattr(exc,'trace',trace),cost=account.receipt(),
@@ -732,7 +844,7 @@ if __name__=="__main__":
     # between __main__ and ecodata.algorithms.platform_search under python -m.
     from ecodata.algorithms.platform_search import submit_file_request as canonical_submit
     result=canonical_submit(json.loads(Path(args.config).read_text(encoding="utf-8")),args.output)
-    print(json.dumps(dict(selected=bool(result.get("best")),counts=result["counts"],stop_reason=result["stop_reason"]),ensure_ascii=False))
+    print(json.dumps(dict(selected=bool(result.get("best")),counts=result.get("counts",{}),stop_reason=result.get("stop_reason","ALIGNMENT_COMPLETED")),ensure_ascii=False))
 
 
 def publish_model_portrait(version,model_id,scenarios,*,evidence,parent_version=None):

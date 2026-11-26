@@ -19,6 +19,9 @@ def checks(rows,failures=()):
     for row in rows:
         if row.get('status') in {'通过','无需新增处理'} or row.get('next_step')=='original_workbench':continue
         if deferred_quality_check(row,rows):continue
+        if row.get('disposition','').startswith('SKIPPED_'):
+            result.append(item('自动排除的建议',row.get('candidate'),row.get('reason'),'无需补填；保留原数据，继续其他可执行步骤。','已自动跳过'))
+            continue
         result.append(item('输入与任务核验',row.get('candidate'),row.get('reason') or row.get('status','核验结果未知'),
             row.get('action_required') or actions.get(row.get('block_code')),row.get('status','待处理')))
     for row in failures:
@@ -36,6 +39,13 @@ def checks(rows,failures=()):
 
 
 def exception(exc):
+    rows=_exception(exc)
+    from ecodata.core.recovery import descriptions
+    return [item('自动补救',e['source'],e['reason'],'其他合法步骤可继续；原始数据保留。',e['status'])
+        for e in descriptions(getattr(exc,'automatic_recovery',None))]+rows
+
+
+def _exception(exc):
     decisions=getattr(exc,'checked_decisions',None)
     if isinstance(decisions,list) and checks(decisions):return checks(decisions)
     report=getattr(exc,'completeness',None)
@@ -50,9 +60,41 @@ def exception(exc):
     return [item('当前操作',None,str(exc))]
 
 
+def recommendation_checks(rows):
+    from .fallback_evidence import eligible
+    from .release_gate import allowed, explanation, has_search_continuation
+
+    result = []
+    for row in rows:
+        release = row.get("execution_release")
+        if not release or row.get("advisory_only") or allowed(row):
+            continue
+        if release["status"] == "released" and row.get("requires_final_confirmation"):
+            result.append(item("算法验收", row["task"], "留出评分已通过，等待 DeepSeek 最终确认。",
+                               "在方案卡片点击「重新请求最终推荐」。"))
+        elif release.get("blockers"):
+            action = ("此推荐不放行；可勾选同任务的合法候选变异，最终仍须复检。"
+                      if has_search_continuation(rows, row["task"]) else
+                      "工作台会在抽检驳回后自动提交全量扰动副本，完成后查看复验状态。"
+                      if eligible(row) and release["status"] == "failed" else
+                      "在方案卡片补充证据或提供新的独立数据。" if eligible(row) else
+                      "在方案卡片查看数据依据与检查前提。")
+            result.append(item("算法验收", row["task"], explanation(release), action))
+    return result
+
+
 def output(result,review=None):
     rows=checks([],result.get('failed_tasks',[]))
     manifest=result.get('manifest',{})
+    from ecodata.core.recovery import descriptions
+    for entry in descriptions(result.get('automatic_recovery') or manifest.get('automatic_recovery')):
+        rows.append(item('自动补救',entry['source'],entry['reason'],'原始文件不变；查看下载包中的补救依据及位置掩码。',entry['status']))
+    continuation=result.get('continuation') or manifest.get('continuation',{})
+    for entry in continuation.get('decisions',[]):
+        status={'BLOCK_STEP':'仅该步骤受阻','SKIP_STEP':'已自动跳过','AUTO_COMPLETED':'已自动补齐',
+                'FALLBACK':'已安全回退','CONTINUE_WITH_WARNING':'提示，不中断其他步骤'}.get(entry['action'],entry['action'])
+        rows.append(item(entry['stage'],entry['target'],entry['reason'],
+            '其他已核验步骤继续；原始数据保留。'+(' 本步骤条件未满足，未伪造完成。' if entry['action']=='BLOCK_STEP' else ''),status))
     gate=manifest.get('final_check',{})
     admission=manifest.get('preparation',{}).get('source_admission',{})
     requirements=[*admission.get('required_information',[]),*manifest.get('requirements_check',{}).get('missing_or_conflicting',[])]

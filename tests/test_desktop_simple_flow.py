@@ -10,6 +10,9 @@ from ecodata.desktop import output_review
 
 @pytest.fixture
 def window(monkeypatch):
+    from ecodata.core import credentials
+    monkeypatch.setattr(credentials,'load',lambda:'')
+    monkeypatch.setattr(credentials,'save',lambda value:None)
     monkeypatch.setenv('DEEPSEEK_API_KEY','test-not-a-real-key')
     app=QApplication.instance() or QApplication([])
     QFontDatabase.addApplicationFont('C:/Windows/Fonts/msyh.ttc')
@@ -54,6 +57,21 @@ def test_prepared_request_automatically_enters_shared_decision(window,monkeypatc
     assert calls==['shared_decision'] and window.auto_phase=='analyze'
 
 
+def test_algorithm_recommendation_audit_hides_provisional_request_and_reply(window):
+    from ecodata.desktop import request_batches, service
+
+    approved=service.preview(dict(stage='recommendation',tasks=[],target_model={'id':'swat_plus','name':'SWAT+'}))
+    batch=request_batches.Batch(approved,('C1:fusion',))
+    window.show_decision_feedback(dict(phase=4,batch=1,request_batch=batch,rows=[],failure=None))
+    assert window.recommend_batch_index.count()==0 and window.decision_batch_index.count()==0
+    assert window.recommend_json.toPlainText()=='正在后台准备算法方案。'
+    window.show_decision_feedback(dict(phase=4,batch=1,notice='已收到推荐',
+                                       rows=['private-provisional-reply'],failure=None))
+    assert window.recommend_json.toPlainText()=='已收到推荐'
+    window.reset_target()
+    assert window.recommend_json.toPlainText()=='' and window.recommend_batch_index.count()==0
+
+
 def test_checked_recipes_pause_for_user_choice_before_execution(window,monkeypatch):
     row=dict(task='C1:fusion',steps=['spatial.blend'])
     check=QCheckBox();window.recommendation_rows=[row];window.recommendation_checks=[check]
@@ -61,7 +79,7 @@ def test_checked_recipes_pause_for_user_choice_before_execution(window,monkeypat
     window.auto_run=True;window.continue_automatically(dict(failures=[]),[dict(status='通过')])
     assert calls==[] and not window.auto_run
     assert window.tabs.currentIndex()==1 and check.isChecked()
-    assert '勾选方案' in window.workflow_status.text()
+    assert '继续处理' in window.workflow_status.text()
 
 
 def test_blocked_engineering_never_gets_blanket_permission(window,monkeypatch):

@@ -1,0 +1,8 @@
+.libPaths(c('external/R-library', .libPaths()))
+library(aqp)
+print(data(package='aqp')$results[,3:4])
+data(sp2, package='aqp')
+print(class(sp2))
+print(head(sp2))
+print(names(sp2))
+print(utils:::.getHelpFile(help('sp2', package='aqp')))

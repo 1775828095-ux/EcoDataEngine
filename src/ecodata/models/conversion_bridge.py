@@ -89,6 +89,13 @@ def finish_preparation(folder, model_id, products, receipt):
     except Exception as exc:
         outputs=[]
         manifest.update(status='CONVERSION_FAILED', native_ready=False, conversion_error=str(exc))
+    from ecodata.core.continuation import decision as step_decision,receipt as continuation_receipt
+    events=[]
+    if manifest['status']!='CONVERTED':
+        events.append(step_decision('conversion','native_conversion',
+            manifest.get('conversion_error','没有当前任务适用的转换器；保留已处理产品')))
+    manifest['continuation']=continuation_receipt(events,
+        ['data_preparation']+(['native_conversion'] if manifest['status']=='CONVERTED' else []))
     save()
     archive=folder/'EcoData-output.zip'
     members=[path, *map(Path, products), *reports, *outputs]

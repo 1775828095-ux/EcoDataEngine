@@ -31,7 +31,7 @@ def sst_sources(uploads):
         files=ProjectFiles(uploads,stack)
         for name in sorted(files.files):
             if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
-            with files.files[name][0]() as stream,xr.open_dataset(stream) as d:
+            with files.netcdf(name) as d:
                 if 'sst' not in d or 'Optimum Interpolation' not in str(d.attrs.get('title','')):continue
                 record=dict(resource=files.identity(name))
                 # Multi-date derived subsets can carry stale one-day metadata.
@@ -91,7 +91,7 @@ def prepare_wrf_meteorology(uploads,binding,folder,progress=None):
     for row in rows:
         with ExitStack() as stack:
             files=ProjectFiles(uploads,stack)
-            with files.files[row['target']][0]() as stream,xr.open_dataset(stream,decode_times=False) as d:
+            with files.netcdf(row['target'],decode_times=False) as d:
                 times=wrf_times(d.Times.values)
                 lon=np.asarray(d.XLONG[0]);lat=np.asarray(d.XLAT[0])
                 if lon.shape!=lat.shape:raise ValueError('WRF经纬度支持不一致')

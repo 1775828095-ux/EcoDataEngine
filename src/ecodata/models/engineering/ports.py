@@ -89,7 +89,7 @@ def netcdf_ports(files,model,metadata):
     ports=[];unknown=[]
     for name in sorted(roles):
         if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
-        with files.files[name][0]() as stream,xr.open_dataset(stream,decode_times=False) as opened:
+        with files.netcdf(name,decode_times=False) as opened:
             ds=opened.load()
         from ecodata.models.native_source_inspection import native_container_evidence
         native_container_evidence(model,ds.attrs,ds.variables)

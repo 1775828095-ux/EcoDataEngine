@@ -14,7 +14,7 @@ from .collocation import process_collocations
 
 
 def prepare_schedule(uploads,binding,folder,decoded,progress=None):
-    from existing_air_converters.native_netcdf_update import _open_native
+    from netCDF4 import Dataset as _open_native
     folder=Path(folder);stage=folder/'meteorology_schedule';stage.mkdir()
     save(folder/'project_binding.json',binding)
     rows=[r for r in binding['bindings'] if r['parameter']=='met2d_grid' and r.get('status','BOUND')=='BOUND']

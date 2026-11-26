@@ -24,17 +24,23 @@ class ConnectTimeout(TimeoutError):
 
 
 class APIConnection(HTTPSConnection):
+    def __init__(self,*args,read_timeout=None,**kwargs):
+        self.read_timeout=READ_TIMEOUT if read_timeout is None else read_timeout
+        super().__init__(*args,**kwargs)
+
     def connect(self):
         try:
             super().connect()
         except TimeoutError as error:
             raise ConnectTimeout() from error
-        self.sock.settimeout(READ_TIMEOUT)
+        self.sock.settimeout(self.read_timeout)
 
 
 class APIHTTPSHandler(urllib.request.HTTPSHandler):
     def https_open(self, request):
-        return self.do_open(APIConnection, request, context=self._context)
+        timeout=getattr(request,'ecodata_read_timeout',None)
+        factory=APIConnection if timeout is None else lambda *a,**k:APIConnection(*a,read_timeout=timeout,**k)
+        return self.do_open(factory, request, context=self._context)
 
 
 class StreamInterrupted(OSError):
@@ -42,11 +48,11 @@ class StreamInterrupted(OSError):
 
 
 @contextmanager
-def waiting(progress, stage, attempt):
+def waiting(progress, stage, attempt, *, attempt_limit=None):
     stopped = Event()
     started = time.monotonic()
     phase = ["正在连接官网"]
-    prefix = f"DeepSeek {STAGES.get(stage,stage)} · 第 {attempt}/{ATTEMPTS} 次尝试"
+    prefix = f"DeepSeek {STAGES.get(stage,stage)} · 第 {attempt}/{ATTEMPTS if attempt_limit is None else attempt_limit} 次尝试"
 
     def emit():
         progress(f"{prefix} · {phase[0]} · 已等待 {int(time.monotonic()-started)} 秒")
@@ -70,7 +76,7 @@ def waiting(progress, stage, attempt):
         worker.join()
 
 
-def read_reply(response, update):
+def read_reply(response, update, *, total_timeout=None):
     started = time.monotonic()
     content = []
     tool_calls = {}
@@ -78,7 +84,7 @@ def read_reply(response, update):
     finish = None
     first = True
     while True:
-        if time.monotonic()-started > TOTAL_TIMEOUT:
+        if time.monotonic()-started > (TOTAL_TIMEOUT if total_timeout is None else total_timeout):
             raise TimeoutError("total_response_timeout")
         raw = response.readline()
         if not raw:
@@ -169,22 +175,28 @@ def record_failure(stage, digest, attempt, elapsed, error, message):
         pass
 
 
-def fetch(request, opener, stage, digest, progress):
+def fetch(request, opener, stage, digest, progress, *, attempts=None,total_timeout=None):
     overall = time.monotonic()
-    for attempt in range(1,ATTEMPTS+1):
+    limit=ATTEMPTS if attempts is None else attempts
+    if total_timeout is not None:request.ecodata_read_timeout=min(READ_TIMEOUT,total_timeout)
+    for attempt in range(1,limit+1):
         connected = False
         started = time.monotonic()
         try:
-            with waiting(progress,stage,attempt) as update:
+            with waiting(progress,stage,attempt,attempt_limit=limit) as update:
                 with opener.open(request,timeout=CONNECT_TIMEOUT) as response:
                     connected = True
                     update("已连接，等待思考结果")
+                    if total_timeout is not None:
+                        sock=getattr(getattr(getattr(response,'fp',None),'raw',None),'_sock',None)
+                        if sock is not None:sock.settimeout(min(READ_TIMEOUT,total_timeout))
+                        return read_reply(response,update,total_timeout=total_timeout)
                     return read_reply(response,update)
         except urllib.error.HTTPError as error:
             retry = error.code in {429,500,502,503,504}
             message = f"官网返回 HTTP {error.code}"
             record_failure(stage,digest,attempt,time.monotonic()-started,error,message)
-            if not retry or attempt==ATTEMPTS:
+            if not retry or attempt==limit:
                 error.attempt_count = attempt
                 error.elapsed_seconds = round(time.monotonic()-overall,1)
                 raise
@@ -192,7 +204,7 @@ def fetch(request, opener, stage, digest, progress):
         except (urllib.error.URLError,OSError,IncompleteRead) as error:
             message,retry = failure_info(error,connected)
             record_failure(stage,digest,attempt,time.monotonic()-started,error,message)
-            if not retry or attempt==ATTEMPTS:
+            if not retry or attempt==limit:
                 raise ValueError(f"DeepSeek {message}；共尝试 {attempt} 次，耗时 {time.monotonic()-overall:.1f} 秒。") from None
         delay = attempt*2
         progress(f"DeepSeek {message} · {delay} 秒后自动重试（第 {attempt+1}/{ATTEMPTS} 次）")

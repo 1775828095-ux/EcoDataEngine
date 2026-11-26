@@ -42,8 +42,12 @@ def submit(inputs, request, folder, *, model_id=None, daily_amount=False, progre
     from ecodata.algorithms.platform_search import submit_search
 
     request = model_request(request, model_id, daily_amount=daily_amount)
-    return submit_search(inputs, request, None, Path(folder), progress=progress,
+    result = submit_search(inputs, request, None, Path(folder), progress=progress,
         budget=dict(objective_limit=130, total_call_limit=180, proposal_limit=100, wall_seconds=45))
+    if progress:
+        gate=result.get('post_mutation_acceptance',{})
+        progress('变异后独立复检 · '+gate.get('status','UNCONFIRMED')+'；未通过不作为增强方案推荐。')
+    return result
 
 
 def pareto_comparison(rankings):
@@ -61,3 +65,44 @@ def pareto_comparison(rankings):
     front = NonDominatedSorting().do(scores, only_non_dominated_front=True)
     return dict(backend="pymoo", scope="same_fixed_selection_folds", used_for_selection=False,
                 objectives=objectives, candidates=[rankings[int(index)] for index in front])
+
+
+def run_paired(scan, task_id, task, frame, request, folder, progress, queues, *, source_indices):
+    """Common real paired-series mutation and product export, no selection policy."""
+    from pathlib import Path
+    import json
+    from ecodata.algorithms.platform_search import SearchInput, submit_search
+    from ecodata.algorithms.paired_station_search import DEFAULT_BUDGET
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    if task.get('review_risk_limits'):
+        request=dict(request,review_risk_limits=task['review_risk_limits'])
+    result=submit_search([SearchInput('paired.csv','paired_observations',frame.to_csv(index=False).encode())],request,None,
+        folder/'mutation',budget=dict(DEFAULT_BUDGET,**task.get('mutation_budget',{})),seed=task.get('seed',11),progress=progress)
+    files=[];artifacts=[];reports=[]
+    for index,station in enumerate(result['stations'],1):
+        if (task.get('search_after_rejection') and station.get('product')
+                and not station.get('post_mutation_acceptance', {}).get('recommended')
+                and station.get('delivery_status') != 'BASELINE_RETAINED'):
+            raise ValueError('变异产物未获最终验收，且没有可交付的质量基线')
+        product=station.get('product')
+        if product:
+            path=Path(product);name=f'station-{index}-product.nc';files.append((name,path.read_bytes()))
+            import xarray as xr
+            with xr.open_dataset(path) as ds:
+                artifacts.append(dict(name=name,dimensions=dict(ds.sizes),fields=list(ds.data_vars)))
+        root=folder/'mutation'/f'station-{index}'/'search'
+        candidate=station.get('candidate_product')
+        if candidate and candidate!=product:
+            files.append((f'station-{index}-exploratory-candidate.nc',Path(candidate).read_bytes()))
+        review=folder/'mutation'/f'station-{index}'/'recommendation_review.json'
+        if review.exists():files.append((f'station-{index}-recommendation-review.json',review.read_bytes()))
+        for leaf in ['graphs.json','mutation_trace.json','recommendation_validation.json','selection_freeze.json','summary.json']:
+            if (root/leaf).exists():files.append((f'station-{index}-'+leaf,(root/leaf).read_bytes()))
+        reports.append(dict(mutation_search=station,methods=task['recipes'][0],queue_audit=queues,
+            unit=task['unit'],matched_records=len(frame),stations=frame.station.nunique()))
+    files.append(('paired-mutation-summary.json',json.dumps(result,ensure_ascii=False,indent=2,default=str).encode()))
+    if not artifacts:raise ValueError('No paired station mutation product: '+str(result['stations']))
+    return dict(files=files,source_formats=[scan['rows'][i]['format'] for i in source_indices],
+        target_format='NetCDF',original_report=reports,local=dict(artifacts=artifacts,native_ready=False,
+            reason='公共变异服务已执行；产品为未定位序列预测，不推断地理坐标或模型运行。' if request.get('unlocated_series') else '公共变异服务已执行；产品为站点位置的时间预测，不是原生网格写回或模型运行。'),
+        mutation_status=result['status'])

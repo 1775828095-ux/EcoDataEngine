@@ -57,7 +57,7 @@ or fused products must retain this provenance and the actual native support.
         files=ProjectFiles(uploads,stack)
         if resource not in files.files:raise ValueError('工程资源不存在：'+resource)
         resource_id=files.identity(resource)
-        with files.files[resource][0]() as stream, xr.open_dataset(stream,decode_times=False) as ds:
+        with files.netcdf(resource,decode_times=False) as ds:
             from ..native_source_inspection import native_container_evidence
             native_container_evidence(model_id,ds.attrs,ds.variables)
             if variable not in ds or not ds[variable].attrs.get('units'):
@@ -94,7 +94,7 @@ def bind_native_product(files,model_id,raw,configuration):
     if len(hits)!=1:raise ValueError('原生来源须唯一匹配，实际匹配数量：'+str(len(hits)))
     target=hits[0];source_variable=configuration.get('source_variable',variable)
     if source_variable not in product:raise ValueError('处理产品缺少绑定字段')
-    with files.files[target][0]() as stream, xr.open_dataset(stream,decode_times=False) as native:
+    with files.netcdf(target,decode_times=False) as native:
         from ..native_source_inspection import native_container_evidence
         evidence=native_container_evidence(model_id,native.attrs,native.variables)
         native_signature=support_signature(native,variable)

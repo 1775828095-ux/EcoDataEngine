@@ -5,14 +5,9 @@ import hashlib
 import io
 import zipfile
 
-# Eager fallback holds input bytes and downstream copies. Check current memory,
-# not a fixed dataset-size cap; native routes remain streaming.
-def ensure_scan_memory(size, retained=0):
-    import psutil
-    available=psutil.virtual_memory().available
-    if size<0 or 3*size+retained>available:
-        raise ValueError('当前资料未匹配可用的流式工程适配器；预计内存不足，'
-            f'本步数据{size}字节，已保留{retained}字节，可用内存{available}字节；未继续整包加载')
+# Shared with native bundle converters; retain the deployed 10 GiB policy.
+MAX_FILE_BYTES = 10 * 1024 * 1024 * 1024
+MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024
 
 
 SUPPORTED_SUFFIXES = {".csv", ".tsv", ".txt", ".rdb", ".gz", ".isd", ".xlsx",
@@ -102,20 +97,11 @@ def _group(name):
 
 
 def _members(upload, *, expand_archives=True):
-    name = _normalise(upload.name)
-    local=getattr(upload,'path',None)
-    if PurePosixPath(name).suffix.casefold()=='.zip' and expand_archives:
-        source=Path(local) if local is not None else io.BytesIO(upload.getvalue())
-        with zipfile.ZipFile(source) as archive:
-            declared=sum(i.file_size for i in archive.infolist() if not i.is_dir())
-            ensure_scan_memory(declared)
-    elif local is not None:
-        ensure_scan_memory(Path(local).stat().st_size)
+    name, content = _normalise(upload.name), upload.getvalue()
     if PurePosixPath(name).suffix.casefold() != ".zip" or not expand_archives:
-        content=upload.getvalue()
         return [(name, content, None)]
     members = []
-    with zipfile.ZipFile(source) as archive:
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
         for info in archive.infolist():
             if info.is_dir():
                 continue
@@ -129,7 +115,7 @@ def _members(upload, *, expand_archives=True):
 
 def scan_model_uploads(uploads, *, classify_wasp=False, expand_archives=True, include_all=False):
     """Expand model folders/ZIPs, filter unsafe files and deduplicate content."""
-    result, seen = UploadScan(), {};total_bytes=0
+    result, seen = UploadScan(), {}
     for upload in uploads or []:
         try:
             members = _members(upload, expand_archives=expand_archives)
@@ -143,8 +129,6 @@ def scan_model_uploads(uploads, *, classify_wasp=False, expand_archives=True, in
             if not _safe_name(name):
                 result.ignored.append({"file": name, "reason": "不安全路径"})
                 continue
-            total_bytes+=len(content)
-            ensure_scan_memory(0,retained=total_bytes)
             group, reason = _group(name)
             if include_all:
                 reason=None  # Native content/reference checks decide its role.

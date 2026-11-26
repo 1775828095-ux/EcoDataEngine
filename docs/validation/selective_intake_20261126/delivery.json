@@ -1,0 +1,644 @@
+{
+  "version": "selective-intake-20261126-v1",
+  "source_fingerprints": {
+    "src/ecodata/models/project_binding.py": "c4f50e22aac822caf0e0fa9addde1ff3dec8a229a74ff65288338f125c0e4d81",
+    "src/ecodata/models/archive_inputs.py": "449febc2c7b7bd0e1b162f1181e15f9cc01a2c59bdcc5c29734d3a31e43f636f",
+    "src/ecodata/models/selective_resources.py": "01980069cec26ccfe0b474f7533aa3316d37e9b82b0d953d3e799552e9ec42da",
+    "src/ecodata/models/native_meteorology.py": "f5fe8ff5981c7b925a2e5d3e97032a1e9d90e51e7d76b5c6131451660c34bb0f",
+    "src/ecodata/algorithms/automatic_preparation.py": "fce84ac40a3d050b6f1518016a738d1dc1c3010657733ccb3d988068523befef",
+    "src/ecodata/models/camx_templates.py": "9c41c15e65822996194abade4d6f120be7fcd18fc9c6b620fdc224e830a76670",
+    "src/ecodata/models/engineering/schedule.py": "d98e77148d5e1020e107f457d3cf62ab751e8dd1c1138e0c00567d57c9292832",
+    "src/ecodata/models/engineering/meteorology_schedule.py": "7cb2d8bb5c8c1a868a5d3eb9aa5ab716630e540bc5e86335dd3f1bd09a8f9c69",
+    "src/ecodata/models/engineering/collocation.py": "a352ae6fc67ed3ec27304834c685bddc81d8055b893dd6dc9d7133dd472e18e5",
+    "src/ecodata/algorithms/collocated.py": "05ac0d2c655d41223b077e31373f0f2b5b56415dc519b057dad62b10f046f059",
+    "src/ecodata/models/final_check.py": "6a8757c73ec8f0859abf3a9897b838d97efaab4805a94d5e1acbd3276198338a",
+    "src/ecodata/models/final_native_check.py": "46ac4f71afa8c22c27237c681a1636598641a10eb1e178cc891868ab0007dfce",
+    "tests/test_selective_resources.py": "47ab729c10ecc275b46036ceb01b9757ea68a5aa78038ff4f6c05733d07f4ca0",
+    "tests/test_temporary_archive_cleanup.py": "deb53b684c63fa5e8154c865e0908c00ac09eaca4df468e1e63ed60793414b11"
+  },
+  "integration_execution": "execution.json",
+  "affected_output_gate": "final_recheck/final_check.json",
+  "qualification": "Full processing run followed by only the affected gate recheck; later header-cache bound, flat-schedule entry and receipt placement verified by targeted tests, not a repeated full numerical run.",
+  "tests": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "0",
+    "tests": "42",
+    "time": "18.086",
+    "timestamp": "2026-11-26T14:19:14.958031+08:00",
+    "hostname": "LAPTOP-E2PBSC6K"
+  },
+  "native_validation": [
+    {
+      "status": "PASS",
+      "native_data_model": "NETCDF3_CLASSIC",
+      "changed_values": 9,
+      "edited_variable": "t2",
+      "other_variables_and_metadata_equal": true,
+      "time_flags_equal": true,
+      "unprocessed_support_equal": true,
+      "native_model_executed": false,
+      "resource": "official_archives/met/camx.2d.36km.20160610.nc",
+      "run_index": 0,
+      "processed_times": 9,
+      "processed_cells": 1
+    },
+    {
+      "status": "PASS",
+      "native_data_model": "NETCDF3_CLASSIC",
+      "changed_values": 9,
+      "edited_variable": "t2",
+      "other_variables_and_metadata_equal": true,
+      "time_flags_equal": true,
+      "unprocessed_support_equal": true,
+      "native_model_executed": false,
+      "resource": "official_archives/met/camx.2d.12km.20160610.nc",
+      "run_index": 0,
+      "processed_times": 9,
+      "processed_cells": 1
+    },
+    {
+      "status": "PASS",
+      "native_data_model": "NETCDF3_CLASSIC",
+      "changed_values": 7,
+      "edited_variable": "t2",
+      "other_variables_and_metadata_equal": true,
+      "time_flags_equal": true,
+      "unprocessed_support_equal": true,
+      "native_model_executed": false,
+      "resource": "official_archives/met/camx.2d.36km.20160611.nc",
+      "run_index": 1,
+      "processed_times": 7,
+      "processed_cells": 1
+    },
+    {
+      "status": "PASS",
+      "native_data_model": "NETCDF3_CLASSIC",
+      "changed_values": 7,
+      "edited_variable": "t2",
+      "other_variables_and_metadata_equal": true,
+      "time_flags_equal": true,
+      "unprocessed_support_equal": true,
+      "native_model_executed": false,
+      "resource": "official_archives/met/camx.2d.12km.20160611.nc",
+      "run_index": 1,
+      "processed_times": 7,
+      "processed_cells": 1
+    }
+  ],
+  "format": "PASS",
+  "project_binding": "PASS",
+  "native": {
+    "engine": "D:\\EcoDataEngine\\work\\camx740\\src.v7.40\\CAMx.v7.40.noMPI.NCF4.gfortran",
+    "sha256": "6a37a63b5f2b65ca520a83e40b29861ef66407812fd3c6619231cfd586a67d89",
+    "transport": "WSL EcoData-WRF-Ubuntu2204",
+    "status": "NOT_RUN",
+    "reason": "本机未安装已登记且指纹固定的匹配程序：D:\\EcoDataEngine\\work\\camx740\\src.v7.40\\CAMx.v7.40.noMPI.NCF4.gfortran",
+    "model_read_confirmed": false
+  },
+  "full_seconds": 436.8309235000006,
+  "peak_rss_bytes": 292024320,
+  "source_sha256_unchanged": true,
+  "temporary_cleaned": true,
+  "selective_cleanup": {
+    "schema": "ecodata.temporary-cleanup.v1",
+    "status": "COMPLETED",
+    "removed": [],
+    "retained": [],
+    "failures": [],
+    "released_bytes": 14055908283,
+    "scope": "Only newly created intake copies of this invocation; no historical workspace sweep",
+    "selective_resources": {
+      "schema": "ecodata.selective-resources.v1",
+      "indexed_members": 84,
+      "selected_members": [
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h_CF3_SIMPLE_NoEvap",
+          "bytes": 29092,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3_COMPLX",
+          "bytes": 32958,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07_CF3_COMPLX",
+          "bytes": 41403,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2_CF3_SIMPLE_NoEvap",
+          "bytes": 39623,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.RACM2_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/tuv.do_CB6r5.20160611",
+          "bytes": 3120021,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/tuv.do_CB6r5.20160611"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h_CF3_SIMPLE",
+          "bytes": 29078,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07_CF3_COMPLX_NoEvap",
+          "bytes": 41417,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h",
+          "bytes": 27018,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.inert",
+          "bytes": 706,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.inert"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3_SIMPLE_NoEvap",
+          "bytes": 32972,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07_CF3_SIMPLE",
+          "bytes": 41403,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3_SIMPLE",
+          "bytes": 32958,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5",
+          "bytes": 18489,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3E_COMPLX",
+          "bytes": 33567,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3E_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5_CF3_COMPLX_NoEvap",
+          "bytes": 20760,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h_CF3_COMPLX",
+          "bytes": 29078,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2_CF3_SIMPLE",
+          "bytes": 39609,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.RACM2_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/tuv.do_CB6r5.20160610",
+          "bytes": 3120021,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/tuv.do_CB6r5.20160610"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07_CF3_SIMPLE_NoEvap",
+          "bytes": 41417,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5_CF3_SIMPLE",
+          "bytes": 20746,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h_CF3_COMPLX_NoEvap",
+          "bytes": 29092,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2",
+          "bytes": 37510,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.RACM2"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2_CF3_COMPLX_NoEvap",
+          "bytes": 39623,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.RACM2_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5_CF3_SIMPLE_NoEvap",
+          "bytes": 20760,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/o3map.201606.txt",
+          "bytes": 14710,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/o3map.201606.txt"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3E_EQSAM_COMPLX",
+          "bytes": 33567,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3E_EQSAM_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2_CF3_COMPLX",
+          "bytes": 39609,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.RACM2_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07",
+          "bytes": 39290,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5_CF3_COMPLX",
+          "bytes": 20746,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3_COMPLX_NoEvap",
+          "bytes": 32972,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3",
+          "bytes": 30686,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3"
+        },
+        {
+          "path": "official_archives/icbc/bc.36km.20160610.nc",
+          "bytes": 262562040,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/icbc/bc.36km.20160610.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.area.POA_OP.20160610.36km.nc",
+          "bytes": 74801768,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.area.POA_OP.20160610.36km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.area.POA_OP.20160610.12km.nc",
+          "bytes": 117806184,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.area.POA_OP.20160610.12km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.mobile.POA_IC.20160610.36km.nc",
+          "bytes": 74801784,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.mobile.POA_IC.20160610.36km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.mobile.POA_IC.20160610.12km.nc",
+          "bytes": 117806200,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.mobile.POA_IC.20160610.12km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.pt.20160610.36km.nc",
+          "bytes": 76182128,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.pt.20160610.36km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.pt.20160610.12km.nc",
+          "bytes": 119980464,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.pt.20160610.12km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.natural.POA_BB.20160610.36km.nc",
+          "bytes": 54088696,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.natural.POA_BB.20160610.36km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.natural.POA_BB.20160610.12km.nc",
+          "bytes": 85184312,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.natural.POA_BB.20160610.12km.nc"
+        },
+        {
+          "path": "official_archives/icbc/ic.36km.20160610.nc",
+          "bytes": 65868264,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/icbc/ic.36km.20160610.nc"
+        },
+        {
+          "path": "official_archives/met/camx.2d.36km.20160610.nc",
+          "bytes": 24688760,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.2d.36km.20160610.nc"
+        },
+        {
+          "path": "official_archives/met/camx.2d.12km.20160610.nc",
+          "bytes": 38880496,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.2d.12km.20160610.nc"
+        },
+        {
+          "path": "official_archives/met/camx.3d.36km.20160610.nc",
+          "bytes": 316558100,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.3d.36km.20160610.nc"
+        },
+        {
+          "path": "official_archives/met/camx.3d.12km.20160610.nc",
+          "bytes": 498630836,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.3d.12km.20160610.nc"
+        },
+        {
+          "path": "official_archives/ptsrce/point.camx.othpt.POA_OP.20160610.nc",
+          "bytes": 1968661572,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/ptsrce/point.camx.othpt.POA_OP.20160610.nc"
+        },
+        {
+          "path": "official_archives/ptsrce/point.camx.ptnonipm.POA_AV.20160610.nc",
+          "bytes": 1256499548,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/ptsrce/point.camx.ptnonipm.POA_AV.20160610.nc"
+        },
+        {
+          "path": "official_archives/ptsrce/point.camx.pt_oilgas.20160610.nc",
+          "bytes": 178855720,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/ptsrce/point.camx.pt_oilgas.20160610.nc"
+        },
+        {
+          "path": "official_archives/met/camx.lu.36km.20160610.nc",
+          "bytes": 1795152,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.lu.36km.20160610.nc"
+        },
+        {
+          "path": "official_archives/met/camx.lu.12km.20160610.nc",
+          "bytes": 2821048,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.lu.12km.20160610.nc"
+        },
+        {
+          "path": "official_archives/met/camx.kv.36km.20160610.YSU.nc",
+          "bytes": 28991384,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.kv.36km.20160610.YSU.nc"
+        },
+        {
+          "path": "official_archives/met/camx.kv.12km.20160610.YSU.nc",
+          "bytes": 45664120,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.kv.12km.20160610.YSU.nc"
+        },
+        {
+          "path": "official_archives/icbc/bc.36km.20160611.nc",
+          "bytes": 262562040,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/icbc/bc.36km.20160611.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.area.POA_OP.20160611.36km.nc",
+          "bytes": 74801768,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.area.POA_OP.20160611.36km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.area.POA_OP.20160611.12km.nc",
+          "bytes": 117806184,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.area.POA_OP.20160611.12km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.mobile.POA_IC.20160611.36km.nc",
+          "bytes": 74801784,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.mobile.POA_IC.20160611.36km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.mobile.POA_IC.20160611.12km.nc",
+          "bytes": 117806200,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.mobile.POA_IC.20160611.12km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.pt.20160611.36km.nc",
+          "bytes": 76182128,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.pt.20160611.36km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.pt.20160611.12km.nc",
+          "bytes": 119980464,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.pt.20160611.12km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.natural.POA_BB.20160611.36km.nc",
+          "bytes": 54088696,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.natural.POA_BB.20160611.36km.nc"
+        },
+        {
+          "path": "official_archives/emiss/camx_area.natural.POA_BB.20160611.12km.nc",
+          "bytes": 85184312,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_emiss-260801.tgz!/emiss/camx_area.natural.POA_BB.20160611.12km.nc"
+        },
+        {
+          "path": "official_archives/met/camx.2d.36km.20160611.nc",
+          "bytes": 24688760,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.2d.36km.20160611.nc"
+        },
+        {
+          "path": "official_archives/met/camx.2d.12km.20160611.nc",
+          "bytes": 38880496,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.2d.12km.20160611.nc"
+        },
+        {
+          "path": "official_archives/met/camx.3d.36km.20160611.nc",
+          "bytes": 316558100,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.3d.36km.20160611.nc"
+        },
+        {
+          "path": "official_archives/met/camx.3d.12km.20160611.nc",
+          "bytes": 498630836,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.3d.12km.20160611.nc"
+        },
+        {
+          "path": "official_archives/ptsrce/point.camx.othpt.POA_OP.20160611.nc",
+          "bytes": 1968661572,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/ptsrce/point.camx.othpt.POA_OP.20160611.nc"
+        },
+        {
+          "path": "official_archives/ptsrce/point.camx.ptnonipm.POA_AV.20160611.nc",
+          "bytes": 1256499548,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/ptsrce/point.camx.ptnonipm.POA_AV.20160611.nc"
+        },
+        {
+          "path": "official_archives/ptsrce/point.camx.pt_oilgas.20160611.nc",
+          "bytes": 178855720,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_other-260801.tgz!/ptsrce/point.camx.pt_oilgas.20160611.nc"
+        },
+        {
+          "path": "official_archives/met/camx.lu.36km.20160611.nc",
+          "bytes": 1795152,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.lu.36km.20160611.nc"
+        },
+        {
+          "path": "official_archives/met/camx.lu.12km.20160611.nc",
+          "bytes": 2821048,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.lu.12km.20160611.nc"
+        },
+        {
+          "path": "official_archives/met/camx.kv.36km.20160611.YSU.nc",
+          "bytes": 28991384,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.kv.36km.20160611.YSU.nc"
+        },
+        {
+          "path": "official_archives/met/camx.kv.12km.20160611.YSU.nc",
+          "bytes": 45664120,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/CAMx7-40-test_run-inputs_met-260801.tgz!/met/camx.kv.12km.20160611.YSU.nc"
+        },
+        {
+          "path": "official_archives/runfiles/CAMx_v7.40.36.12.20160610-11.MPICH3.job",
+          "bytes": 6381,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/runfiles/CAMx_v7.40.36.12.20160610-11.MPICH3.job"
+        },
+        {
+          "path": "official_archives/runfiles/CAMx_v7.40.36.12.20160610-11.noMPI.job",
+          "bytes": 6203,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/runfiles/CAMx_v7.40.36.12.20160610-11.noMPI.job"
+        },
+        {
+          "path": "observations/NOAA_Pittsburgh_72520094823_20160610-11.csv",
+          "bytes": 50755,
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/observations/NOAA_Pittsburgh_72520094823_20160610-11.csv"
+        }
+      ],
+      "staged_bytes": 10763583128,
+      "container_bytes": 3292325155,
+      "policy": "header index; selected member staging; 1 MiB stream blocks",
+      "temporary_directory": "C:\\Users\\LX\\AppData\\Local\\EcoDataEngine\\temporary-v1\\ecodata-selected-resources-hewwk2hn",
+      "cleanup": "COMPLETED",
+      "identical_duplicates": [
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h_CF3_SIMPLE_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3_COMPLX",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07_CF3_COMPLX",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2_CF3_SIMPLE_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.RACM2_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/tuv.do_CB6r5.20160611",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/tuv.do_CB6r5.20160611"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h_CF3_SIMPLE",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07_CF3_COMPLX_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.inert",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.inert"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3_SIMPLE_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07_CF3_SIMPLE",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3_SIMPLE",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3E_COMPLX",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3E_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5_CF3_COMPLX_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h_CF3_COMPLX",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2_CF3_SIMPLE",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.RACM2_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/tuv.do_CB6r5.20160610",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/tuv.do_CB6r5.20160610"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07_CF3_SIMPLE_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5_CF3_SIMPLE",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5_CF3_SIMPLE"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5h_CF3_COMPLX_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5h_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.RACM2"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2_CF3_COMPLX_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.RACM2_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5_CF3_SIMPLE_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5_CF3_SIMPLE_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/o3map.201606.txt",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/o3map.201606.txt"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3E_EQSAM_COMPLX",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3E_EQSAM_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.RACM2_CF3_COMPLX",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.RACM2_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.SAPRC07",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.SAPRC07"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB6r5_CF3_COMPLX",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB6r5_CF3_COMPLX"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3_CF3_COMPLX_NoEvap",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3_CF3_COMPLX_NoEvap"
+        },
+        {
+          "path": "official_archives/inputs/CAMx7.40.chemparam.CB7r3",
+          "origin": "02_CAMx_两日嵌套工程与站点观测 - 副本.zip!/official_archives/v7.40.specific.inputs.260801.tgz!/inputs/CAMx7.40.chemparam.CB7r3"
+        }
+      ],
+      "temporary_directory_absent": true
+    }
+  },
+  "final_export_seconds": 88.69505310000022,
+  "product": {
+    "path": "D:\\codex\\EcoDataEngine\\output\\selective_intake_20261126\\CAMx-platform-result.zip",
+    "bytes": 3312855188,
+    "sha256": "8bbf1eb5dfae0ae13053d9feaadb9e7bab2ab319c0ebd45553de20554fe41ac9"
+  },
+  "scientific_accuracy_assessed": false,
+  "model_executed": false,
+  "browser_acceptance": "NOT_RUN; desktop public processing/export functions used",
+  "post_delivery_checks": {
+    "source_fingerprints_match": true,
+    "archive_member_names_unique": true,
+    "latest_desktop_receipt_present": true,
+    "processing_scratch_absent": true,
+    "tests10": "6 passed; affected schedule guard only",
+    "test_fixture_cleanup": "Automatic approval rejected deletion command: blocked by policy. No deletion performed.",
+    "retained_test_fixture_bytes": 55594363
+  }
+}

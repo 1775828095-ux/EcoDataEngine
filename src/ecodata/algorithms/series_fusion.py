@@ -57,7 +57,7 @@ class PriorSeriesCalibration:
             'bias_correction','available',('daily_series',),('continuous',),
             input_contract=dict(source_arity=1,parameter_domains={}),requires_training=True,
             capabilities=('bias_correction',),backend='Existing fit_affine_source state / NumPy prior multiplicative scaling',
-            notes='Training state must precede application and bind its source; no evaluation labels')
+            notes='Prior fit precedes application and binds its source. Authorized observation-state parents may supply exact-epoch coefficients; no target evaluation labels')
     def compatibility(self,context):
         state=context.parameters.get('fitted_state');reasons=[]
         if len(context.sources)!=1:return Compatibility(False,('One source required',))
@@ -68,23 +68,43 @@ class PriorSeriesCalibration:
             reasons.append('Prior fitting must precede application')
         if ds.attrs.get('calibration_signature') or ds.attrs.get('bias_adjustment_applied') or ds.attrs.get('fusion_method'):
             reasons.append('Already calibrated distribution has no matching training pair')
+        if context.parameters.get('observation_state_update') and self.method=='monthly_ratio':
+            reasons.append('Monthly ratio has no concurrent observation-state update contract')
         fields={'affine':['affine_slope','affine_intercept'],'ratio':['mean_ratio'],
                 'monthly_ratio':['monthly_ratio']}[self.method]
         if state is None or any(k not in state or not np.isfinite(state[k]).all() for k in fields):
             reasons.append('Finite explicit fitted coefficients required')
+        if state is not None:
+            for name in fields:
+                if name in state and state[name].ndim and self.method!='monthly_ratio':
+                    if (state[name].dims!=('time',) or state.attrs.get('state_update_mode')!='contemporaneous_analysis'
+                            or not np.array_equal(state.time.values,ds.time.values)):
+                        reasons.append('Observation state requires exact actual source epochs')
+                    if not context.parameters.get('_observation_state_bound',False):
+                        reasons.append('Updated state requires its actual observation-state producer parent')
         return Compatibility(not reasons,tuple(reasons))
     def run(self,context):
         check=self.compatibility(context)
         if not check.eligible:raise ValueError(str(check.reasons))
         state=context.parameters['fitted_state'];source=context.sources[0].dataset
         output=source.copy(deep=True);a=source[context.variable]
-        if self.method=='affine':value=float(state.affine_slope)*a+float(state.affine_intercept)
-        elif self.method=='ratio':value=float(state.mean_ratio)*a
+        def coefficient(name):
+            coefficient=state[name]
+            if coefficient.ndim==0:return float(coefficient)
+            if coefficient.dims!=('time',) or state.attrs.get('state_update_mode')!='contemporaneous_analysis':
+                raise ValueError('Time-indexed calibration requires an explicit observation-state contract')
+            if not np.array_equal(coefficient.time.values,source.time.values):raise ValueError('State epochs differ from actual source periods')
+            return coefficient
+        if self.method=='affine':value=coefficient('affine_slope')*a+coefficient('affine_intercept')
+        elif self.method=='ratio':value=coefficient('mean_ratio')*a
         else:
             ratio=xr.DataArray(state.monthly_ratio.values[pd.DatetimeIndex(a.time.values).month-1],dims='time',coords={'time':a.time})
             value=ratio*a
         if context.model_constraints.get('nonnegative'):value=value.clip(min=0)
         output[context.variable]=value;output[context.variable].attrs=dict(a.attrs)
         output.attrs['calibration_signature']='prior_series_'+self.method
-        return AlgorithmResult(EcoDataBundle(output),self.spec.id,dict(fitted_on='Explicit prior state only',
-            training_end=state.attrs['training_end'],method=self.method,reference_used=False))
+        if state.attrs.get('state_update_mode'):
+            output.attrs.update(fusion_method='authorized_concurrent_observation_conditioning',state_update_mode=state.attrs['state_update_mode'])
+        return AlgorithmResult(EcoDataBundle(output),self.spec.id,dict(fitted_on='Bound prior and authorized exact-period other-station observations' if state.attrs.get('state_update_mode') else 'Explicit prior state only',
+            training_end=state.attrs['training_end'],method=self.method,reference_used=False,
+            **({'state_update_mode':state.attrs['state_update_mode']} if state.attrs.get('state_update_mode') else {})))

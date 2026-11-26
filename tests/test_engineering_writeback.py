@@ -230,5 +230,5 @@ def test_nested_project_collection_does_not_use_legacy_local_case(tmp_path):
     with zipfile.ZipFile(outer,'w') as z:
         z.writestr('WRF/project.zip',inner.getvalue())
         z.writestr('WRF/observations.csv','time,value\n')
-    with pytest.raises(ValueError,match="WRF控制读取失败.*time_control"):
+    with pytest.raises(ValueError,match='尚未展开嵌套工程ZIP'):
         prepare_uploads([upload('collection.zip',outer.getvalue())],'wrf',tmp_path)

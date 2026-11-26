@@ -105,12 +105,6 @@ def prepare_bound_reference(uploads,binding,folder,progress=None):
         files=ProjectFiles(uploads,stack);sources=[]
         for name in sorted(files.files):
             if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
-            prefix=files.prefix(name,1024*1024)
-            if prefix.startswith(b'CDF'):
-                from .source_catalog import header
-                try:facts=header(prefix)
-                except (ValueError,OSError,RuntimeError):facts=None
-                if facts is not None and facts['attributes'].get('product')!='MCD15A3H':continue
             with files.files[name][0]() as stream,xr.open_dataset(stream) as ds:
                 if ds.attrs.get('product')=='MCD15A3H':sources.append((name,ds.load(),files.identity(name)))
         if not sources:return None
@@ -145,8 +139,7 @@ def prepare_bound_reference(uploads,binding,folder,progress=None):
         mutation_control='random',soft_guidance=False,observation_crs='EPSG:4326')
     result=process_current_input(inputs,request,stage/'search',progress=progress)
     if result.get('status')!='PASS' or not result.get('product'):raise ValueError('公共引擎没有返回合格参考场产品')
-    from ecodata.io.netcdf import load_dataset
-    values=load_dataset(result['product'])[variable].values[0]
+    with xr.open_dataset(result['product']) as d:values=d[variable].values[0]
     increment=values-background[0,0,rows,cols]
     updated=background.copy();updated[:,0,rows,cols]+=increment[None,:]
     if not np.isfinite(updated).all() or (updated<0).any() or (updated>10).any():raise ValueError('参考增量导致非法值，未通过截断凑成功')

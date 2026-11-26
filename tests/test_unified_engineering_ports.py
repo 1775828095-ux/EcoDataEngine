@@ -136,8 +136,12 @@ def test_rename_order_and_unrelated_members_preserved(tmp_path,model):
  ({'physical_definition':'different physical definition'},'物理定义')])
 def test_five_models_same_scientific_rejection(tmp_path,model,attrs,reason):
  from ecodata.core.exceptions import SchemaError
- with pytest.raises((ValueError,SchemaError),match=reason):
-  prepare_uploads([mutate_request(model,lambda f:change_source(f,**attrs))],model,tmp_path)
+ import re
+ result=prepare_uploads([mutate_request(model,lambda f:change_source(f,**attrs))],model,tmp_path)
+ assert result['manifest']['status']=='ENGINEERING_INSPECTED'
+ assert not result['manifest']['native_writeback_verified']
+ required=result['manifest']['preparation']['source_admission']['required_information']
+ assert any(re.search(reason,r['message'],re.I) for r in required)
 
 
 def test_target_declaration_cannot_overwrite_actual_metadata(tmp_path):
@@ -149,8 +153,9 @@ def test_target_declaration_cannot_overwrite_actual_metadata(tmp_path):
 
 
 def test_daily_interval_length_is_not_just_matching_date(tmp_path):
- with pytest.raises(ValueError,match='区间长度'):
-  prepare_uploads([mutate_request('swat_plus',lambda f:change_source(f,interval_seconds=3600))],'swat_plus',tmp_path)
+ result=prepare_uploads([mutate_request('swat_plus',lambda f:change_source(f,interval_seconds=3600))],'swat_plus',tmp_path)
+ assert not result['manifest']['native_writeback_verified']
+ assert any('区间长度' in r['message'] for r in result['manifest']['preparation']['source_admission']['required_information'])
 
 
 def test_new_quantity_not_temperature_specific(tmp_path):

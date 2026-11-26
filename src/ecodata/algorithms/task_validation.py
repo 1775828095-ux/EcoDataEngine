@@ -383,6 +383,64 @@ def outcome(protocol,request,stop_reason,confirmation=None):
         support_level=protocol.get('support_level'),confirmation_available=confirmation is not None)
 
 
+def reserve_review(folds,inputs,request,context):
+    """Reserve a whole existing task-matched case before numerical search.
+
+    Its labels are removed from every selection input and the feature context.
+    Incompatible geometries/lineage or fewer than two disjoint cases leave an
+    explicit limitation; they never produce a counterfeit confirmation fold.
+    """
+    from ecodata.algorithms.current_input import _raster_source,_masked_raster_inputs
+    sources,_,index,ds,a=_raster_source(inputs,request,context)
+    kinds=[f['protocol'].get('design','') for f in folds]
+    axes=['space','time'] if any('spatiotemporal' in k for k in kinds) else ['space'] if any(k=='spatial_block' for k in kinds) else ['time']
+    if len(folds)<3:return folds,None,None,dict(status='INSUFFICIENT',reason='Need two selection cases and one separate matched case',axes=axes)
+    outer=max(folds,key=lambda f:np.asarray(f['validation'].reference.time.values).max()) if 'time' in axes else folds[-1]
+    ref=outer['validation'].reference
+    mask=np.isfinite(ref).reindex_like(a,fill_value=False)
+    # A held date/location is sealed in full, not merely at a few pixels.
+    original_mask=mask
+    if 'time' in axes:mask=mask|original_mask.any(dim=('lat','lon')).broadcast_like(a)
+    if 'space' in axes:mask=mask|original_mask.any(dim='time').broadcast_like(a)
+    if any(not np.array_equal(ref[c],a[c]) for c in ('lat','lon')):
+        return folds,None,None,dict(status='INSUFFICIENT',reason='Outer/inner native support differs; no unsafe geometry mapping',axes=axes)
+    def support(reference):
+        valid=np.isfinite(reference.values)
+        t=np.any(valid,axis=(1,2));s=np.any(valid,axis=0)
+        return set(reference.time.values[t].astype('datetime64[ns]').astype(str)),set(zip(*np.where(s)))
+    ot,os=support(ref);remaining=[]
+    try:
+        profile_inputs,_=_masked_raster_inputs(inputs,sources,index,ds,mask,context.variable)
+        from ecodata.algorithms.autonomous_field import build_context
+        inner_context=build_context(profile_inputs,request)[0]
+        candidates,inner_protocol=plan(profile_inputs,request,inner_context)
+        if inner_protocol.get('support_limited') is True:
+            return folds,None,None,dict(status='INSUFFICIENT',reason='Task-matched selection support becomes limited after isolating confirmation',axes=axes)
+        from ecodata.algorithms.platform_search import parse_inputs
+        for fold in candidates:
+            ft,fs=support(fold['validation'].reference)
+            if ('time' in axes and ft&ot) or ('space' in axes and fs&os):continue
+            if 'time' in axes and max(ft)>=min(ot):continue
+            parsed,_=parse_inputs(fold['inputs'])
+            local_sources=[(i,r,d) for i,(r,d) in enumerate(parsed) if r in {'primary','background'}]
+            local=parsed[index][1]
+            adjusted,aliases=_masked_raster_inputs(fold['inputs'],local_sources,index,local,mask,context.variable)
+            identifier=_identity(adjusted,fold.get('request',request),'outer_isolated_selection')
+            remaining.append(dict(fold,id=identifier,inputs=adjusted,protocol=dict(fold['protocol'],fold_id=identifier,outer_labels_removed_from_inputs=True,
+                review_masked_aliases=aliases,input_sha256=[sha256(i.content).hexdigest() for i in adjusted])))
+        parsed,_=parse_inputs(outer['inputs'])
+        outer_sources=[(i,r,d) for i,(r,d) in enumerate(parsed) if r in {'primary','background'}]
+        outer_inputs,_=_masked_raster_inputs(outer['inputs'],outer_sources,index,parsed[index][1],mask,context.variable)
+        outer=dict(outer,inputs=outer_inputs,id=_identity(outer_inputs,outer.get('request',request),'frozen_outer_review'))
+    except ValueError as exc:
+        return folds,None,None,dict(status='INSUFFICIENT',reason=str(exc),axes=axes)
+    if len(remaining)<2:return folds,None,None,dict(status='INSUFFICIENT',reason='Fewer than two cases remain after support-isolated reservation',axes=axes)
+    return remaining,outer,profile_inputs,dict(status='RESERVED',axes=axes,outer_id=outer['id'],
+        selection_ids=[f['id'] for f in remaining],reference_scope='Withheld visible values; upstream product independence unknown',
+        outer_labels_in_search_inputs=False,outer_labels_in_features=False,
+        regenerated_selection_support=inner_protocol.get('support_level','UNKNOWN'))
+
+
 def scale_consistency(output,source,variable,account):
     """Observed-scale consistency is a diagnostic, never fine-resolution truth."""
     from ecodata.algorithms.raster_reconstruction_task import edges,overlap_weights

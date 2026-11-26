@@ -155,6 +155,30 @@ class Executor:
         self.account=account;self.phase=phase
         def source(_inputs,params,external):return {'field':external[params['source']]}
         self.adapters['source','run']=NodeAdapter({}, {'field':Port('working_field',('contract',))},source)
+        self.adapters['resource.state','run']=NodeAdapter({}, {'state':Port('fitted_state',('source_id','training_end'))},
+            lambda inputs,params,external:{'state':external['fitted_state']})
+        self.adapters['resource.conditioning_observations','run']=NodeAdapter({},
+            {'observations':Port('conditioning_observations',('units',))},
+            lambda inputs,params,external:{'observations':external['conditioning_observations']})
+        def update(inputs,parameters,external):
+            from ecodata.fusion.observation_state import update_state
+            token=self.account.before('resource.observation_state_update',self.phase,parameters,
+                graph=self.current_sink,requires_training=True) if self.account is not None else None
+            self.calls+=1
+            try:
+                state,report=update_state(inputs['prior'].value,inputs['background'].value.dataset,
+                    inputs['observations'].value,self.context.variable,parameters['policy'])
+            except Exception as exc:
+                if self.account is not None:self.account.after(token,error=exc)
+                raise
+            else:
+                if self.account is not None:self.account.after(token)
+            return {'state':Artifact('fitted_state',state,dict(source_id=state.attrs['calibration_source_id'],
+                training_end=state.attrs['training_end'],producer='resource.observation_state_update',report=report))}
+        self.adapters['resource.observation_state_update','run']=NodeAdapter(
+            {'prior':Port('fitted_state',('source_id','training_end')),'background':Port('working_field',('contract',)),
+             'observations':Port('conditioning_observations',('units',))},
+            {'state':Port('fitted_state',('source_id','training_end'))},update)
         self.engine=NumericalDAGExecutor(self.adapters,version=CONTRACT)
 
     def execute(self,records,sink):
@@ -162,11 +186,16 @@ class Executor:
         for row in records.values():
             if row['operation']=='source':continue
             identifier=row['operation'];arity=len(row['parents']);mode='arity_'+str(arity)
+            from ecodata.algorithms.series_fusion import PriorSeriesCalibration
+            state_required=isinstance(self.registry.get(identifier),PriorSeriesCalibration)
             if (identifier,mode) in self.adapters:continue
-            def compute(inputs,parameters,external,identifier=identifier,arity=arity):
+            def compute(inputs,parameters,external,identifier=identifier,arity=arity,state_required=state_required):
                 context=replace(self.context,sources=tuple(inputs['p'+str(i)].value for i in range(arity)),
                     parameters=dict(self.context.parameters,**{k:v for k,v in parameters.items() if k!='mode'}),
                     validation_reference=None,validation_role=None)
+                if state_required:
+                    context=replace(context,parameters=dict(context.parameters,fitted_state=inputs['state'].value,
+                        _observation_state_bound=inputs['state'].metadata.get('producer')=='resource.observation_state_update'))
                 plugin=self.registry.get(identifier);check=plugin.compatibility(context)
                 if not check.eligible:raise ValueError('Actual parent contract: '+str(check.reasons))
                 token=self.account.before(identifier,self.phase,parameters,graph=self.current_sink,requires_training=plugin.spec.requires_training) if self.account is not None else None
@@ -198,7 +227,7 @@ class Executor:
                             report=dict(result.report,axis_order_normalized='time,lat,lon; values unchanged'))
                 return {'field':Artifact('working_field',result.data,dict(contract=CONTRACT,algorithm=identifier,report=result.report))}
             self.adapters[identifier,mode]=NodeAdapter(
-                {'p'+str(i):Port('working_field',('contract',)) for i in range(arity)},
+                dict({'p'+str(i):Port('working_field',('contract',)) for i in range(arity)},**({'state':Port('fitted_state',('source_id','training_end'))} if state_required else {})),
                 {'field':Port('working_field',('contract',))},compute)
             self.engine.adapters[identifier,mode]=self.adapters[identifier,mode]
         nodes=[];visited=set()
@@ -208,11 +237,41 @@ class Executor:
             for parent in row['parents']:visit(parent)
             params=dict(row['parameters'])
             if row['operation']!='source':params['mode']='arity_'+str(len(row['parents']))
-            nodes.append(Node(key,row['operation'],inputs={'p'+str(i):(p,'field') for i,p in enumerate(row['parents'])},parameters=params))
+            bindings={'p'+str(i):(p,'field') for i,p in enumerate(row['parents'])}
+            from ecodata.algorithms.series_fusion import PriorSeriesCalibration
+            if row['operation']!='source' and isinstance(self.registry.get(row['operation']),PriorSeriesCalibration):
+                if '__fitted_state' not in visited:
+                    nodes.append(Node('__fitted_state','resource.state',parameters={'source':'fitted_state'}))
+                    visited.add('__fitted_state')
+                bindings['state']=('__fitted_state','state')
+                policy=self.context.parameters.get('observation_state_update')
+                if policy:
+                    if '__observation_state' not in visited:
+                        state=self.context.parameters['fitted_state']
+                        index=next((i for i,b in enumerate(self.context.sources)
+                            if b.dataset.attrs.get('source_id')==state.attrs.get('calibration_source_id')),None)
+                        if index is None:raise ValueError('Observation-state background binding missing')
+                        root='s'+str(index);visit(root)
+                        nodes.append(Node('__conditioning','resource.conditioning_observations',parameters={'source':'conditioning_observations'}))
+                        nodes.append(Node('__observation_state','resource.observation_state_update',
+                            inputs=dict(prior=('__fitted_state','state'),background=(root,'field'),
+                                observations=('__conditioning','observations')),parameters=dict(policy=policy)))
+                        visited.update({'__conditioning','__observation_state'})
+                    bindings['state']=('__observation_state','state')
+            nodes.append(Node(key,row['operation'],inputs=bindings,parameters=params))
             visited.add(key)
         visit(sink)
         external={'source'+str(i):Artifact('working_field',source,dict(contract=CONTRACT))
                   for i,source in enumerate(self.context.sources)}
+        if '__fitted_state' in visited:
+            state=self.context.parameters.get('fitted_state')
+            if state is None:raise ValueError('Missing actual fitted-state parent')
+            external['fitted_state']=Artifact('fitted_state',state,
+                dict(source_id=state.attrs.get('calibration_source_id'),training_end=state.attrs.get('training_end')))
+        if '__conditioning' in visited:
+            if self.context.observations is None:raise ValueError('Actual conditioning observations missing')
+            external['conditioning_observations']=Artifact('conditioning_observations',self.context.observations,
+                dict(units=self.context.sources[0].dataset[self.context.variable].attrs.get('units')))
         result=self.engine.run(nodes,sink,external=external)
         return result['outputs']['field'].value.dataset,result['trace']
 

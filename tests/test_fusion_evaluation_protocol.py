@@ -49,7 +49,9 @@ def test_no_source_count_bonus_and_real_ablations_share_one_queue(tmp_path):
     for row in engine.rows:
         saved=np.load(tmp_path/(row['key']+'-evaluation.npz'))
         i=saved['selection_ids'];e=saved['prediction'][:,i]-saved['reference'][:,i]
-        assert row['metrics']['objective']==pytest.approx(float(np.sqrt(np.mean(e**2))))
+        assert row['metrics']['RMSE']==pytest.approx(float(np.sqrt(np.mean(e**2))))
+        assert row['metrics']['objective']==pytest.approx(row['blocked_validation']['objective'])
+        assert row['metrics']['objective_name']=='equal_date_region_RMSE'
         assert row['coarse_reference_diagnostic']['used_for_selection'] is False
     report=engine.comparison_report(engine.best())
     assert len(report['source_ablations'])==2 and report['paired_selection']

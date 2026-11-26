@@ -31,13 +31,39 @@ def bind_templates(files):
     if not choices:return None
     signatures={json.dumps([r['parameters'] for r in c['runs']],sort_keys=True,default=str) for c in choices}
     if len(signatures)!=1:raise ValueError('多个科学配置不同的工程模板，需明确配置，不能猜选')
-    selected=choices[0]
+    return _binding(files,choices[0],identities,[c['control'] for c in choices])
+
+
+def bind_plain_schedule(files,controls):
+    """Actual same-directory sequential controls, not a choice of projects."""
+    from pathlib import PurePosixPath
+    import f90nml,io
+    from ..camx_templates import bind_rendered_controls
+    if len({str(PurePosixPath(n).parent) for n in controls})!=1:
+        raise ValueError('多个工程控制目录彼此独立，不能猜选运行计划')
+    rendered=[]
+    for name in controls:
+        with files.files[name][0]() as stream:text=stream.read().decode('utf-8-sig')
+        group=f90nml.read(io.StringIO(text))['camx_control']
+        start=group.get('start_date_hour')
+        if not isinstance(start,list) or len(start)!=4:raise ValueError('多控制运行日期不明确')
+        rendered.append((tuple(start),name,text))
+    rendered.sort()
+    identities={}
+    selected=bind_rendered_controls(files,[(n,t) for _,n,t in rendered],identities)
+    binding=_binding(files,selected,identities,[files.identity(n) for _,n,_ in rendered])
+    if any(not binding['runtime_dependencies'][str(i)] for i in binding['execution_order'][1:]):
+        raise ValueError('多个工程控制没有明确的运行依赖，不能自动合成运行计划')
+    return binding
+
+
+def _binding(files,selected,identities,controls):
     if selected['unknown'] or any(b['status'] not in {'BOUND','GENERATED_DEPENDENCY'} for b in selected['bindings']):
         raise ValueError('模板仍有缺失/未知依赖：'+str(selected['unknown']))
     order,deps=dependency_order(selected['runs'],selected['bindings'])
     targets=sorted({b['target'] for b in selected['bindings'] if b['status']=='BOUND'})
     return dict(schema='ecodata.project-binding.v1',model_id='camx',status='BOUND',
-        control=selected['control'],equivalent_controls=[c['control'] for c in choices],
+        control=selected['control'],equivalent_controls=controls,
         bindings=selected['bindings'],resources=[identities[n] for n in targets],runs=selected['runs'],
         execution_order=order,runtime_dependencies={str(k):sorted(v) for k,v in deps.items()},
         inactive=[],parameters=selected['runs'][0]['parameters'],source_modified=False,

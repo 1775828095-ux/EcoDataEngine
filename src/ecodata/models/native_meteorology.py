@@ -19,7 +19,6 @@ from netCDF4 import Dataset
 from scipy.spatial import Delaunay
 
 from ecodata.models.project_binding import ProjectFiles, bound_resource
-from ecodata.io.netcdf import load_dataset
 
 
 def save(path, value):
@@ -128,30 +127,29 @@ def native_times(ds):
 
 
 def native_axes(ds):
-    """Validate CAMx computational versus buffered storage coordinates (met I/O)."""
-    a={k:ds.getncattr(k) for k in ds.ncattrs()}
+    """Validate native cell centres against declared interior/buffer geometry."""
     axes=[]
-    for axis,size,dim,cell in [('X','NCOLS','COL','XCELL'),('Y','NROWS','ROW','YCELL')]:
-        n=int(a[size]);stored=len(ds.dimensions[dim]);origin=float(a[axis+'ORIG']);step=float(a[cell])
-        if step<=0:raise ValueError('原生网格间距必须为正')
-        if size+'_BUF' in a or axis+'ORIG_BUF' in a:
-            if size+'_BUF' not in a or axis+'ORIG_BUF' not in a:raise ValueError('缓冲网格元数据不完整')
-            if int(a[size+'_BUF'])!=stored:raise ValueError('缓冲网格声明与存储维度冲突')
-            start=float(a[axis+'ORIG_BUF'])
-            if not ((stored==n and np.isclose(start,origin)) or
-                    (stored==n+2 and np.isclose(start,origin-step))):
-                raise ValueError('不支持的CAMx缓冲网格布局')
-        else:
-            if stored!=n:raise ValueError('存储维度不同但没有缓冲网格元数据')
-            start=origin
-        values=start+(np.arange(stored)+.5)*step
-        if str(ds[axis].units).strip()!='km' or ds[axis].shape!=(stored,) or not np.allclose(ds[axis][:],values/1000,rtol=0,atol=1e-4):
-            raise ValueError('原生X/Y与声明网格中心或单位不一致')
-        axes.append(values)
+    for axis,count,step in [('X','NCOLS','XCELL'),('Y','NROWS','YCELL')]:
+        var=ds[axis];units=str(var.units).strip()
+        if units not in {'m','km'}:raise ValueError('原生坐标单位未知：'+axis)
+        values=np.asarray(var[:],dtype=float)*(1000 if units=='km' else 1)
+        interior=int(ds.getncattr(count));actual=len(values)
+        if actual==interior:origin=float(ds.getncattr(axis+'ORIG'))
+        elif count+'_BUF' in ds.ncattrs() and axis+'ORIG_BUF' in ds.ncattrs() and actual==int(ds.getncattr(count+'_BUF')):
+            origin=float(ds.getncattr(axis+'ORIG_BUF'))
+            inner=float(ds.getncattr(axis+'ORIG'))
+            cell=float(ds.getncattr(step))
+            offset=(inner-origin)/cell
+            if offset<0 or not np.isclose(offset,round(offset)) or offset+interior>actual:
+                raise ValueError('原生缓冲区与内部网格声明冲突：'+axis)
+        else:raise ValueError('原生坐标维度缺少一致的缓冲区声明：'+axis)
+        expected=origin+(np.arange(actual)+.5)*float(ds.getncattr(step))
+        if not np.allclose(values,expected,rtol=1e-6,atol=.01):raise ValueError('原生缓冲坐标与投影网格中心不一致：'+axis)
+        axes.append(expected)
     return tuple(axes)
 
 
-def geometry(ds):
+def geometry(ds, *, allow_halo=False):
     """Reuse CAMx's existing sphere-LCC grid implementation with actual header."""
     from ecodata.models.adapters.camx_emissions import _grid
     a = {k:ds.getncattr(k) for k in ds.ncattrs()}
@@ -159,26 +157,34 @@ def geometry(ds):
         raise ValueError('当前原生气象适配支持明确UTC的CAMx球体LCC网格')
     x,y=native_axes(ds)
     g, _, _, lon, lat = _grid(dict(projection='LCC', ncols=len(x), nrows=len(y),
-        xorig=x[0]-a['XCELL']/2, yorig=y[0]-a['YCELL']/2, xcell=a['XCELL'], ycell=a['YCELL'],
+        xorig=x[0]-.5*a['XCELL'], yorig=y[0]-.5*a['YCELL'], xcell=a['XCELL'], ycell=a['YCELL'],
         coordinate_units='m', xcent=a['XCENT'], ycent=a['YCENT'], p_alp=a['P_ALP'],
         p_bet=a['P_BET'], itzon=0))
+    expected_x=(g['xorig']+(np.arange(g['ncols'])+.5)*g['xcell'])/1000
+    expected_y=(g['yorig']+(np.arange(g['nrows'])+.5)*g['ycell'])/1000
+    def matches(actual,expected):
+        if allow_halo and len(actual)==len(expected)+2:
+            step=expected[1]-expected[0]
+            expected=np.r_[expected[0]-step,expected,expected[-1]+step]
+        return actual.shape==expected.shape and np.allclose(actual,expected)
+    if not matches(x/1000,expected_x) or not matches(y/1000,expected_y):
+        raise ValueError('原生X/Y与投影网格中心不一致')
     return lon, lat
 
 
 def write_native_copy(source, target, variable, updates, time_indices, cell_indices):
     """Lossless container copy + restricted native-variable patch and full readback."""
     shutil.copyfile(source, target)
-    from existing_air_converters.native_netcdf_update import _open_native
-    with _open_native(source,'r') as original, _open_native(target,'r+') as native:
+    with Dataset(source) as original, Dataset(target, 'r+') as native:
         if native[variable].dimensions != ('TSTEP','LAY','ROW','COL') or native[variable].shape[1] != 1:
             raise ValueError('写回仅支持明确单层二维气象场')
         if updates.shape != (len(time_indices),len(cell_indices)) or not np.isfinite(updates).all():
             raise ValueError('写回预测形状错误或存在非法值')
         for k, ti in enumerate(time_indices):
-            plane=np.asarray(native[variable][ti,0,:,:]).copy()
-            plane.flat[cell_indices]=updates[k]
-            native[variable][ti,0,:,:]=plane
-    with _open_native(source,'r') as original, _open_native(target,'r') as native:
+            for j,cell in enumerate(cell_indices):
+                row,col=divmod(int(cell),native[variable].shape[3])
+                native[variable][ti,0,row,col]=updates[k,j]
+    with Dataset(source) as original, Dataset(target) as native:
         if original.data_model!=native.data_model or original.ncattrs()!=native.ncattrs():
             raise ValueError('原生格式或全局属性发生变化')
         for key in original.ncattrs():
@@ -189,14 +195,21 @@ def write_native_copy(source, target, variable, updates, time_indices, cell_indi
             if left.dimensions!=right.dimensions or left.dtype!=right.dtype or left.ncattrs()!=right.ncattrs():
                 raise ValueError('原生字段定义发生变化：'+name)
             for key in left.ncattrs():np.testing.assert_equal(left.getncattr(key),right.getncattr(key))
-            a,b=left[:],right[:]
-            if name!=variable:
-                np.testing.assert_equal(a,b)
-            else:
+            # Exhaustive readback in bounded slabs, including untouched fields.
+            from existing_air_converters.native_netcdf_update import _chunks
+            for selection in _chunks(left.shape,max(left.dtype.itemsize,1)):
+                a,b=left[selection],right[selection]
                 expected=np.array(a,copy=True)
-                for k,ti in enumerate(time_indices):expected[ti,0].flat[cell_indices]=updates[k]
+                if name==variable:
+                    for k,ti in enumerate(time_indices):
+                        if not selection[0].start<=ti<selection[0].stop:continue
+                        for j,cell in enumerate(cell_indices):
+                            row,col=divmod(int(cell),left.shape[3])
+                            coords=(int(ti),0,row,col)
+                            if all(s.start<=v<s.stop for v,s in zip(coords,selection)):
+                                expected[tuple(v-s.start for v,s in zip(coords,selection))]=updates[k,j]
+                    changed+=int(np.count_nonzero(np.asarray(a)!=np.asarray(b)))
                 np.testing.assert_equal(expected,b)
-                changed=int(np.count_nonzero(np.asarray(a)!=np.asarray(b)))
         return dict(status='PASS',native_data_model=native.data_model,changed_values=changed,
                     edited_variable=variable,other_variables_and_metadata_equal=True,
                     time_flags_equal=True,unprocessed_support_equal=True,
@@ -226,8 +239,7 @@ def materialize_project(uploads, binding, folder):
         (folder/'original_control.txt').write_bytes(raw)
         if binding.get('runs'):
             from .engineering.schedule import materialize_controls
-            schedule=materialize_controls(binding,mapping,folder)
-            save(folder/'execution_schedule.json',schedule)
+            save(folder/'control_receipts.json',materialize_controls(binding,mapping,folder))
             return mapping,inventory
         nml=f90nml.read(io.StringIO(raw.decode('utf-8-sig')))
         group=nml['camx_control']
@@ -343,5 +355,6 @@ def fuse_temperature(obs, report, background, times, lon, lat, source_id, stage,
     if progress:progress('调用平台已有站点/背景比较、真实留站评价与随机变异')
     result=process_current_input(inputs,request,stage/'search',budget=budget,seed=11,progress=progress)
     if result.get('status')!='PASS' or not result.get('product'):raise ValueError('平台气象处理未产生合格产品')
-    updated=load_dataset(result['product']).air_temperature.values.copy()
+    with xr.open_dataset(result['product']) as ds:
+        updated=ds.air_temperature.values.copy()
     return updated, times.get_indexer(selected_times), cells, result

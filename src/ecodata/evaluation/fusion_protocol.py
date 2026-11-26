@@ -136,6 +136,30 @@ def prepare(task, times, seed):
         plan['cost_seconds']=perf_counter()-started
 
 
+def fixed_recipe_cohort(native, template, variable, *, seed=0):
+    """Use the search observation operator for a pre-search fixed recipe trial.
+
+    This is a product reconstruction diagnostic, not a final confirmation.
+    The fixed recipe receives only degraded inputs, never reference labels.
+    """
+    from types import SimpleNamespace
+
+    sources=[]
+    for index, ds in enumerate(native):
+        source=ds.copy(deep=False)
+        source.attrs=dict(ds.attrs,source_id=ds.attrs.get('source_id',f'source-{index}'))
+        sources.append(source)
+    task=SimpleNamespace(native_fields=sources,self_reference=True,template=template,
+                         request=dict(variable=variable))
+    protocol,reconstruction=prepare(task,pd.DatetimeIndex(sources[0].time.values),seed)
+    if reconstruction is None:
+        return protocol,None
+    count=reconstruction['cohort']['query_count']
+    selected=reconstruction['selected']
+    inputs=[values[:,:count][:,selected] for values in reconstruction['cohort']['sources']]
+    return protocol,dict(inputs=inputs,reference=reconstruction['reference'][:,selected])
+
+
 def paired_report(single,multi,reference,indices,split):
     """Paired descriptive blocks, not a pixel-level confidence interval."""
     a=error_metrics(single[:,indices],reference[:,indices]);b=error_metrics(multi[:,indices],reference[:,indices])

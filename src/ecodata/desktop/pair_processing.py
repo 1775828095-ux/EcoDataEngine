@@ -31,6 +31,8 @@ def fields(scan, task):
     payloads = [read_selected(scan["rows"][i], limit=64*1024**2) for i, _ in task["fields"]]
     datasets = [recognise_file(scan["rows"][i]["name"], raw, record_read_source=False)[0]
                 for (i, _), raw in zip(task["fields"], payloads)]
+    from ecodata.core.recovery import scan_dataset
+    datasets=[scan_dataset(scan,index,ds)[0] for (index,_),ds in zip(task['fields'],datasets)]
     return datasets, [hashlib.sha256(raw).hexdigest() for raw in payloads]
 
 
@@ -43,7 +45,7 @@ def conversion_task(scan, selections, action, unit_check):
         if fmt not in {*FORMATS,"HDF5","RDB","NOAA ISD","Shapefile"}:
             raise ValueError("原版结构转换器未登记此输入格式")
         fields.append(dict(index=index,name=field["name"],header=field.get("original_header",field["name"]),
-                           unit=field["unit"]))
+                           unit=field["unit"],sheet=field.get("sheet")))
     labels=[scan["rows"][item["index"]]["format"] for item in fields]
     grid_formats={"NetCDF","GeoTIFF","HDF5","HDF5-NetCDF"}
     formats=[["format.netcdf"],["format.hdf5_netcdf"]] if any(fmt in grid_formats for fmt in labels) else [
@@ -82,8 +84,8 @@ def conversion_source(scan,index):
 
 
 def run_conversion(scan,task_id,task,folder,model_id,progress):
-    from ecodata.engines.units import UnitEngine
     from ecodata.io.structures import export_structure, read_structure
+    from .table_unit_segments import convert
     files,artifacts,reports=[],[],[]
     output_formats=[]
     for index,recipe in enumerate(task["recipes"],1):
@@ -96,19 +98,13 @@ def run_conversion(scan,task_id,task,folder,model_id,progress):
         for position,source in enumerate(task["fields"],1):
             row=scan["rows"][source["index"]]
             input_name,content=conversion_source(scan,source["index"])
-            with read_structure(input_name,content,record_read_source=False) as dataset:
+            with read_structure(input_name,content,record_read_source=False, excel_sheet=source.get("sheet")) as dataset:
                 field=source["name"] if source["name"] in dataset else source["header"]
                 if field not in dataset:
                     raise ValueError("原版读取器无法绑定扫描字段")
+                segments = []
                 if "units.harmonize" in recipe:
-                    data=dataset[field]
-                    if data.dtype.kind not in "iuf":
-                        values=np.asarray(pd.to_numeric(data.values.reshape(-1),errors="coerce")).reshape(data.shape)
-                        data=data.copy(data=values)
-                    if not np.isfinite(data.values).any():
-                        raise ValueError("单位转换没有有效数值")
-                    data.attrs=dict(data.attrs,units=source["unit"])
-                    dataset=dataset.assign({field:UnitEngine().convert(data,task["target_unit"])})
+                    dataset, segments = convert(dataset, field, source, task["target_unit"])
                 raw,exported,_=export_structure(dataset,target)
                 name=f"conversion-{index}-source-{position}"+exported[exported.rfind("."):]
                 with read_structure(name,raw,record_read_source=False) as restored:
@@ -119,7 +115,7 @@ def run_conversion(scan,task_id,task,folder,model_id,progress):
                 files.append((name,raw))
                 artifacts.append(dict(name=name,dimensions=dict(dataset.sizes),fields=list(dataset.data_vars)))
                 reports.append(dict(source_format=row["format"],target_format=target,field=field,
-                                    target_unit=dataset[field].attrs.get("units"),methods=recipe))
+                                    target_unit=dataset[field].attrs.get("units"),methods=recipe,unit_segments=segments))
     return dict(files=files,source_formats=[scan["rows"][item["index"]]["format"] for item in task["fields"]],
                 target_format=" / ".join(dict.fromkeys(output_formats)),original_report=reports,
                 local=dict(artifacts=artifacts,reason="原版单位和格式转换完成，选中字段已回读核对。"))
@@ -213,28 +209,8 @@ def same_crs(datasets):
 
 
 def grid_plan(datasets, variable, conservative):
-    grids = [normalize_grid_axes(ds)[0] for ds in datasets]
-    axes = ("lat", "lon")
-    if not all(set(axes) <= set(ds[variable].dims) and
-               all(ds[a].dims == (a,) and ds[a].size >= 2 for a in axes) for ds in grids):
-        raise ValueError("该重采样需要原版支持的规则经纬网格")
-    differences = [[np.diff(ds[a].values) for a in axes] for ds in grids]
-    if not all(np.allclose(step, step[0]) for pair in differences for step in pair):
-        raise ValueError("目标分辨率需要规则网格间距")
-    steps = [[step[0] for step in pair] for pair in differences]
-    target = next((i for i in (0, 1) if np.all(np.asarray(steps[i]) >= np.asarray(steps[1-i])-1e-10)), None)
-    if target is None:
-        raise ValueError("两个坐标轴粗细交叉，须指定目标网格")
-    base, source = grids[target], grids[1-target]
-    for j, axis in enumerate(axes):
-        half = steps[target][j]/2 if conservative else 0
-        margin = steps[1-target][j]/2 if conservative else 0
-        keep = ((base[axis]-half >= float(source[axis][0])-margin-1e-9) &
-                (base[axis]+half <= float(source[axis][-1])+margin+1e-9))
-        base = base.isel({axis:np.flatnonzero(keep.values)})
-        if base[axis].size < 2:
-            raise ValueError("共同网格覆盖不足两行两列")
-    return base, source, target
+    from ecodata.spatial.regridding import common_pair_grid
+    return common_pair_grid(datasets,variable,conservative)
 
 
 def spatial_methods(datasets, variable):
@@ -464,6 +440,8 @@ def run(scan, task_id, task, folder, model_id, progress):
             fused,report = align_and_fuse(raw_prepared,variable,method=WEIGHTED[method])
             output = [fused.dataset]
             process["transform"] = report
+            from ecodata.evaluation.blocked_confirmation import engineering_review
+            process['recommendation_review']=engineering_review(output[0],variable)
         elif method in SPACE:
             output, report = apply_space(working, variable, method)
             process.update(report)
@@ -529,3 +507,23 @@ def run(scan, task_id, task, folder, model_id, progress):
         reason="按每种确认的对齐算法生成结果；融合试跑使用原版变异评分。无验证参考的纯重采样保留各方案。"),
         grid_searches=searches, original_report=reports, search=None, target_format="NetCDF",
         source_formats=[scan["rows"][i]["format"] for i,_ in task["fields"]])
+
+
+def run_cross_variable(scan,task_id,task,folder,model_id,progress):
+    from pathlib import Path
+    from ecodata.algorithms.platform_search import SearchInput,process_cross_variable
+    if task.get('recipes') != [['scale.semantic_stack']]:
+        raise ValueError('Cross-variable alignment requires the verified semantic adapter')
+    items=[SearchInput(scan['rows'][i]['name'],'primary' if n==0 else 'auxiliary',read_selected(scan['rows'][i]))
+           for n,(i,_) in enumerate(task['fields'])]
+    report=process_cross_variable(items,dict(task='cross_variable_alignment',variables=[v for _,v in task['fields']],
+        target_grid=task.get('target_grid'),target_frequency=task.get('target_frequency')),folder)
+    files=[];artifacts=[]
+    for product in report['products']:
+        path=Path(product['path']);raw=path.read_bytes()
+        with xr.open_dataset(io.BytesIO(raw)) as ds:
+            artifacts.append(dict(name=path.name,fields=list(ds.data_vars),dimensions=dict(ds.sizes)))
+        files.append((path.name,raw))
+    return dict(files=files,source_formats=[scan['rows'][i]['format'] for i,_ in task['fields']],
+        target_format='NetCDF',original_report=report,
+        local=dict(artifacts=artifacts,reason='不同物理变量分别对齐，保留单位；没有直接平均或声称精度提升。'))

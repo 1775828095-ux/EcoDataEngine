@@ -90,13 +90,15 @@ def visible_validation(inputs, request):
 
 class GraphMutation:
     """Finite resource search, not a finite hand-written workflow grammar."""
-    def __init__(self, context, registry, request, model, reference, folder, budget, seed, progress=None,account=None,folds=None,selection_policy=None,profile_context=None):
+    def __init__(self, context, registry, request, model, reference, folder, budget, seed, progress=None,account=None,folds=None,selection_policy=None,profile_context=None,evaluator=None):
         self.context=context; self.registry=registry; self.request=request; self.reference=reference
+        self.evaluator=evaluator
         self.folder=Path(folder); self.budget=budget; self.rng=np.random.default_rng(seed); self.progress=progress
         self.started=perf_counter(); self.attempts=0; self.executions=0; self.iterations=0
         self.empty_neighbourhoods=0;self.prefix_evaluations=0
         self.proposal_budget_blocked=False
         self._node_lists={};self._candidate_cache={};self.duplicate_proposals=0;self.novel_executions=0
+        self.recommendation_receipts=[];self.recommended_parents=[]
         self.records={}; self.states={}; self.evaluated={}; self.edits={}; self.transitions=[];self.bank_keys=None
         self.account=account or SearchAccount(budget['objective_limit'],budget['wall_seconds'],probe_calls=budget.get('probe_call_limit'),total_calls=budget.get('total_call_limit'))
         self.executor=Executor(replace(context,validation_reference=None,validation_role=None), registry,account=self.account)
@@ -126,6 +128,9 @@ class GraphMutation:
             if value is not None:resources[name]=Artifact('prior_resource',value).fingerprint()
         for role,dataset in context.parameters.get('prior_resources',{}).items():
             resources['prior:'+role]=Artifact('prior_resource',dataset).fingerprint()
+        if context.parameters.get('observation_state_update'):
+            resources['conditioning_observations']=Artifact('conditioning_observations',context.observations).fingerprint()
+            resources['observation_update_policy']=canonical(context.parameters['observation_state_update'])
         self.state_namespace=canonical(resources)
         self.roots=[];self.representatives={};self.state_keys={};self.deduplicated=0
         for i, source in enumerate(context.sources):
@@ -403,7 +408,7 @@ class GraphMutation:
             if self.request.get('_deployment_reexecution'):
                 from ecodata.algorithms.current_input import validate_targets
                 validate_targets(output,self.context,self.request)
-            row['metrics']=measured(output,self.reference,self.context)
+            row['metrics']=self.evaluator(output) if self.evaluator is not None else measured(output,self.reference,self.context)
             from ecodata.evaluation.quality_gates import ResultQualityGate
             quality=ResultQualityGate().validate(output,output,variable=self.context.variable,
                  semantic_type=self.context.semantic_type,nonnegative=bool(self.context.model_constraints.get('nonnegative')))
@@ -508,10 +513,56 @@ class GraphMutation:
         return dict(enabled=True,before=before,after=self.best()['key'],trials=trials,
             selection='Same required folds and frozen practical tolerance; every new call charged')
 
+    def recommendation_parent(self):
+        return self.recommended_parents.pop(0) if self.recommended_parents else None
+
+    def recommendation_mutation_family(self,key):
+        # This is a graph operation, not a task-to-algorithm preference.
+        return 'structure'
+
+    def initialize_recommendations(self):
+        for recipe in self.request.get('recommended_recipes',[]):
+            receipt=dict(recipe=recipe,status='REJECTED',keys=[])
+            try:
+                if recipe.get('scope',{}).get('variable')!=self.context.variable:
+                    raise ValueError('Recommended recipe variable scope mismatch')
+                for root in self.roots:
+                    current=root
+                    for operation in recipe['steps']:
+                        spec=self.registry.get(operation).spec
+                        if spec.input_contract.get('source_arity')!=1:
+                            raise ValueError('Recommended step requires explicit multi-parent binding')
+                        options=list(self.options(spec,[current]))
+                        if not options:raise ValueError('No applicable recommended parameter binding')
+                        key=self.intern(spec.id,[current],options[0])
+                        cached=self.evaluated.get(key)
+                        if cached and cached['status']=='ELIGIBLE_OUTPUT':
+                            receipt['cache_hits']=receipt.get('cache_hits',0)+1;current=key
+                            continue
+                        trial=self.candidate(None,None,spec,[current],options[0],'verified_recommendation')
+                        if not trial:raise ValueError('Recommended step is incompatible, redundant or unavailable')
+                        current=trial['child'];row=self.execute(current,'confirmed_recommendation')
+                        if not row or row['status']!='ELIGIBLE_OUTPUT':raise ValueError('Recommended numerical execution failed')
+                    receipt['keys'].append(current)
+                    if current not in self.recommended_parents:self.recommended_parents.append(current)
+                receipt['status']='PASS'
+            except (ValueError,KeyError,TypeError) as exc:receipt['error']=str(exc)
+            self.recommendation_receipts.append(receipt)
+        save(self.folder/'recommendation_validation.json',self.recommendation_receipts)
+
     def initialize(self):
         screened=[]
+        for root in self.roots:
+            if not self.exhausted():self.execute(root,'source_baseline')
+        self.initialize_recommendations()
+        initial_limit=self.request.get('initial_proposal_limit')
+        if initial_limit is not None and (type(initial_limit)!=int or not 1<=initial_limit<self.budget['proposal_limit']):
+            raise ValueError('Initial proposal limit must reserve mutation attempts')
+        available=list(self.available)
+        if initial_limit is not None:self.rng.shuffle(available)
         # Score every actual root-neighbour, never a random sixteen-plan pool.
-        for spec in self.available:
+        for spec in available:
+            if initial_limit is not None and self.attempts>=initial_limit:break
             arity=spec.input_contract.get('source_arity')
             for count in ([arity] if arity is not None else range(1,len(self.roots)+1)):
                 if not count or count>len(self.roots): continue
@@ -520,16 +571,18 @@ class GraphMutation:
                         for param in self.options(spec,parents):
                             row=self.candidate(None,None,spec,parents,param,'initial_registry_neighbour')
                             if row: screened.append(row)
-                            if self.exhausted(): break
+                            if self.exhausted() or (initial_limit is not None and self.attempts>=initial_limit): break
                     except (ValueError,KeyError,TypeError): pass
-                    if self.exhausted(): break
+                    if self.exhausted() or (initial_limit is not None and self.attempts>=initial_limit): break
         # All compatible seeds are retained; real evaluations count in the same budget.
         use_prior=self.soft_guidance and self.candidate_portraits is not None and self.selection_policy['portraits_enabled']
         for row in screened:
             if use_prior:row['candidate_prior']=self.candidate_portraits.score(row['child'])
         screened.sort(key=lambda r:(*self.candidate_portraits.order_key(r['child']),r['child']) if use_prior else (r['child'],))
         save(self.folder/'initial_screening.json',dict(rows=screened,reference_used=False,
-             complete_root_scan=not self.exhausted(),global_space_complete=False,random_truncation=False))
+             complete_root_scan=not self.exhausted() and (initial_limit is None or self.attempts<initial_limit),global_space_complete=False,
+             random_truncation=initial_limit is not None,initial_proposal_limit=initial_limit,
+             ordering='seeded_shuffle' if initial_limit is not None else 'registry_order'))
         for key in self.roots:
             if not self.exhausted():self.execute(key,'three_portrait_initialization')
         for row in screened:
@@ -700,6 +753,8 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
     from ecodata.algorithms.profile_matching import prepare_model_request, portraits
     from ecodata.algorithms.composition_optimizers import search_graph
     request=dict(request,soft_guidance=request.get('soft_guidance',False))
+    if request.get('review_policy')!='legacy_v1' and graphs is None and budget['proposal_limit']>1:
+        request.setdefault('initial_proposal_limit',max(1,min(64,int(budget['proposal_limit'])//3)))
     if type(request['soft_guidance']) is not bool:raise ValueError('soft_guidance must be boolean')
     if not request['soft_guidance']:
         request=dict(request,response_scoring=dict(request.get('response_scoring',{}),enabled=False))
@@ -715,6 +770,8 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
     original_context,original_audit,original_quality=build_context(inputs,request)
     self_protocol=None;confirmation_reference=None;fold_specs=None;selection_policy=None
+    review_fold=None;review_receipt=dict(status='INSUFFICIENT',reason='No separate task-matched confirmation supplied')
+    review_profile_context=original_context
     if validation is None:
         from ecodata.algorithms.task_validation import plan
         try:fold_specs,self_protocol=plan(inputs,request,original_context,account)
@@ -726,6 +783,12 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
             save(folder/'request.json',dict(request=request,inputs=original_audit,quality=original_quality,budget=budget,seed=seed))
             save(folder/'summary.json',result)
             return result
+        if request.get('review_policy')!='legacy_v1':
+            from ecodata.algorithms.task_validation import reserve_review
+            fold_specs,review_fold,profile_inputs,review_receipt=reserve_review(fold_specs,inputs,request,original_context)
+            if profile_inputs is not None:review_profile_context=build_context(profile_inputs,request)[0]
+            self_protocol.update(review_reservation=review_receipt,fold_count=len(fold_specs),
+                primary_fold_ids=[f['id'] for f in fold_specs])
         inputs=fold_specs[0]['inputs'];validation=fold_specs[0]['validation'];confirmation_reference=fold_specs[0]['confirmation']
         request=dict(request,_current_primary_index=self_protocol['target_source_index'],
             parameters=dict(request.get('parameters',{}),reference_support='fixed_finite_reference',require_complete_output=True))
@@ -744,7 +807,8 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
         from ecodata.algorithms.reliable_selection import make_policy
         history=[];history_receipt=dict(status='NOT_REQUIRED_LOCAL_MATCH_OR_OTHER_TASK')
         if request.get('reliable_selection',{}).get('mode')=='fold_only':history_receipt=dict(status='DISABLED_FOLD_ONLY_ABLATION')
-        if request.get('reliable_selection',{}).get('mode')!='fold_only' and self_protocol.get('tasks')==['temporal_gap'] and self_protocol.get('support_limited'):
+        if review_fold is not None:history_receipt=dict(status='NOT_MIXED_WITH_ISOLATED_CURRENT_INPUT_REVIEW',reason='External history must independently prove no shared outer labels')
+        if review_fold is None and request.get('reliable_selection',{}).get('mode')!='fold_only' and self_protocol.get('tasks')==['temporal_gap'] and self_protocol.get('support_limited'):
             from ecodata.algorithms.development_validation import history_folds
             history,history_receipt=history_folds(request,original_context,self_protocol.get('task_profile',{}))
             fold_specs+=history
@@ -780,7 +844,9 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
             clean(fold['reference'].to_dataset(name=context.variable)).to_netcdf(local/'labels.nc',engine='h5netcdf')
             for j,source in enumerate(fold['context'].sources):clean(source.dataset).to_netcdf(local/f'source{j}.nc',engine='h5netcdf')
             save(local/'protocol.json',fold_specs[i]['protocol'])
-    search=GraphMutation(context,registry,request,model,validation.reference,folder,budget,seed,progress,account,folds=folds,selection_policy=selection_policy,profile_context=original_context)
+    from ecodata.algorithms.platform_search import BlockedSearchValidation
+    search=GraphMutation(context,registry,request,model,validation.reference,folder,budget,seed,progress,account,folds=folds,selection_policy=selection_policy,profile_context=review_profile_context,
+        evaluator=validation if isinstance(validation,BlockedSearchValidation) else None)
     try:
         backend=request.get('mutation_control','random')
         if backend not in {'alns','random','none','fixed'}:raise ValueError('Unknown explicit mutation backend; no fallback')
@@ -852,6 +918,11 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
                     source=next(s.dataset for s in original_context.sources if s.dataset.attrs.get('source_id')==protected)
                     output=protect_observed(output,source,context.variable)
         if best:
+            baselines=[r for r in search.evaluated.values() if r['origin']=='source_baseline' and r['status']=='ELIGIBLE_OUTPUT']
+            source_baseline=min(baselines,key=search.rank) if baselines else None
+            save(folder/'selection_freeze.json',dict(key=best['key'],baseline_key=initial_key,
+                source_baseline_key=source_baseline['key'] if source_baseline else None,
+                graph=search.records,confirmation_read=False,review_reservation=review_receipt))
             if confirmation_reference is not None:
                 held_output,_=search.executor.execute(search.records,best['key'])
                 confirmation=dict(metrics=measured(held_output,confirmation_reference,context),used_for_selection=False,
@@ -881,8 +952,14 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
                 except Exception as exc:row.update(status='FAILED',error=str(exc),trace=getattr(exc,'trace',[]))
                 bank_rows.append(row)
         save(folder/'graphs.json',search.records);save(folder/'mutation_trace.json',search.transitions)
+        if isinstance(validation,BlockedSearchValidation):
+            save(folder/'selection_freeze.json',dict(key=best['key'] if best else None,
+                source_baseline_key=source_baseline['key'] if best and source_baseline else None,
+                graph=search.records,validation_protocol=validation.protocol,
+                reference_used_for_selection='Search validation only; confirmation not read yet'))
         result=dict(service='PlatformSearch/PortraitMutation',status='PASS' if best else ('NO_EXECUTABLE_CURRENT_GRAPH' if deployment is not None else 'NO_ELIGIBLE_RESULT'),
           best=best,initial_best=initial,product=str(product_path) if product_path else None,
+          source_baselines=[r for r in search.evaluated.values() if r['origin']=='source_baseline'],
           bank_rows=bank_rows,selected_bank_id=next((name for name,key in bank_keys.items() if best and key==best['key']),None),
           reliable_selection=selection_policy,
           promotion_guard=dict(baseline_key=search.promotion_baseline['key'],support_sufficient=search.promotion_support,
@@ -900,6 +977,7 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
           numerical_comparison='Required-fold measured task loss, global practical-equivalence simplicity and stable graph ID; wall-time never decides ties' if selection_policy else 'float64 roundoff buckets, then graph simplicity and stable graph ID; wall-time cost never decides ties',
           executed_candidates=search.executions,prefix_terminal_assessments=search.prefix_evaluations,attempts=search.attempts,kernel_calls=search.numerical_calls(),
           adapter_invocations=search.numerical_calls(),search_policy=('three_portrait_then_' if search.soft_guidance else 'hard_contracts_then_')+backend,optimizer=optimizer,
+          mutation_actual_new_executions=search.novel_executions,
           mutation_new_executions=sum(r['origin'] in {'mutation','mutation_probe'} for r in search.evaluated.values()),
           evolution_used=bool(search.transitions),elapsed_seconds=perf_counter()-search.started,
           empty_neighbourhoods=search.empty_neighbourhoods,
@@ -912,13 +990,42 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
           self_validation_from_visible=self_protocol is not None,registry_count=len(registry.specs()),
           available_count=len(search.available),deployment_adapter_calls=account.counts['deploy'],
           total_cost=account.receipt(),scientific_state_deduplications=search.deduplicated,
-          parent_policy='best',response_score_intervals=len({tuple(r.get('score_interval',[])) for r in search.response.responses.values() if r['status'] in {'MEASURED_VISIBLE_MASK','MEASURED_TASK_FOLDS'}}),
+          recommendation_validation=search.recommendation_receipts,
+          parent_policy='verified_recommendations_then_best' if search.recommendation_receipts else 'best',response_score_intervals=len({tuple(r.get('score_interval',[])) for r in search.response.responses.values() if r['status'] in {'MEASURED_VISIBLE_MASK','MEASURED_TASK_FOLDS'}}),
           independent_evaluation=evaluation(output) if best and evaluation is not None else None)
         if self_protocol is not None:
             from ecodata.algorithms.task_validation import outcome
             result['task_acceptance']=outcome(self_protocol,request,result['stop_reason'],confirmation)
         if best and backend not in {'none','fixed','bank'} and not result['evolution_used'] and not search.stopper.reason:
             result['status']='BUDGET_EXHAUSTED_BEFORE_MUTATION'
+        if request.get('require_mutation_execution') and search.novel_executions==0:
+            result['status']='MUTATION_NOT_EXECUTED'
+            result['reason']='No genuinely new mutation evaluation completed; source/cached output is not a mutation acceptance'
+        if self_protocol is not None:
+            from ecodata.evaluation.blocked_confirmation import review_field
+            gate=review_field(search,result,review_fold,review_receipt,request)
+            result['recommendation_review']=gate
+            result['delivery_status']='ENHANCEMENT_RECOMMENDED' if gate['recommended'] else 'EXPLORATORY_ONLY'
+            result['delivered_graph']=dict(key=best['key'],records={k:search.records[k] for k in search.nodes(best['key'])}) if best else None
+            result['delivered_best']=best
+            if best and initial and not gate['recommended'] and initial['key']!=best['key']:
+                candidate=folder/'exploratory-candidate.nc';candidate.write_bytes(product_path.read_bytes())
+                result['candidate_product']=str(candidate)
+                try:
+                    from ecodata.algorithms.current_input import validate_output
+                    fallback_executor=Executor(replace(original_context,validation_reference=None,validation_role=None),registry,account=account,phase='deploy')
+                    data,trace=fallback_executor.execute(search.records,initial['key'])
+                    data,checks=validate_output(data,original_context,request)
+                    clean(data).to_netcdf(product_path,engine='h5netcdf')
+                    with xr.open_dataset(product_path) as f:xr.testing.assert_allclose(clean(data),f.load())
+                    result.update(delivered_graph=dict(key=initial['key'],records={k:search.records[k] for k in search.nodes(initial['key'])}),delivered_best=initial,delivery_status='BASELINE_RETAINED',
+                        final_validation_best_delivered=False,delivery_trace=trace,delivery_quality=checks)
+                except (ValueError,RuntimeError) as exc:
+                    product_path.write_bytes(candidate.read_bytes())
+                    gate['delivery_error']=str(exc)
+            elif best and initial and not gate['recommended']:result['delivery_status']='BASELINE_RETAINED'
+            save(folder/'recommendation_review.json',gate)
+            result['total_cost']=account.receipt()
         save(folder/'summary.json',result)
         return result
     finally:search.close()

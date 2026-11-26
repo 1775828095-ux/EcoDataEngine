@@ -41,7 +41,7 @@ class SemanticCrossScaleStackPlugin:
             reasons.append("该插件生成 feature_stack，不生成任意目标物理变量")
         if context.target_lat is None or context.target_lon is None:
             reasons.append("缺少目标 lat/lon 网格")
-        if len(self._datasets(context)) < 2:
+        if len(self._datasets(context)) < (1 if context.parameters.get("alignment_only") else 2):
             reasons.append("跨尺度特征栈至少需要两个来源")
         crs_values = set()
         usable = 0
@@ -57,7 +57,7 @@ class SemanticCrossScaleStackPlugin:
                         reasons.append(f"{name} 缺少受支持的 data_kind（continuous/categorical）")
                     if not field.attrs.get("units"):
                         reasons.append(f"{name} 缺少单位；分类变量应使用 units=1")
-        if usable < 2:
+        if usable < (1 if context.parameters.get("alignment_only") else 2):
             reasons.append("至少需要两个带 lat/lon 的可用变量")
         if len(crs_values) != 1 or any(not dataset.attrs.get("crs") for dataset in self._datasets(context)):
             reasons.append("所有来源必须明确且使用同一 CRS")
@@ -155,3 +155,93 @@ class SemanticCrossScaleStackPlugin:
         record = TransformRecord(self.spec.id, {"transformations": transformations}, sum(field.size for field in feature_arrays), feature_stack.size, elapsed, compatibility.warnings)
         report = {"status": "PASS", "features": feature_names, "transformations": transformations, "runtime_seconds": elapsed, "physical_detail_claim": False}
         return AlgorithmResult(EcoDataBundle(output, (record,)), self.spec.id, report)
+
+
+def align_variables(datasets, variables, *, target_grid=None, target_frequency=None):
+    """Public cross-variable alignment, never averaging unlike quantities.
+
+    Reuses registered scale/temporal kernels. Without a user/model target the
+    common coarser grid is an engineering default, not a learned optimal scale.
+    """
+    from pyproj import CRS
+    from ecodata.spatial.regridding import normalize_grid_axes, resolve_target_grid
+    from ecodata.temporal.semantic import SemanticTimeConfig, SemanticTimeResampler
+    if len(datasets) != len(variables) or len(datasets) < 2:
+        raise SchemaError('Cross-variable alignment requires at least two explicitly bound fields')
+    prepared=[]
+    for ds,name in zip(datasets,variables):
+        if name not in ds:raise SchemaError('Bound variable absent: '+name)
+        if not ds.attrs.get('crs') or not CRS.from_user_input(ds.attrs['crs']).equals(CRS.from_epsg(4326)):
+            raise SchemaError('Cross-variable rectilinear alignment requires confirmed geographic EPSG:4326; use declared projection adapter first')
+        ds=normalize_grid_axes(ds)[0]
+        attrs=ds[name].attrs
+        if not attrs.get('units') or attrs.get('data_kind') not in {'continuous','categorical'}:
+            raise SchemaError('Unit/data kind UNKNOWN: '+name)
+        if attrs.get('spatial_semantics') not in {'cell_mean','flux','point','grid_estimate','categorical'}:
+            raise SchemaError('Spatial support UNKNOWN or unsupported cell total: '+name)
+        if set(ds[name].dims)-{'time','lat','lon'}:
+            raise SchemaError('Select a scientifically defined level before cross-variable alignment: '+name)
+        if target_frequency and 'time' in ds[name].dims:
+            ds=SemanticTimeResampler(SemanticTimeConfig(target_frequency,name)).apply(EcoDataBundle(ds)).data.dataset
+        prepared.append(ds)
+    dynamic=['time' in ds[name].dims for ds,name in zip(prepared,variables)]
+    if any(dynamic) and not all(dynamic):raise SchemaError('Static/dynamic broadcasting requires an explicit task contract')
+    if all(dynamic):
+        import pandas as pd
+        clocks=[pd.DatetimeIndex(ds.time.values) for ds in prepared]
+        if any(c.hasnans or c.has_duplicates or not c.is_monotonic_increasing for c in clocks):
+            raise SchemaError('Time labels must be nonmissing, unique and increasing')
+        times=clocks[0]
+        for c in clocks[1:]:times=times.intersection(c)
+        if not len(times):raise SchemaError('No common actual timestamps; no invented observations')
+        bounds=[]
+        for ds,name in zip(prepared,variables):
+            semantic=ds[name].attrs.get('temporal_semantics')
+            if semantic not in {'instantaneous','mean','accumulation'}:
+                raise SchemaError('Cross-variable time support UNKNOWN or unsupported: '+name)
+            if semantic!='instantaneous':
+                from ecodata.temporal.semantic import _validated_bounds
+                _validated_bounds(ds)
+                bounds.append(ds.sel(time=times).time_bounds.values)
+        if bounds and any(not np.array_equal(bounds[0],b) for b in bounds[1:]):
+            raise SchemaError('Equal labels have different interval support; declare a common target frequency')
+        prepared=[ds.sel(time=times) for ds in prepared]
+    # Reuse the same geometry planner as same-variable pairing, with a private
+    # placeholder only for geometry: scientific fields keep their own names/units.
+    from ecodata.spatial.regridding import common_pair_grid as grid_plan
+    geometry=[ds[[name]].rename({name:'geometry_field'}) for ds,name in zip(prepared,variables)]
+    if target_grid:
+        target=resolve_target_grid(geometry,target_grid)
+        basis='explicit user/model target'
+    else:
+        if len(geometry)!=2:raise SchemaError('More than two variables require an explicit target grid')
+        target,_,_=grid_plan(geometry,'geometry_field',True)
+        basis='common supported coarser grid; not accuracy-optimal resolution'
+    records=[];outputs=[]
+    for ds,name in zip(prepared,variables):
+        frames=[];operations=[]
+        indices=range(ds.sizes['time']) if 'time' in ds[name].dims else [None]
+        for index in indices:
+            plane=ds[[name]].isel(time=index,drop=True) if index is not None else ds[[name]]
+            identity=all(np.array_equal(plane[a],target[a]) for a in ('lat','lon'))
+            if identity:
+                result=plane.copy();op=dict(variable=name,method='identity')
+            else:
+                context=AlgorithmContext(sources=(EcoDataBundle(plane),),variable='feature_stack',
+                    semantic_type='multidimensional_array',target_lat=tuple(target.lat.values),target_lon=tuple(target.lon.values),
+                    parameters={'alignment_only':True})
+                executed=SemanticCrossScaleStackPlugin().run(context)
+                columns=[v for v in executed.data.dataset if v==name or v.startswith(name+'__fraction_')]
+                result=executed.data.dataset[columns]
+                op=executed.report['transformations'][0]
+            if index is not None:result=result.expand_dims(time=[ds.time.values[index]])
+            frames.append(result);operations.append(op)
+        output=xr.concat(frames,dim='time') if all(dynamic) else frames[0]
+        if 'time_bounds' in ds:output['time_bounds']=ds.time_bounds
+        output.attrs.update(crs=ds.attrs['crs'],source_id=ds.attrs.get('source_id','UNKNOWN'))
+        outputs.append(output)
+        records.append(dict(variable=name,unit=ds[name].attrs.get('units','UNKNOWN'),operations=operations,
+            input_shape=list(ds[name].shape),output_shape=dict(output.sizes)))
+    return outputs,dict(status='PASS',target_basis=basis,variables=records,physical_variables_blended=False,
+        physical_detail_claim=False,target_shape=dict(target.sizes),reference_accuracy_assessed=False,
+        temporal_relation='Common actual labels; each variable retains instantaneous/mean/accumulation semantics, not physical equivalence')

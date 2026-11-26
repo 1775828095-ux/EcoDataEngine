@@ -78,3 +78,34 @@ def xskillscore_assessment(prediction, reference):
     return dict(RMSE=float(xs.rmse(estimate, actual).item()),
                 MAE=float(xs.mae(estimate, actual).item()),
                 Bias=float(xs.me(estimate, actual).item()), count=int(mask.sum()))
+
+
+def blocked_validation(prediction,reference,times,location_ids,block_by_station):
+    """Equal date x region loss; validation only, no source-family preference.
+
+    These are descriptive blocks, not independent statistical repeats. Missing
+    references never become truth; failed predictions cannot drop hard cases.
+    """
+    prediction=np.asarray(prediction);reference=np.asarray(reference)
+    if prediction.shape!=reference.shape or reference.shape!=(len(times),len(location_ids)):
+        raise ValueError('Blocked validation queue mismatch')
+    rows=[]
+    groups=np.asarray([block_by_station[str(i)] for i in location_ids])
+    import pandas as pd
+    days=pd.DatetimeIndex(times).normalize()
+    for date in days.unique():
+        selected=days==date
+        for group in sorted(set(groups)):
+            keep=groups==group
+            y=reference[selected][:,keep];p=prediction[selected][:,keep]
+            if not np.isfinite(y).any():continue
+            metrics=error_metrics(p,y)
+            rows.append(dict(date=str(date),region=int(group),metrics=metrics))
+    if not rows:raise ValueError('No actual date-region validation references')
+    losses=np.array([row['metrics']['RMSE'] for row in rows])
+    return dict(objective=float(losses.mean()),objective_name='equal_date_region_RMSE',
+        pooled=error_metrics(prediction,reference),blocks=rows,block_count=len(rows),
+        date_count=len(set(row['date'] for row in rows)),region_count=len(set(row['region'] for row in rows)),
+        RMSE_block_std=float(losses.std()),worst_block_RMSE=float(losses.max()),
+        source_bonus=0,uncertainty='Descriptive date-region variability, not a confidence interval',
+        robustness_status='MULTIPLE_DATES_AND_REGIONS' if len(set(row['date'] for row in rows))>=3 and len(set(groups))>=2 else 'INSUFFICIENT_DATE_OR_REGION_REPLICATION')

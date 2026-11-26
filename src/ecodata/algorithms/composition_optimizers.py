@@ -24,7 +24,7 @@ def random_graph_search(search, request, selection_policy=None):
             strategy = 'random'
         if recommended is not None:
             current= recommended
-            family='recommendation_parameters'
+            family=search.recommendation_mutation_family(current) if hasattr(search,'recommendation_mutation_family') else 'recommendation_parameters'
             strategy='random'
         before_calls = len(search.account.events)
         search.propose(current, family, strategy, search.rng, destruction=plan)

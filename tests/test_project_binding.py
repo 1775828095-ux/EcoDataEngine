@@ -80,6 +80,11 @@ def test_parent_reference_cannot_escape_uploaded_root(reference):
         bind_project([uploaded(case(reference=reference))], 'camx')
 
 
+def test_wrf_bundle_uses_shared_deployed_upload_limits():
+    from ecodata.interface.engineering_upload import MAX_FILE_BYTES, MAX_TOTAL_BYTES
+    assert MAX_FILE_BYTES == MAX_TOTAL_BYTES == 10 * 1024 ** 3
+
+
 @pytest.mark.parametrize('ref', ['missing.nc', '../inputs/met.nc', '/private/unknown.nc'])
 def test_missing_or_unsafe_reference(ref):
     with pytest.raises(ValueError):

@@ -2,27 +2,32 @@ import argparse
 import json
 import os
 import re
+from datetime import datetime
 from pathlib import PurePosixPath
 import sys
 from pathlib import Path
-from tempfile import TemporaryDirectory
-
+from ecodata.core.temporary import TemporaryDirectory
 # Metadata inspection does not need a machine-wide BLAS thread pool. Respect
 # explicitly configured limits and let numerical backends manage their own work.
 for thread_variable in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS'):
     os.environ.setdefault(thread_variable, '1')
 
 from PySide6.QtCore import Qt, QObject, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPixmap, QTextCursor
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,
     QPushButton,QMenu,QLineEdit,QComboBox,QLabel,QPlainTextEdit,QFileDialog,QTabWidget,
-    QTableWidget,QTableWidgetItem,QAbstractItemView,QSplitter,QCheckBox,QMessageBox,QScrollArea,QFrame)
+    QTableWidget,QTableWidgetItem,QAbstractItemView,QSplitter,QCheckBox,QScrollArea,
+    QFrame,QHeaderView,QStackedWidget,QMessageBox,QInputDialog,QDialog,QDialogButtonBox)
 from ecodata.models.requirements import RequirementStore
 from .scan import Scanner, assert_current
 from . import service as s
 from . import discovery, output_review, recommendations, request_batches
 from .result_cards import ResultCards
-from .theme import STYLE, mark
+from .theme import STYLE, mark, warning_mark
+from .workspace_ui import SideDrawer, card_shadow
+from .live_log import LogTrigger, LiveTimeline
+from .principles import PrinciplesButton
+from .empty_state import EmptyDataIllustration
 
 class Job(QObject):
     done=Signal(object,object)
@@ -36,7 +41,9 @@ class Job(QObject):
     @Slot()
     def run(self):
         try:
-            args=(self.progress.emit,self.batch_feedback.emit) if self.with_feedback else (self.progress.emit,)
+            def progress(message):
+                self.progress.emit(json.dumps(message,ensure_ascii=False,default=str) if isinstance(message,dict) else str(message))
+            args=(progress,self.batch_feedback.emit) if self.with_feedback else (progress,)
             self.done.emit(self.fn(*args),None)
         except Exception as exc: self.done.emit(None,exc)
 
@@ -130,13 +137,22 @@ def render_local_check(record, labels):
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("模拟技术引擎 | 环境数据工作台")
+        self.setWindowTitle("模拟技术引擎 | 环境数据工作台 · 20261126-r5")
         self.resize(1200,790)
         self.scanner=Scanner()
         self.decision_model=None
+        self.connected_api_key=''
+        from ecodata.core import credentials
+        self.credential_notice=''
+        try:self.saved_api_key=credentials.load()
+        except OSError as exc:self.saved_api_key='';self.credential_notice=str(exc)
         self.auto_run=False
         self.auto_phase=None
+        self.recommendation_review_busy=False
+        self.single_continue_option=False
         self.scan=None
+        from ecodata.core.temporary import sweep_abandoned
+        self.startup_cleanup=sweep_abandoned()
         self.task=TemporaryDirectory(prefix="ecodata-desktop-")
         self.profiles={p["id"]:p for p in RequirementStore().all()}
         self.thread=None
@@ -152,10 +168,11 @@ class Window(QMainWindow):
         self.batch_timer.setSingleShot(True)
         self.batch_timer.timeout.connect(self.prepare_edited_batches)
         self.root=QWidget()
+        self.root.setObjectName('workspaceSurface')
         self.setCentralWidget(self.root)
         root=QVBoxLayout(self.root)
-        root.setContentsMargins(20,15,20,12)
-        root.setSpacing(12)
+        root.setContentsMargins(28,20,28,12)
+        root.setSpacing(15)
         logo=mark()
         self.setWindowIcon(QIcon(logo))
         header=QHBoxLayout()
@@ -173,79 +190,189 @@ class Window(QMainWindow):
         brand.addWidget(subtitle)
         header.addLayout(brand)
         header.addStretch()
-        workspace=QLabel("本地工作空间")
-        workspace.setObjectName("workspace")
-        header.addWidget(workspace)
+        self.drawer=SideDrawer(self)
+        self.principles_button=PrinciplesButton(self)
+        header.addWidget(self.principles_button)
+        self.technical_toggle=self.button(header,'</>',self.open_technical)
+        self.technical_toggle.setToolTip('查看技术记录')
+        self.technical_toggle.setAccessibleName('查看技术记录')
         root.addLayout(header)
-        line=QHBoxLayout()
-        self.path=QLineEdit()
-        self.path.setPlaceholderText("输入本地文件、目录或压缩包路径")
-        line.addWidget(QLabel("本地数据路径"))
-        line.addWidget(self.path,1)
-        self.path.setToolTip("选择、拖入或输入文件、压缩包、文件夹路径；点击开始后由DS按需检查")
-        self.button(line,"选择文件",self.browse_file)
-        self.button(line,"选择文件夹",self.browse_folder)
-        self.setAcceptDrops(True)
-        root.addLayout(line)
         self.current_issues=[]
         self.problem_panel=QFrame()
-        self.problem_panel.setObjectName('recommendationCard')
-        problems=QVBoxLayout(self.problem_panel)
-        heading=QHBoxLayout()
-        self.problem_title=QLabel('问题与待核实事项')
+        self.problem_panel.setObjectName('issueBanner')
+        card_shadow(self.problem_panel)
+        warning=QHBoxLayout(self.problem_panel)
+        warning.setContentsMargins(24,10,24,10)
+        warning.setSpacing(11)
+        icon=QLabel(objectName='issueBannerIcon')
+        icon.setPixmap(warning_mark())
+        warning.addWidget(icon)
+        self.problem_title=QLabel()
+        self.problem_title.setObjectName('issueBannerText')
         self.problem_title.setWordWrap(True)
-        heading.addWidget(self.problem_title,1)
-        self.button(heading,'下载问题清单',self.export_issues)
+        warning.addWidget(self.problem_title,1)
+        self.issue_button=self.button(warning,'查看并处理',self.open_issues)
+        self.problem_panel.hide()
+
+        self.issue_details=QWidget()
+        problems=QVBoxLayout(self.issue_details)
+        problems.setContentsMargins(0,0,0,0)
+        heading=QHBoxLayout()
+        self.issue_count=QLabel()
+        heading.addWidget(self.issue_count,1)
+        issue_export=self.button(heading,'下载问题清单',self.export_issues)
         problems.addLayout(heading)
         self.problem_table=QTableWidget(0,4)
         self.problem_table.setHorizontalHeaderLabels(['检查阶段 / 对象','状态','具体问题或缺项','需要补充或核对'])
         self.problem_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.problem_table.setWordWrap(True)
-        self.problem_table.setColumnWidth(0,180)
-        self.problem_table.setColumnWidth(1,90)
-        self.problem_table.setColumnWidth(2,450)
-        self.problem_table.horizontalHeader().setStretchLastSection(True)
-        self.problem_table.setMinimumHeight(100)
-        self.problem_table.setMaximumHeight(190)
-        problems.addWidget(self.problem_table)
-        root.addWidget(self.problem_panel)
-        self.problem_panel.hide()
+        self.problem_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.problem_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.problem_table.setWordWrap(False)
+        self.problem_table.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.problem_table.setAlternatingRowColors(True)
+        self.problem_table.verticalHeader().hide()
+        self.problem_table.verticalHeader().setDefaultSectionSize(41)
+        columns=self.problem_table.horizontalHeader()
+        columns.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        columns.setSectionResizeMode(1,QHeaderView.ResizeMode.Fixed)
+        self.problem_table.setColumnWidth(1,122)
+        self.problem_table.currentCellChanged.connect(lambda row,*_:self.show_issue_detail(row))
+        problems.addWidget(self.problem_table,1)
+        self.issue_detail=page()
+        self.issue_detail.setMaximumHeight(180)
+        self.issue_detail.setAccessibleName('所选问题详情')
+        self.issue_detail.hide()
+        problems.addWidget(self.issue_detail)
+        problems.addStretch(1)
+        self.drawer.add_page(self.issue_details)
+
         self.tabs=QTabWidget()
+        self.tabs.setObjectName('workspaceTabs')
         root.addWidget(self.tabs,1)
 
         scan=QWidget()
         scanbox=QVBoxLayout(scan)
-        hint=QLabel("选好数据和目标模型，点击「开始自动处理」：评估多源数据的处理价值，准备模型输入。DS按需检查，平台验证后执行；不预设融合必然更好。所需摘要和少量样例发送至DeepSeek，原始文件只读。")
-        hint.setWordWrap(True)
-        scanbox.addWidget(hint)
+        input_card=QFrame()
+        input_card.setObjectName('inputCard')
+        card_shadow(input_card)
+        inputs=QVBoxLayout(input_card)
+        inputs.setContentsMargins(19,14,19,15)
+        inputs.setSpacing(8)
+        input_title=QLabel('本地数据')
+        input_title.setObjectName('sectionTitle')
+        inputs.addWidget(input_title)
+        line=QHBoxLayout()
+        line.setSpacing(8)
+        self.path=QLineEdit()
+        self.path.setAccessibleName('本地数据路径')
+        self.path.setPlaceholderText('输入或拖入文件、文件夹或压缩包')
+        line.addWidget(self.path,1)
+        self.button(line,'选择文件',self.browse_file)
+        self.button(line,'选择文件夹',self.browse_folder)
+        self.model_button=self.button(line,'选择目标模型',self.choose_decision_model)
+        self.model_button.setObjectName('targetModelButton')
+        self.conversion_only=QCheckBox('仅转换（不融合、不搜索）')
+        self.conversion_only.setToolTip('按所选模型的现有组件契约转换；关键单位、时间和坐标必须具备，不补造完整工程。')
+        self.conversion_only.toggled.connect(self.change_conversion_mode)
+        line.addWidget(self.conversion_only)
+        self.setAcceptDrops(True)
+        inputs.addLayout(line)
+        connection=QHBoxLayout()
+        self.api_editor=QWidget()
+        editor_row=QHBoxLayout(self.api_editor)
+        editor_row.setContentsMargins(0,0,0,0)
+        editor_row.setSpacing(8)
+        ai_icon=QLabel('✦')
+        ai_icon.setObjectName('apiIcon')
+        editor_row.addWidget(ai_icon)
+        self.api_key=QLineEdit()
+        self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key.setAccessibleName('DeepSeek API Key')
+        self.api_key.setPlaceholderText('请输入DeepSeek API Key')
+        self.api_key.setMinimumWidth(235)
+        self.api_key.setToolTip('已设置 DEEPSEEK_API_KEY 时，可以留空验证环境变量中的密钥。')
+        editor_row.addWidget(self.api_key,1)
+        self.api_connect=self.button(editor_row,'连接',self.connect_api,primary=True)
+        self.api_connect.setObjectName('apiConnect')
+        self.api_cancel=self.button(editor_row,'取消',self.cancel_api_edit)
+        self.api_cancel.hide()
+        connection.addWidget(self.api_editor)
+        self.api_badge=self.button(connection,'🔑 AI 辅助已连接',self.edit_api_key)
+        self.api_badge.setObjectName('apiBadge')
+        self.api_badge.setToolTip('点击更换密钥；验证后安全保存在Windows凭据管理器')
+        self.api_badge.hide()
+        self.api_status=QLabel()
+        self.api_status.setObjectName('apiStatus')
+        self.api_status.setTextFormat(Qt.TextFormat.PlainText)
+        self.api_status.setWordWrap(True)
+        connection.addWidget(self.api_status,1)
+        inputs.addLayout(connection)
         self.target_grid_row=QWidget()
         target_layout=QHBoxLayout(self.target_grid_row)
         target_layout.setContentsMargins(0,0,0,0)
         target_layout.addWidget(QLabel('目标网格间距（纬度,经度；度）'))
         self.target_grid_input=QLineEdit()
         self.target_grid_input.setPlaceholderText('可选，例如 0.1,0.1；填写后作为硬性输出要求')
+        self.target_grid_input.textChanged.connect(self.reset_presentation)
         self.target_grid_input.textChanged.connect(self.reset_target)
         target_layout.addWidget(self.target_grid_input,1)
-        scanbox.addWidget(self.target_grid_row);self.target_grid_row.hide()
-        self.workflow_status=QLabel("待开始 · 选择数据与目标模型即可")
-        self.workflow_status.setWordWrap(True)
-        scanbox.addWidget(self.workflow_status)
-        self.basis_summary=page()
-        self.basis_summary.setPlainText('决策依据将在检查后显示：数据事实 / 采用的约定 / 处理操作 / 验证结论。')
-        self.basis_summary.setMinimumHeight(120)
-        self.basis_summary.setMaximumHeight(200)
+        inputs.addWidget(self.target_grid_row)
+        self.target_grid_row.hide()
+        scanbox.addWidget(input_card)
+        hint=QLabel('选择本地数据与目标模型，平台将评估并生成处理方案。')
+        hint.setObjectName('inputHint')
+        hint.setWordWrap(True)
+        scanbox.addWidget(hint)
+
+        self.workflow_stack=QStackedWidget()
+        scanbox.addWidget(self.workflow_stack,1)
+        self.empty_state=QWidget()
+        empty=QVBoxLayout(self.empty_state)
+        empty.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        empty.addStretch(1)
+        illustration=EmptyDataIllustration()
+        empty.addWidget(illustration,0,Qt.AlignmentFlag.AlignHCenter)
+        empty.addSpacing(6)
+        empty_title=QLabel('等待数据输入')
+        empty_title.setObjectName('emptyTitle')
+        empty.addWidget(empty_title,0,Qt.AlignmentFlag.AlignHCenter)
+        empty_note=QLabel('点击下方按钮开始智能分析。')
+        empty_note.setObjectName('emptyNote')
+        empty.addWidget(empty_note,0,Qt.AlignmentFlag.AlignHCenter)
+        empty.addStretch(1)
+        self.workflow_stack.addWidget(self.empty_state)
+
+        self.workflow_overview=QWidget()
+        overview=QVBoxLayout(self.workflow_overview)
+        overview.setContentsMargins(2,12,2,4)
         evidence_frame=QFrame()
-        evidence_frame.setObjectName('recommendationCard')
+        evidence_frame.setObjectName('inputCard')
+        card_shadow(evidence_frame)
         evidence_box=QVBoxLayout(evidence_frame)
-        evidence_box.setContentsMargins(14,10,14,10)
-        evidence_title=QLabel('决策依据与执行链')
-        evidence_title.setObjectName('recommendationTitle')
-        evidence_box.addWidget(evidence_title)
-        evidence_box.addWidget(self.basis_summary)
-        scanbox.addWidget(evidence_frame)
-        self.workflow_log=page()
-        self.workflow_log.setPlaceholderText("运行后显示当前步骤、处理依据和需要补充的条件。无需手动扫描或编辑JSON。")
-        scanbox.addWidget(self.workflow_log,1)
+        evidence_box.setContentsMargins(18,15,18,15)
+        evidence_box.addWidget(QLabel('处理概览',objectName='sectionTitle'))
+        self.workflow_status=QLabel()
+        self.workflow_status.setObjectName('workflowConclusion')
+        self.workflow_status.setTextFormat(Qt.TextFormat.PlainText)
+        self.workflow_status.setWordWrap(True)
+        evidence_box.addWidget(self.workflow_status)
+        self.workflow_steps=LiveTimeline()
+        self.workflow_steps.setAccessibleName('正在执行的文件检查与处理步骤')
+        self.workflow_steps.document().setMaximumBlockCount(12)
+        self.workflow_steps.setMaximumHeight(180)
+        self.workflow_steps.hide()
+        evidence_box.addWidget(self.workflow_steps)
+        overview.addWidget(evidence_frame)
+        overview.addStretch(1)
+        self.processing_illustration=EmptyDataIllustration()
+        self.processing_illustration.setObjectName('processingIllustration')
+        self.processing_illustration.hide()
+        overview.addWidget(self.processing_illustration,0,Qt.AlignmentFlag.AlignHCenter)
+        overview.addStretch(1)
+        self.workflow_stack.addWidget(self.workflow_overview)
+
+        self.workflow_log=LiveTimeline()
+        self.drawer.add_page(self.workflow_log)
         self.audit_panel=QWidget()
         auditbox=QVBoxLayout(self.audit_panel)
         split=QSplitter()
@@ -275,42 +402,34 @@ class Window(QMainWindow):
                 self.decision_batch_json=page()
                 self.decision_batch_index=self.add_batch_view(requests,self.decision_batch_json,"融合判断 · 实际分批")
                 self.recommend_json=page()
-                self.recommend_json.setPlaceholderText("自动检查完成后，这里保留算法推荐请求供核查。")
-                self.recommend_batch_index=self.add_batch_view(requests,self.recommend_json,"算法推荐 · 完整请求")
+                self.recommend_json.setPlaceholderText('终审通过后显示最终推荐。')
+                self.recommend_batch_index=self.add_batch_view(requests,self.recommend_json,"算法推荐 · 终审结果")
                 views.addTab(requests,"查看待发 JSON")
             box.addWidget(views,1)
             split.addWidget(panel)
         split.setSizes([550,550])
         auditbox.addWidget(split,1)
-        connection=QHBoxLayout()
-        connection.addWidget(QLabel("DeepSeek 线上 API"))
-        self.api_key=QLineEdit()
-        self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key.setPlaceholderText("已配置环境变量时无需填写；也可在此填写本次密钥")
-        connection.addWidget(self.api_key,1)
-        self.api_status=QLabel()
-        connection.addWidget(self.api_status)
-        auditbox.addLayout(connection)
-        scanbox.addWidget(self.audit_panel,1)
-        self.audit_panel.hide()
-        actions=QHBoxLayout()
+        live_check = QPushButton("联机自检（合成数据）")
+        live_check.clicked.connect(lambda: self.safe(self.check_deepseek_connection))
+        auditbox.addWidget(live_check)
+        self.drawer.add_page(self.audit_panel)
+        action_bar=QWidget()
+        actions=QHBoxLayout(action_bar)
+        actions.setContentsMargins(0,0,0,0)
         self.scan_button=self.button(actions,"扫描数据",self.scan_now,primary=True)
-        self.model_button=self.button(actions,"选择模型",self.choose_decision_model)
-        actions.removeWidget(self.model_button)
-        line.addWidget(self.model_button)
         actions.addStretch(1)
         self.start_button=self.button(actions,"开始自动处理",self.start_workflow,primary=True)
+        self.start_button.setObjectName('startPill')
+        self.start_button.setToolTip('使用线上连接时，DeepSeek 会收到脱敏摘要和少量样例。')
+        card_shadow(self.start_button,primary=True)
         self.decision_send=self.button(actions,"确认发送",self.send_decision,primary=True)
         self.ai_advice_button=self.button(actions,"查看算法方案",lambda:self.tabs.setCurrentIndex(1))
         self.ai_advice_button.setToolTip("查看推荐理由、勾选方案，再确认继续处理")
         self.scan_button.hide()
         self.decision_send.hide()
         self.ai_advice_button.hide()
-        details=QCheckBox("查看技术记录与API设置")
-        self.technical_toggle=details
-        details.toggled.connect(self.audit_panel.setVisible)
-        actions.addWidget(details)
-        scanbox.addLayout(actions)
+        actions.addStretch(1)
+        scanbox.addWidget(action_bar)
         self.tabs.addTab(scan,"1  数据与任务")
 
         plan=QWidget(self)
@@ -371,21 +490,39 @@ class Window(QMainWindow):
         planbox.addWidget(self.local,1)
         recommend=QWidget()
         recbox=QVBoxLayout(recommend)
+        recbox.addWidget(self.problem_panel)
         self.recommendation_checks=[]
         cards=QScrollArea()
         cards.setWidgetResizable(True)
         cards.setFrameShape(QFrame.Shape.NoFrame)
         card_panel=QWidget()
+        card_panel.setObjectName('recommendationPanel')
+        card_panel.setStyleSheet('QWidget#recommendationPanel { background:#f0f7f4; }')
         self.recommend_cards=QVBoxLayout(card_panel)
         self.recommend_cards.setContentsMargins(0,0,6,0)
         self.recommend_cards.setAlignment(Qt.AlignmentFlag.AlignTop)
         cards.setWidget(card_panel)
+        self.recommendation_cards_view=cards
+        self.recommendation_details=QWidget()
+        self.recommendation_details.setObjectName('recommendationPanel')
+        self.recommendation_details.setStyleSheet('QWidget#recommendationPanel { background:#f0f7f4; }')
+        self.recommendation_detail_cards=QVBoxLayout(self.recommendation_details)
+        self.recommendation_detail_cards.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.recommendation_details_view=QScrollArea()
+        self.recommendation_details_view.setWidgetResizable(True)
+        self.recommendation_details_view.setFrameShape(QFrame.Shape.NoFrame)
+        self.recommendation_details_view.setWidget(self.recommendation_details)
+        self.drawer.add_page(self.recommendation_details_view)
         self.recommendation_status=QLabel("点击首页「开始自动处理」后，此处自动显示处理方案及理由。")
+        self.recommendation_status.setWordWrap(True)
+        self.recommendation_status.setTextFormat(Qt.TextFormat.PlainText)
         recbox.addWidget(self.recommendation_status)
         recbox.addWidget(cards,1)
         recactions=QHBoxLayout()
+        self.recommendation_details_button=self.button(recactions,'查看检查详情',self.open_recommendation_details)
+        self.recommendation_details_button.hide()
         recactions.addStretch()
-        self.search_button=self.button(recactions,"按当前方案继续处理",self.continue_recommendations,primary=True)
+        self.search_button=self.button(recactions,"继续处理",self.continue_recommendations,primary=True)
         recbox.addLayout(recactions)
         self.tabs.addTab(recommend,"2  处理依据与方案")
 
@@ -440,6 +577,10 @@ class Window(QMainWindow):
         self.export_button=self.button(footer,"下载结果与检查记录",self.export_now,primary=True)
         rbox.addLayout(footer)
         self.tabs.addTab(result,"3  结果与下载")
+        # Keep the overview and read-only drawers usable while preventing edits
+        # that could invalidate the input or change the active workflow stage.
+        self.busy_controls=(input_card,action_bar,self.tabs.tabBar(),recommend,result,
+                            plan,self.review_page,self.audit_panel,issue_export)
         self.model.currentIndexChanged.connect(self.model_changed)
         for widget in (self.mode,self.role,self.fmt,self.temporal):
             widget.currentIndexChanged.connect(self.reset_target)
@@ -447,16 +588,34 @@ class Window(QMainWindow):
             widget.textChanged.connect(self.reset_target)
         self.mock.toggled.connect(self.reset_target)
         self.mock.toggled.connect(self.decision_edited)
+        self.path.textChanged.connect(self.reset_presentation)
         self.path.textChanged.connect(self.reset_path)
         self.table.itemChanged.connect(self.selection_changed)
         self.decision_json.textChanged.connect(self.decision_edited)
-        self.api_key.textChanged.connect(self.clear_batch_replies)
+        self.api_key.textChanged.connect(lambda _:self.restore_api_status())
+        self.api_key.returnPressed.connect(lambda:self.safe(self.connect_api))
+        self.mock.toggled.connect(self.restore_api_status)
         for panel in (scanbox,planbox,aibox,rbox,recbox):
             panel.setContentsMargins(13,12,13,12)
             panel.setSpacing(9)
+        utilities=QWidget()
+        utility_row=QHBoxLayout(utilities)
+        utility_row.setContentsMargins(0,3,9,3)
+        utility_row.setSpacing(10)
+        self.log_button=LogTrigger()
+        self.log_button.clicked.connect(self.open_logs)
+        utility_row.addWidget(self.log_button)
+        self.statusBar().addPermanentWidget(utilities)
+        self.statusBar().setSizeGripEnabled(False)
         self.setStyleSheet(STYLE)
         self.statusBar().showMessage("就绪 · 请选择本地数据")
         self.reset_path()
+        self.restore_api_status()
+        if self.saved_api_key:
+            self.api_editor.hide();self.api_badge.show()
+        cleanup=self.startup_cleanup
+        if cleanup['removed'] or cleanup['failures']:
+            self.log_event(f"启动清理：回收 {cleanup['released_bytes']} 字节；{len(cleanup['failures'])} 项保留待核验，未动原始输入。")
 
     def button(self,layout,label,fn,*,primary=False):
         b=QPushButton(label)
@@ -470,6 +629,93 @@ class Window(QMainWindow):
         try: fn()
         except Exception as exc: self.error(exc)
 
+    def open_technical(self):
+        self.drawer.open_page('技术记录',self.audit_panel,self.technical_toggle)
+
+    def effective_api_key(self):
+        return self.connected_api_key or os.environ.get('DEEPSEEK_API_KEY','').strip() or self.saved_api_key
+
+    def restore_api_status(self,*_):
+        message='模拟模式 · 按任务执行时不联网' if self.mock.isChecked() else ''
+        if not message and not self.connected_api_key and self.effective_api_key():
+            message='已读取本机配置，可直接开始；联网时检查密钥有效性。'
+        if not message and self.connected_api_key:
+            message=self.credential_notice or '密钥已安全记住，下次打开无需重复输入。'
+        if self.saved_api_key and not self.connected_api_key:
+            self.api_badge.setText('🔑 已记住 DeepSeek 密钥')
+        self.api_status.setText(message)
+
+    def edit_api_key(self):
+        self.api_badge.hide()
+        self.api_editor.show()
+        self.api_connect.setText('保存' if self.connected_api_key else '连接')
+        self.api_cancel.setVisible(bool(self.connected_api_key))
+        self.api_key.setFocus()
+
+    def cancel_api_edit(self):
+        self.api_editor.hide()
+        self.api_key.clear()
+        self.api_badge.show()
+        self.api_badge.setFocus()
+        self.restore_api_status()
+
+    def connect_api(self):
+        if self.thread is not None:
+            return
+        draft=self.api_key.text().strip()
+        key=draft or self.effective_api_key()
+        if not key:
+            self.api_status.setText('请填写 DeepSeek API Key。')
+            self.api_key.setFocus()
+            return
+        self.api_status.setText('正在验证连接…')
+
+        def verify(_):
+            try:
+                s.verify_api_key(key)
+            except ValueError as error:
+                return str(error)
+            return None
+
+        def finish(message):
+            if message:
+                self.statusBar().showMessage('DeepSeek 连接未通过')
+                self.api_status.setText(message)
+                self.api_key.setFocus()
+                return
+            self.connected_api_key=key
+            from ecodata.core import credentials
+            try:
+                credentials.save(key)
+                self.saved_api_key=key
+                self.credential_notice=''
+            except OSError as exc:
+                self.credential_notice=str(exc)+'；本次连接仍可使用。'
+            self.api_badge.setText('🔑 AI 辅助已连接')
+            self.clear_batch_replies()
+            self.cancel_api_edit()
+            self.statusBar().showMessage('DeepSeek 密钥验证成功')
+
+        self.work(verify,finish)
+
+    def open_issues(self):
+        self.drawer.open_page('数据问题与待核实事项',self.issue_details,self.issue_button)
+
+    def open_logs(self):
+        self.drawer.open_page('实时推演日志',self.workflow_log,self.log_button,width=500)
+
+    def show_issue_detail(self,index):
+        if not 0<=index<len(self.current_issues):
+            self.issue_detail.clear()
+            self.issue_detail.hide()
+            return
+        row=self.current_issues[index]
+        details=f"{row['stage']} / {row['target']}\n\n问题：{row['problem']}\n建议处理：{row['action']}"
+        if row.get('source_paths'):
+            details+='\n\n来源文件：\n'+'\n'.join(row['source_paths'])
+        self.issue_detail.setPlainText(details)
+        self.issue_detail.show()
+
     def error(self,exc):
         from . import issues
         self.present_issues([*self.current_issues,*issues.exception(exc)])
@@ -478,23 +724,58 @@ class Window(QMainWindow):
             exc=ValueError('结构化资料格式不完整，已暂停；详细原因可在技术记录中查看，未冒充处理成功。')
         self.auto_run=False
         self.auto_phase=None
-        self.workflow_status.setText("已暂停 · "+str(exc))
-        self.workflow_log.appendPlainText("需要处理："+str(exc))
+        self.report_milestone('本次操作未完成，请到第二步「处理依据与方案」查看待核实事项。')
+        self.log_event('需要处理：'+str(exc),assistant=True)
         self.statusBar().showMessage("操作未完成")
-        QMessageBox.warning(self,"操作未完成",str(exc))
+        self.recommendation_review_busy=False
+        self.refresh_recommendation_action()
 
     def present_issues(self,rows):
         from .issues import unique,bind_sources
+        previous_count=len(self.current_issues)
         self.current_issues=bind_sources(unique(rows),getattr(self,'candidates',{}),getattr(self,'scan',None))
+        self.problem_table.clearSelection()
+        self.problem_table.setCurrentCell(-1,-1)
+        self.show_issue_detail(-1)
         self.problem_table.setRowCount(len(self.current_issues))
         for number,row in enumerate(self.current_issues):
             for col,value in enumerate((row['stage']+' / '+row['target'],row['status'],row['problem'],row['action'])):
-                cell=QTableWidgetItem(value);cell.setToolTip(value+('\n'+'\n'.join(row.get('source_paths',[])) if col==0 else ''));self.problem_table.setItem(number,col,cell)
-        self.problem_table.resizeRowsToContents()
-        self.problem_title.setText(f'问题与待核实事项 · {len(self.current_issues)}项（已完成步骤保留）')
-        self.problem_panel.setVisible(bool(self.current_issues))
+                cell=QTableWidgetItem(value if col!=1 else '')
+                cell.setToolTip(value+('\n'+'\n'.join(row.get('source_paths',[])) if col==0 else ''))
+                if col==1:
+                    cell.setData(Qt.ItemDataRole.AccessibleTextRole,value)
+                self.problem_table.setItem(number,col,cell)
+            status=row['status']
+            badge=QLabel(status)
+            badge.setTextFormat(Qt.TextFormat.PlainText)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setObjectName('issueBadge')
+            badge.setProperty('severe',any(word in status for word in ('失败','严重','未通过','阻断')))
+            badge.setToolTip(status)
+            badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            badge_cell=QWidget()
+            badge_cell.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            badge_box=QHBoxLayout(badge_cell)
+            badge_box.setContentsMargins(6,4,6,4)
+            badge_box.addWidget(badge)
+            self.problem_table.setCellWidget(number,1,badge_cell)
+        count=len(self.current_issues)
+        table=self.problem_table
+        rows_height=table.verticalHeader().defaultSectionSize()*min(max(count,1),10)
+        table.setMaximumHeight(table.horizontalHeader().sizeHint().height()+rows_height+6)
+        skipped=sum(row.get('status')=='已自动跳过' for row in self.current_issues)
+        pending=count-skipped
+        self.problem_title.setText(f'{pending} 项待核实；{skipped} 项不适用建议已自动跳过，不阻塞其他合法步骤。' if skipped else f'检测到 {count} 项数据或处理条件待核实，可能影响结果。')
+        self.issue_count.setText(f'{pending} 项待核实 · {skipped} 项已跳过 · 点击查看详情' if skipped else f'{count} 项待核实 · 点击任意一行查看详情')
+        self.problem_panel.setVisible(bool(count) and self.tabs.currentIndex()!=1)
+        if not count and self.drawer.pages.currentWidget() is self.issue_details:
+            self.drawer.hide()
         if self.current_issues:
+            if count!=previous_count:
+                self.log_event(f'有 {pending} 项待核实、{skipped} 项自动跳过；其他合法步骤可继续。',assistant=True)
             (Path(self.task.name)/'current_issues.json').write_text(s.dump(self.current_issues),encoding='utf8')
+        if self.tabs.currentIndex()==1:
+            self.refresh_recommendation_action()
 
     def export_issues(self):
         if not self.current_issues:return
@@ -511,8 +792,10 @@ class Window(QMainWindow):
 
     def work(self,fn,then,*,feedback=None):
         if self.thread is not None: return
-        self.root.setEnabled(False)
+        for widget in self.busy_controls:
+            widget.setEnabled(False)
         self.statusBar().showMessage("正在处理…")
+        self.log_button.set_state('busy')
         self.thread=QThread()
         self.job=Job(fn,with_feedback=feedback is not None)
         self.job.moveToThread(self.thread)
@@ -538,14 +821,18 @@ class Window(QMainWindow):
         self.thread.deleteLater()
         self.thread=None
         self.job=None
-        self.root.setEnabled(True)
+        for widget in self.busy_controls:
+            widget.setEnabled(True)
         if error is not None:
             if self.tabs.currentIndex()==2 and self.result is None:
-                self.result_cards.status.setText("本地处理未完成。请查看错误提示，修正后返回推荐页重试。")
+                self.result_cards.render_selection([dict(
+                    title='转换未完成' if self.conversion_only.isChecked() else '本地处理未完成 · 未选出算法',
+                    reason='尚未生成通过核验的转换产品，请查看具体缺项。' if self.conversion_only.isChecked() else '本次没有可用评分。请到第二步「处理依据与方案」查看失败原因。')])
             self.error(error)
         else:
             self.statusBar().showMessage("操作完成")
             self.safe(lambda:self.callback(value))
+        self.sync_log_state()
 
     def reset_path(self,*_):
         self.auto_run=False
@@ -570,7 +857,9 @@ class Window(QMainWindow):
         self.checked_decisions=[]
         self.selected_recommendations=[]
         self.recommendation_rows=[]
+        self.recommendation_review_busy=False
         self.set_batch_view(self.recommend_batch_index,[])
+        self.recommend_json.setPlaceholderText('终审通过后显示最终推荐。')
         self.clear_recommendation_cards()
         self.recommendation_status.setText("点击首页「开始自动处理」后，此处自动显示处理方案及理由。")
         self.ai_advice_button.setEnabled(False)
@@ -608,16 +897,51 @@ class Window(QMainWindow):
         path=QFileDialog.getExistingDirectory(self,"选择数据与工程所在文件夹")
         if path:self.path.setText(path)
 
+    def reset_presentation(self,*_):
+        self.workflow_status.clear()
+        self.workflow_steps.clear()
+        self.workflow_steps.hide()
+        self.workflow_log.clear()
+        self.log_button.setToolTip('打开实时推演日志')
+        self.sync_log_state()
+        self.workflow_stack.setCurrentWidget(self.empty_state)
+
+    def sync_log_state(self):
+        state='busy' if self.thread is not None or self.auto_run else (
+            'idle' if self.workflow_log.document().isEmpty() else 'ready')
+        self.log_button.set_state(state)
+        self.processing_illustration.setVisible(self.auto_run)
+        self.processing_illustration.set_running(self.auto_run)
+
+    def log_event(self,message,*,assistant=False,algorithm=False):
+        timestamp=datetime.now().strftime('%H:%M:%S')
+        category='ai' if assistant else 'algorithm' if algorithm else 'system'
+        self.workflow_log.append_entry(timestamp,message,category)
+        if self.auto_run and self.tabs.currentIndex()==0:
+            self.workflow_steps.show()
+            self.workflow_steps.append_entry(timestamp,message[:1000],category)
+        self.sync_log_state()
+
+    def record_step(self,step,detail):
+        summary=f'{step} · {detail}'
+        self.log_button.setToolTip(summary)
+        self.log_event(summary,algorithm=step in {'处理方案','本地处理'})
+
+    def report_milestone(self,message):
+        self.workflow_stack.setCurrentWidget(self.workflow_overview)
+        self.workflow_status.setText(message)
+        self.log_button.setToolTip(message)
+        self.log_event(message)
+
     def show_progress(self,message):
-        self.statusBar().showMessage(message)
+        if self.auto_run and self.tabs.currentIndex()==0 and '已等待' not in message:
+            self.workflow_status.setText(message[:300])
+        self.log_event(message,assistant=any(term in message for term in ('DeepSeek','DS','AI','次尝试')),
+            algorithm=any(term in message for term in ('RMSE','候选','寻优','算法','spatial.','融合')))
         if self.tabs.currentIndex()==2:
             self.result_cards.append_progress(message)
         if '次尝试' in message:
             self.detail.appendPlainText(message)
-            self.workflow_status.setText('DS正在分析数据与工程依据，请稍候…')
-            return
-        self.workflow_status.setText(message)
-        self.workflow_log.appendPlainText(message)
 
     def start_workflow(self):
         if self.thread is not None:return
@@ -625,63 +949,84 @@ class Window(QMainWindow):
             self.browse_file()
             if not self.path.text().strip():return
         if self.decision_model is None:raise ValueError("请选择需要接收处理结果的目标模型")
-        if not (self.mock.isChecked() or self.api_key.text().strip() or os.environ.get('DEEPSEEK_API_KEY','').strip()):
-            self.technical_toggle.setChecked(True)
-            raise ValueError("尚未配置DeepSeek密钥，请在连接设置中填写；已配置环境变量时无需重复填写")
+        if self.conversion_only.isChecked():
+            if self.decision_model=='data_only':raise ValueError('仅转换需要选择目标模型；仅融合请选择仅数据处理')
+            self.reset_presentation()
+            self.record_step('读取输入','仅登记转换输入；不推荐融合算法、不启动搜索')
+            self.report_milestone('正在准备仅转换任务…')
+            path=self.path.text().strip().strip('"').strip("'")
+            self.work(lambda log:self.scanner.scan(path,log,shallow=True),self.show_conversion_scan)
+            return
+        if not (self.mock.isChecked() or self.effective_api_key()):
+            self.tabs.setCurrentIndex(0)
+            self.edit_api_key()
+            raise ValueError('尚未配置 DeepSeek 密钥，请在顶部输入密钥并点击「连接」。')
+        self.reset_presentation()
         self.auto_run=True
         self.auto_phase='index'
-        self.workflow_log.clear()
-        self.show_progress("1/4 · DS检查准备：仅列目录，不预先深读全部数据")
+        self.record_step('读取输入','正在登记本地文件，准备按需检查')
+        self.report_milestone('正在读取本地数据…')
         self.tabs.setCurrentIndex(0)
         self.scan_now()
 
     def continue_automatically(self,reply,checked):
         """UI chaining only: every recipe still comes from the shared checked plan."""
-        from .issues import checks
-        self.present_issues(checks(checked,reply.get('failures',[])))
+        from .issues import checks, recommendation_checks
+        from .release_gate import selectable
+        self.present_issues([*checks(checked,reply.get('failures',[])), *recommendation_checks(self.recommendation_rows)])
         self.auto_run=False
         self.auto_phase=None
-        if reply.get('failures'):
-            self.show_progress("已暂停 · 部分检查未完成，请查看处理依据中的失败原因后重试")
+        can_continue=any(selectable(row) and not row.get('advisory_only') for row in self.recommendation_rows)
+        if reply.get('failures') and not (can_continue or self.original_background_ready()):
+            self.report_milestone('部分检查未完成，请到第二步「处理依据与方案」查看待核实事项。')
             return
         executable=[(row,check) for row,check in zip(self.recommendation_rows,self.recommendation_checks)
-                    if check is not None and check.isEnabled() and not row.get('advisory_only')]
+                    if check is not None and selectable(row) and not row.get('advisory_only')]
         if not executable:
-            if self.component_confirmation_ready():
+            if self.component_confirmation_ready() or self.original_background_ready():
                 self.search_button.setEnabled(True)
                 self.tabs.setCurrentIndex(1)
-                self.recommendation_status.setText('已识别独立模型组件转换候选；无需完整工程或无关变量。继续后由公共写出器检查最低必要条件，尚未标记转换通过。')
-                self.show_progress('2/4 · 无需融合选型；请确认继续组件转换，缺少必要科学信息时将明确说明')
+                self.recommendation_status.setText('已识别可继续核验的工程或组件；不适用建议已跳过，实际操作仍逐项检查最低必要条件，尚未标记融合或转换通过。')
+                self.report_milestone('已识别组件转换方案，请确认后继续。')
                 return
             if not self.current_issues:
                 from .issues import item
                 self.present_issues([item('算法匹配',None,'当前没有可执行方案，后台未提供具体缺项；不能判断是缺文件、元数据还是暂不支持。','查看处理依据与检查记录；此状态不证明数据损坏。')])
-            self.show_progress("需要补充条件 · 暂无通过核验的可执行方案，详见处理依据；尚未运行融合")
+            self.report_milestone('已有算法候选，请查看核验结果和回退入口。' if self.recommendation_rows
+                                  else '暂时没有可执行方案，尚未运行融合。')
             self.tabs.setCurrentIndex(1)
             return
         engineering=[row for row,_ in executable if row['steps'][0].startswith('engineering.')]
         if engineering and len(engineering)!=len(executable):
-            self.show_progress("需要选择处理范围 · 整包工程与独立数据任务不能混用，请在处理依据页选择一类")
+            self.report_milestone('请在处理依据页选择整包工程或独立数据任务。')
             self.tabs.setCurrentIndex(1)
             return
-        # Never authorize a whole-package continuation if another checked task
-        # remains blocked. The existing execution service rechecks contracts.
+        # A rejected advisory pair does not veto an independently bound project.
+        # The existing public execution service still checks every actual task.
         self.update_task_checks(checked)
         if engineering and not self.original_recommendation_allowed:
-            self.show_progress("需要补充条件 · 整包工程仍包含未放行任务，不能自动执行；请查看处理依据")
+            self.report_milestone('整包工程仍有未放行任务，请查看待核实事项。')
             self.tabs.setCurrentIndex(1)
             return
         for _,check in executable:check.setChecked(True)
         self.tabs.setCurrentIndex(1)
-        self.show_progress("2/4 · 推荐方案已准备，请查看理由并勾选方案，点击「按当前方案继续处理」后再执行")
+        self.report_milestone('自动检查已结束，请核对可继续的方案并点击「继续处理」。')
 
     def update_task_checks(self,checked):
         self.checked_decisions=[dict(row) for row in checked]
-        self.original_recommendation_allowed=bool(self.checked_decisions) and not discovery.blocking_checks(self.checked_decisions)
+        native=(self.scan or {}).get('native_model_probes',{}).get(self.decision_model,{})
+        self.original_recommendation_allowed=(bool(discovery.executable_checks(self.checked_decisions))
+            or native.get('status') in {'project','declared'})
 
     def require_engineering_checks(self):
         self.update_task_checks(self.checked_decisions)
         if self.original_recommendation_allowed:return
+        native=(self.scan or {}).get('native_model_probes',{}).get(self.decision_model,{})
+        if native.get('status') in {'project','declared'}:
+            # Advisory pair failures are not a global engineering veto. The
+            # public native service independently checks every actual operation.
+            self.log_event('部分建议已跳过或待核实；继续公共工程核验，仅执行契约通过的步骤，不代表融合已通过。')
+            return
         blockers=discovery.blocking_checks(self.checked_decisions)
         details='；'.join(f"{row.get('candidate','任务')} / {row.get('action','检查')}：{row.get('reason') or row.get('status','未确认')}" for row in blockers[:5])
         error=ValueError('本次工程暂不能继续：'+(details or '没有当前数据的有效核验记录，请从首页重新开始检查。'))
@@ -689,12 +1034,13 @@ class Window(QMainWindow):
         raise error
 
     def dragEnterEvent(self,event):
-        if event.mimeData().hasUrls() and event.mimeData().urls()[0].isLocalFile():
+        if self.thread is None and event.mimeData().hasUrls() and event.mimeData().urls()[0].isLocalFile():
             event.acceptProposedAction()
 
     def dropEvent(self,event):
-        self.path.setText(event.mimeData().urls()[0].toLocalFile())
-        event.acceptProposedAction()
+        if self.thread is None and event.mimeData().hasUrls() and event.mimeData().urls()[0].isLocalFile():
+            self.path.setText(event.mimeData().urls()[0].toLocalFile())
+            event.acceptProposedAction()
 
     def clear_batch_replies(self):
         self.batch_replies.clear()
@@ -709,7 +1055,7 @@ class Window(QMainWindow):
         feedback.setMaximumHeight(145)
         feedback.setPlaceholderText("本批回复会在这里自动显示。")
         self.batch_response[selector]=(feedback,{})
-        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         layout.addWidget(editor,1)
         layout.addWidget(feedback)
         self.batch_state[selector]=(editor, [])
@@ -743,7 +1089,13 @@ class Window(QMainWindow):
             feedback.clear()
             return
         batch=entries[index][1]
-        editor.setPlainText(batch.request.body.decode("utf8"))
+        raw=batch.request.body.decode('utf8')
+        try:
+            raw=json.dumps(json.loads(raw),ensure_ascii=False,indent=2)
+        except ValueError:
+            pass
+        editor.setPlainText(raw)
+        editor.moveCursor(QTextCursor.MoveOperation.Start)
         feedback.setPlainText(replies.get(index,batch.blocked))
 
     def show_batch_reply(self, selector, event):
@@ -751,11 +1103,12 @@ class Window(QMainWindow):
         _,entries=self.batch_state[selector]
         batch=event.get("request_batch")
         if batch is not None and index<=len(entries):
-            phase={1:"文件分类",2:"完整资料判断",3:"集中追问回传"}.get(event.get("phase"),"请求")
+            phase={1:"文件分类",2:"完整资料判断",3:"集中追问回传",4:"算法推荐"}.get(event.get("phase"),"请求")
             title=f"{phase} · 第 {index+1} 批"
             if index==len(entries):
                 entries.append((title,batch))
                 selector.addItem(title)
+                selector.setEnabled(True)
             else:
                 entries[index]=(title,batch)
                 selector.setItemText(index,title)
@@ -767,10 +1120,16 @@ class Window(QMainWindow):
                          复用本地结果=event.get("local_cache",False),
                          自动回传核验=event.get("local_checks",[]),最终结果=event["rows"]))
         replies[index]=text
-        if selector.currentIndex()==index:
+        if selector.currentIndex()==index or not entries:
             feedback.setPlainText(text)
         else:
             selector.setCurrentIndex(index)
+
+    def show_decision_feedback(self,event):
+        if event.get("phase") == 4:
+            self.recommend_json.setPlainText(event.get("notice") or "正在后台准备算法方案。")
+            return
+        self.show_batch_reply(self.decision_batch_index,event)
 
     def decision_edited(self):
         self.batch_replies.clear()
@@ -802,12 +1161,13 @@ class Window(QMainWindow):
             if self.auto_run and self.auto_phase=='prepare':
                 if self.decision_send.isEnabled():
                     self.auto_phase='analyze'
-                    self.show_progress("2/4 · DS按需查表头、工程依赖并提出方案；平台检查真实契约")
+                    self.record_step('数据核验','正在检查字段、单位和工程依赖')
+                    self.report_milestone('正在核验数据并准备处理方案…')
                     self.send_decision()
                 else:
                     self.auto_run=False
                     self.auto_phase=None
-                    self.show_progress("需要补充条件 · "+(self.batch_error or '数据请求、目标模型或API连接未就绪'))
+                    self.error(ValueError(self.batch_error or '数据请求、目标模型或 API 连接未就绪。'))
 
         def prepare(_):
             try:
@@ -824,9 +1184,8 @@ class Window(QMainWindow):
         self.work(prepare,finish)
 
     def refresh_decision_send(self):
-        has_key=bool(self.api_key.text().strip() or os.environ.get("DEEPSEEK_API_KEY","").strip())
+        has_key=bool(self.effective_api_key())
         mock=self.mock.isChecked()
-        self.api_status.setText("模拟模式 · 不联网" if mock else ("已连接密钥 · 开始后按需调用" if has_key else "未配置密钥"))
         try:
             draft=json.loads(self.decision_json.toPlainText())
             valid=isinstance(draft,dict) and draft.get("stage")=="decision" and draft.get("catalog_first") is True and isinstance(draft.get("sources"),list)
@@ -902,7 +1261,7 @@ class Window(QMainWindow):
                (f"DeepSeek 提出 {len(self.candidates)} 组候选。" if reply is not None
                 else "DeepSeek 在自动流程中根据实际字段匹配处理候选。")]
         if self.scan.get('on_demand'):
-            lines[1] = ("当前仅列目录；自动流程将由DS按需读取表头、配置及依赖。" if self.scan.get('shallow') else
+            lines[1] = (f"已采集 {len(self.scan.get('file_cards', ()))} 个文件的结构信息，等待 DeepSeek 判断类型并定向检查。" if self.scan.get('shallow') else
                         f"已按需检查 {len(self.scan['rows'])} 份文件，其余文件尚未读取。")
             if reply is None:
                 lines[2] = "DeepSeek 将根据工具实际读取的证据提出候选，未知信息保留待核验。"
@@ -988,14 +1347,17 @@ class Window(QMainWindow):
             if model_id not in self.profiles and model_id!='data_only':
                 continue
             action=menu.addAction(name)
+            action.setEnabled(not(self.conversion_only.isChecked() and model_id=='data_only'))
             action.setCheckable(True)
             action.setChecked(model_id==self.decision_model)
             action.triggered.connect(lambda checked=False,mid=model_id:self.safe(lambda:self.set_decision_model(mid)))
         menu.exec(self.model_button.mapToGlobal(self.model_button.rect().bottomLeft()))
 
     def set_decision_model(self, model_id):
+        if model_id=='data_only':self.conversion_only.setChecked(False)
         if model_id==self.decision_model:
             return
+        self.reset_presentation()
         self.decision_model=model_id
         self.target_grid_row.setVisible(model_id=='data_only')
         self.model_button.setText(f"目标模型 · {discovery.MODELS[model_id]}")
@@ -1011,6 +1373,46 @@ class Window(QMainWindow):
                 self.update_original_background()
             self.work(lambda log:discovery.discover(scan,model_id),finish)
 
+    def change_conversion_mode(self,checked):
+        self.reset_path()
+        self.reset_presentation()
+        if checked and self.decision_model=='data_only':
+            self.decision_model=None
+            self.model_button.setText('选择转换目标模型')
+        self.target_grid_row.setVisible(not checked and self.decision_model=='data_only')
+
+    def show_conversion_scan(self,value):
+        self.scan,self.scan_metrics=value
+        self.auto_run=False;self.auto_phase=None
+        self.clear_recommendation_cards()
+        card=QFrame();card.setObjectName('recommendationCard')
+        layout=QVBoxLayout(card)
+        for text in [f'仅转换 · {discovery.MODELS[self.decision_model]}',
+                     f"已登记 {len(self.scan['rows'])} 个输入成员，尚未确认转换通过。",
+                     '执行步骤：读取所需数据 → 核验最低必要条件 → 原生格式写出 → 回读检查。',
+                     '不推荐融合算法、不运行变异搜索；缺少关键科学信息时列明原因，不补造完整工程。']:
+            label=QLabel(text);label.setWordWrap(True);layout.addWidget(label)
+        self.recommend_cards.addWidget(card)
+        self.recommendation_status.setText('仅转换 · 点击继续后，由公共组件写出器检查最低必要数据并转换；不运行融合、评分或变异搜索。')
+        self.local_explanation.setPlainText('可由输入确认的名称、日期等沿用既有自动补齐机制。单位、时间基准、坐标及必要目标资源不足时，明确给出缺项。组件输出不代表完整工程已可运行。')
+        self.search_button.setEnabled(True)
+        self.tabs.setCurrentIndex(1)
+        self.report_milestone('仅转换输入已登记，请确认后继续。')
+
+    def execute_conversion_only(self):
+        assert_current(self.scan)
+        if self.decision_model not in self.profiles:raise ValueError('请选择转换目标模型')
+        if self.run_temp is not None:self.run_temp.cleanup()
+        self.run_temp=TemporaryDirectory(dir=self.task.name,prefix='conversion-only-')
+        folder=Path(self.run_temp.name);scan=self.scan;model=self.decision_model
+        self.result=self.review_reply=self.approved=None
+        self.export_button.setEnabled(False);self.set_candidate_options(None)
+        self.tabs.setCurrentIndex(2)
+        self.result_cards.reset('正在转换并检查真实输出；未运行融合和搜索…',processing=True)
+        key=self.effective_api_key()
+        self.work(lambda log:s.run_original_workbench(scan,model,folder,log,declared_only=True,api_key=key),
+                  lambda result:self.show_result(result,model))
+
     def scan_now(self):
         path=self.path.text().strip().strip('"')
         if not path:
@@ -1021,14 +1423,15 @@ class Window(QMainWindow):
         candidate=path.strip("'").strip()
         if re.fullmatch(r"(?:Bearer\s+)?sk-[A-Za-z0-9_-]{8,}",candidate,re.IGNORECASE):
             self.path.clear()
-            self.api_key.setFocus()
-            raise ValueError("这里需要本地数据路径。请把密钥粘贴到首页下方的「DeepSeek 线上 API」输入框。")
+            self.tabs.setCurrentIndex(0)
+            self.edit_api_key()
+            raise ValueError('这里需要本地数据路径。请把密钥粘贴到顶部 DeepSeek API Key 输入框。')
         requirements=self.task_requirements()
         def scan_job(log):
-            log("正在列出输入目录，等待 DeepSeek 按需检查…")
+            log("正在列出目录并采集文件结构信息…")
             from .file_agent import scan_index
-            scanned,metrics=scan_index(path,progress=log)
-            log("正在识别候选并整理脱敏工程资料…")
+            scanned,metrics=scan_index(path,progress=log,model=self.decision_model)
+            log("本地结构采集完成，等待 DeepSeek 判断文件类型…")
             summary,candidates=discovery.discover(scanned,self.decision_model,task_goal='evaluate_gain')
             summary['task_requirements']=requirements
             return scanned,metrics,summary,candidates
@@ -1048,10 +1451,11 @@ class Window(QMainWindow):
         self.auto_run=automatic
         self.auto_phase='prepare' if automatic else None
         self.scan=scan
+        self.record_step('读取输入',f"已采集 {len(scan.get('file_cards', ()))} 个文件的结构信息")
+        self.report_milestone('目录已准备，等待 DeepSeek 判断文件类型。')
         context=scan.get('saved_input_context')
         if context:
-            self.basis_summary.setPlainText('历史上下文 · 原包SHA256匹配\n证据状态 · '+context['status']+'\n'+context.get('explanation',''))
-            self.workflow_log.appendPlainText(self.basis_summary.toPlainText())
+            self.log_event('历史上下文 · 原包SHA256匹配\n证据状态 · '+context['status']+'\n'+context.get('explanation',''))
         self.candidates=candidates
         self.fill_page()
         self.detail.setPlainText(s.dump(discovery.local_overview(scan,candidates)))
@@ -1066,7 +1470,7 @@ class Window(QMainWindow):
         report = self.scan.get("native_model_probes",{}).get(self.decision_model,{})
         return (bool(self.scan.get("research_tasks",{}).get(self.decision_model))
                 or report.get("status")=="declared"
-                or (report.get("status")=="project" and not self.candidates))
+                or report.get("status")=="project")
 
     def component_confirmation_ready(self):
         report=(self.scan or {}).get('native_model_probes',{}).get(self.decision_model,{})
@@ -1093,8 +1497,10 @@ class Window(QMainWindow):
             raise ValueError(self.batch_error or "未生成待发批次")
         scan,mock=self.scan,self.mock.isChecked()
         self.gated={}
-        key=self.api_key.text().strip()
+        key=self.effective_api_key()
         self.reset_target()
+        self.recommendation_review_busy=True
+        self.refresh_recommendation_action()
         def decide(log,feedback):
             from .three_phase import run
             reply,checked,gated,candidates,approved,full_scan=run(scan,summary,self.batch_replies,mock,key,log,feedback)
@@ -1103,19 +1509,39 @@ class Window(QMainWindow):
                     inspection=full_scan['file_agent_audit'], rows=full_scan['rows'])), encoding='utf8')
             eligible=any(row["status"]=="通过" or row.get("next_step") in {"original_workbench","recommendation_only","alignment_then_fusion"}
                          for row in checked)
+            eligible = eligible or bool(discovery.engineering_fusion_targets(approved))
             rows=[]
             if eligible:
                 plan=recommendations.make_request(full_scan,approved,checked,gated,
-                                                  local_checks=reply.get("local_checks",[]),include_samples=False)
-                rows,receipt=recommendations.recommend_plan(plan,reply['decisions'],mock=mock,api_key=key,progress=log)
+                                                  local_checks=reply.get("local_checks",[]),sampled_workflow=True)
+                feedback(dict(phase=4, notice="正在后台请求 DeepSeek 推荐算法…"))
+                rows,receipt=recommendations.recommend_plan(plan,reply['decisions'],mock=mock,api_key=key,
+                                                             progress=log)
+                notices={'SIMULATED':'模拟推荐，未联网。','COMPLETED':'已收到 DeepSeek 算法推荐。',
+                         'PLATFORM_FALLBACK':'线上推荐未完成，保留平台已有候选。'}
+                feedback(dict(phase=4, notice=notices[receipt['status']]))
+                log("正在本地复查留出的数据窗口…")
+                recommendations.review_holdouts(full_scan,approved,plan,rows,gated)
                 reply['algorithm_recommendation']=receipt
                 reply['api_receipts']=[*reply.get('api_receipts',[]),*receipt['api_receipts']]
+                final_receipt = recommendations.finalize_recipes(plan, rows, mock=mock, api_key=key, progress=log)
+                if final_receipt:
+                    reply["final_algorithm_recommendation"] = final_receipt
+                    reply["api_receipts"].extend(final_receipt["api_receipts"])
+                rows.extend(recommendations.reviewed_standalone_alignment(full_scan, approved, checked, gated, rows))
                 reply['batch_count']=len(reply['api_receipts'])
-                (Path(self.task.name)/'algorithm-recommendation.json').write_text(s.dump(dict(plan=plan,receipt=receipt,rows=rows)),encoding='utf8')
+                from .holdout_plan import snapshot
+                (Path(self.task.name)/'algorithm-recommendation.json').write_text(s.dump(dict(
+                    plan=plan, receipt=receipt, final_receipt=final_receipt, rows=rows,
+                    numeric_exposure=snapshot(full_scan),
+                    holdout_plans={f"{cid}:{action}": task["locked_holdout"] for (cid, action), task in gated.items()
+                                   if "locked_holdout" in task})),encoding='utf8')
             return reply,checked,gated,candidates,rows,full_scan
 
         def finish(value):
             reply,checked,gated,candidates,rows,full_scan=value
+            if 'algorithm_recommendation' not in reply:
+                self.recommend_json.setPlaceholderText('本轮没有通过本地核验、可进入算法推荐的任务。可到第二步查看待核实事项。')
             self.scan=full_scan
             self.fill_page()
             self.candidates=candidates
@@ -1123,7 +1549,8 @@ class Window(QMainWindow):
             self.update_task_checks(checked)
             self.show_local_explanation(reply,checked)
             self.detail.setPlainText(s.dump(dict(
-                DeepSeek=reply, 本地核验=checked, 待选算法=rows,
+                DeepSeek=reply, 本地核验=checked, 文档核对=full_scan.get('document_evidence_checks',[]),
+                方案状态=[recommendations.display_record(row) for row in rows],
                 扫描依据=discovery.local_overview(full_scan,candidates))))
             self.render_recommendations(dict(reply,recommendations=rows))
             facts=[f"已按需读取 {len(full_scan['rows'])} 份资料；形成 {len(candidates)} 组候选，{len(rows)} 项建议。"]
@@ -1131,42 +1558,107 @@ class Window(QMainWindow):
                 fields=[f"{f['name']}（{f.get('unit') or '单位未确认'}）" for f in source['fields'] if not f.get('axis')][:2]
                 facts.append('数据事实 · '+PurePosixPath(source['name']).name+' · '+'、'.join(fields))
             for item in checked[:3]:facts.append(f"{item['candidate']} · {self.operation_labels.get(item['action'],item['action'])} · {item['status']}：{item['reason'][:160]}")
+            heldout=[result for row in rows for result in row.get('local_holdout_review',[])]
+            if heldout:
+                counts={status:sum(item['status']==status for item in heldout) for status in ('checked','pending','failed')}
+                facts.append(f"本地留出回检 · 已核验 {counts['checked']} · 待核实 {counts['pending']} · 失败 {counts['failed']}")
             if full_scan.get('saved_input_context'):facts.append('历史约定 · '+full_scan['saved_input_context'].get('explanation',''))
-            self.basis_summary.setPlainText('\n'.join(facts))
+            self.log_event('\n'.join(facts),algorithm=True)
+            self.record_step('数据核验',('部分检查未完成' if reply['failures'] else '本轮检查已结束')+
+                f"，已检查 {len(full_scan['rows'])} 份资料")
+            if rows:
+                self.record_step('处理方案',f'已生成 {len(rows)} 项建议，等待确认')
             self.ai_advice_button.setEnabled(bool(rows))
             self.update_original_background()
-            self.tabs.setCurrentIndex(1 if rows and not reply["failures"] else 0)
-            self.workflow_log.appendPlainText(self.local_explanation.toPlainText())
-            if self.auto_run:self.continue_automatically(reply,checked)
-        self.work(decide,finish,feedback=lambda event:self.show_batch_reply(self.decision_batch_index,event))
+            self.tabs.setCurrentIndex(1 if rows or self.original_background_ready() else 0)
+            self.log_event(self.local_explanation.toPlainText())
+            if self.auto_run:
+                self.continue_automatically(reply,checked)
+            else:
+                from .issues import checks, recommendation_checks
+                self.present_issues([*checks(checked,reply['failures']), *recommendation_checks(rows)])
+                self.report_milestone('本轮检查已结束，请查看核验结果。')
+            self.recommendation_review_busy=False
+            self.send_next_automatic_fallback()
+        self.work(decide,finish,feedback=self.show_decision_feedback)
 
     def clear_recommendation_cards(self):
         self.recommendation_checks.clear()
-        while self.recommend_cards.count():
-            item=self.recommend_cards.takeAt(0)
-            widget=item.widget()
-            widget.hide()
-            widget.deleteLater()
+        self.recommendation_cards_view.show()
+        self.recommendation_details_button.hide()
+        for layout in (self.recommend_cards,self.recommendation_detail_cards):
+            while layout.count():
+                item=layout.takeAt(0)
+                widget=item.widget()
+                widget.hide()
+                widget.deleteLater()
 
-    def add_recommendation_card(self,rows):
+    def open_recommendation_details(self):
+        if self.recommendation_detail_cards.count():
+            self.drawer.open_page('检查详情与未采用方案',self.recommendation_details_view,self.recommendation_details_button)
+        else:
+            self.open_issues()
+
+    def refresh_recommendation_action(self):
+        from .release_gate import selectable
+        if self.conversion_only.isChecked():
+            return
+        busy=self.recommendation_review_busy
+        available=[row for row in self.recommendation_rows if selectable(row) and not row.get('advisory_only')]
+        hidden=len(self.recommendation_rows)-len(available)
+        self.recommendation_cards_view.setVisible(not busy and bool(available))
+        self.recommendation_details_button.setVisible(bool(hidden or self.current_issues))
+        self.recommendation_details_button.setText(f'查看检查详情（{hidden}项未采用或待核验）' if hidden else '查看具体检查问题')
+        self.recommendation_details_button.setEnabled(not busy)
+        for row,check in zip(self.recommendation_rows,self.recommendation_checks):
+            if check is not None:
+                check.setEnabled(not busy and selectable(row) and not row.get('advisory_only'))
+        if busy:
+            self.recommendation_status.setText('正在自动完成方案检查和必要的补充推荐，请稍候。完成后会显示可以继续的方案。')
+            self.search_button.setText('正在检查，请稍候…')
+            self.search_button.setEnabled(False)
+        elif available:
+            self.recommendation_status.setText(f'自动检查已结束，{len(available)}个方案可以继续。请核对处理依据后继续，实际效果仍由本地执行和复核决定。')
+            self.search_button.setText('继续处理')
+            self.search_button.setEnabled(True)
+        elif self.original_background_ready():
+            self.recommendation_status.setText('数据方案暂未通过检查，但已识别独立工程或组件入口，可以继续核验工程；不代表融合已通过。')
+            self.search_button.setText('继续工程核验')
+            self.search_button.setEnabled(True)
+        else:
+            from .release_gate import explanation
+            reasons=list(dict.fromkeys(explanation(row['execution_release']).removeprefix('待放行 · ')
+                for row in self.recommendation_rows if row.get('execution_release',{}).get('blockers')))
+            reasons=list(dict.fromkeys([row['problem'].removeprefix('待放行 · ') for row in self.current_issues]+reasons))
+            self.recommendation_status.setText('暂不能继续：'+('；'.join(reasons[:3]) or '没有通过契约与评价条件检查的处理方案。请查看检查详情。'))
+            self.search_button.setText('暂不能继续')
+            self.search_button.setEnabled(False)
+        if self.tabs.currentIndex()==1:
+            self.problem_panel.hide()
+
+    def add_recommendation_card(self,rows,*,details=False):
+        from .release_gate import selectable as allowed
         card=QFrame()
         card.setObjectName("recommendationCard")
         layout=QVBoxLayout(card)
         layout.setContentsMargins(14,10,14,11)
         layout.setSpacing(7)
         recipe=rows[0]
+        private = recommendations.is_private_fusion_candidate(recipe)
         steps=recipe["steps"]
         kind="算法组合" if len(steps)>1 else "算法"
-        title=QLabel(recipe["name"] if recipe.get("advisory_only") else f"{kind} · {recommendations.recipe_name(steps)}")
+        title=QLabel('自动比较合法处理方案' if recipe.get('search_admission') else "融合方案待核验" if private else
+                     recipe["name"] if recipe.get("advisory_only") else f"{kind} · {recommendations.recipe_name(steps)}")
         title.setObjectName("recommendationTitle")
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setWordWrap(True)
         layout.addWidget(title)
-        details=QLabel(recipe["description"])
-        details.setTextFormat(Qt.TextFormat.PlainText)
-        details.setWordWrap(True)
-        details.setToolTip("算法编号："+ " → ".join(steps))
-        layout.addWidget(details)
+        if not private:
+            description=QLabel(recipe["description"])
+            description.setTextFormat(Qt.TextFormat.PlainText)
+            description.setWordWrap(True)
+            description.setToolTip("算法编号："+ " → ".join(steps))
+            layout.addWidget(description)
         layout.addWidget(QLabel(f"适用任务 · {len(rows)} 项"))
         for row in rows:
             advisory=row.get("advisory_only")
@@ -1174,16 +1666,94 @@ class Window(QMainWindow):
                 layout.addWidget(QLabel(f"{row['task']} · 对齐与融合评估方案"))
                 check=None
             else:
-                check=QCheckBox(f"{row['task']} · 执行待核验" if advisory else f"{row['task']} · 加入本地寻优")
-                check.setEnabled(not advisory)
-                layout.addWidget(check)
-            reason=QLabel("推荐理由：" + (row["reason"].strip() or "DeepSeek 未提供理由。"))
+                label = ("使用此方案：比较合法候选，结果仍需复核" if row.get("search_admission") else
+                         "使用此方案" if allowed(row) else "未采用，具体检查结果如下")
+                check=QCheckBox(f"{row['task']} · {label}")
+                check.setEnabled(allowed(row))
+                check.setChecked(bool(allowed(row) and (row.get("final_verified_recommendation") or self.single_continue_option)))
+                if not details:
+                    layout.addWidget(check)
+                else:
+                    check.hide()
+            audit = next((item["acceptance_sampling"] for item in row.get("local_holdout_review", ())
+                          if "allowed_failures" in item.get("acceptance_sampling", {})), None)
+            if audit and details:
+                from .sampling_risk import recipe_summary
+                sampling_label = QLabel(recipe_summary(audit))
+                sampling_label.setWordWrap(True)
+                layout.addWidget(sampling_label)
+            coverage = next((item["date_coverage"] for item in row.get("local_holdout_review", ())
+                             if item.get("date_coverage")), None)
+            if coverage and details:
+                source_days = " / ".join(str(number) for number in coverage["source_day_counts"])
+                detail = QLabel(f"两源各含 {source_days} 个 UTC 日。共同日期跨度 {coverage['common_range_days']} 天，可独立回检 0 天。")
+                detail.setWordWrap(True)
+                layout.addWidget(detail)
+            if allowed(row) and any(item.get("precipitation_trial") for item in row.get("local_holdout_review", ())):
+                delivery = QPushButton("导出降水累计 NetCDF")
+                delivery.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.deliver_netcdf_precipitation(item)))
+                layout.addWidget(delivery)
+            if row.get("execution_release") and not allowed(row):
+                from .release_gate import explanation
+                from .fallback_evidence import approved_fields, eligible
+                pending_final = row.get("requires_final_confirmation") and row["execution_release"]["status"] == "released"
+                gate = QLabel("留出评分已通过，等待 DeepSeek 最终确认。" if pending_final else explanation(row["execution_release"]))
+                gate.setWordWrap(True)
+                gate.setTextFormat(Qt.TextFormat.PlainText)
+                layout.addWidget(gate)
+                if pending_final:
+                    retry = QPushButton("重新请求最终推荐")
+                    retry.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.retry_final_recipe(item)))
+                    layout.addWidget(retry)
+                if eligible(row) and self.scan and approved_fields(self.scan, row):
+                    if row["execution_release"]["status"] == "failed":
+                        label = QLabel("抽检未通过，平台将自动发送全量扰动副本。" if not self.mock.isChecked()
+                                       else "抽检未通过，模拟模式下仅保留回退状态。")
+                        label.setWordWrap(True)
+                        layout.addWidget(label)
+                    else:
+                        button = QPushButton("补充样本或审核全量副本")
+                        button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_full_fallback(item)))
+                        layout.addWidget(button)
+                if row.get("independent_required") or (row.get("requires_final_confirmation") and any(
+                        item.get("basis") in {"no_shared_holdout_days", "no_disjoint_partition"}
+                        for item in row.get("local_holdout_review", ()))):
+                    validation_button = QPushButton("选择新的独立数据复验")
+                    validation_button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_new_independent_data(item)))
+                    layout.addWidget(validation_button)
+                if not private and row["execution_release"]["status"] == "failed" and row.get("local_recipe_options"):
+                    adjustment = QPushButton("调整候选并重新复验")
+                    adjustment.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.adjust_review_candidate(item)))
+                    layout.addWidget(adjustment)
+                if self.scan and self.scan.get("engineering_docs"):
+                    document_button = QPushButton("复查说明章节或观测表")
+                    document_button.clicked.connect(lambda: self.safe(self.review_source_document))
+                    layout.addWidget(document_button)
+                if self.scan and any(item.get("runtime_manifest_eligible") and item["status"] == "pending"
+                                     for item in self.scan.get("document_evidence_checks", ())):
+                    runtime_button = QPushButton("核对运行时依赖清单")
+                    runtime_button.clicked.connect(lambda: self.safe(self.review_runtime_dependencies))
+                    layout.addWidget(runtime_button)
+            self.recommendation_checks.append(check)
+            if private and not details:
+                continue
+            prefix = ("DeepSeek 全量回退推荐（待复验）：" if row.get("recommendation_origin") == "deepseek_fallback" and not allowed(row)
+                      else "候选说明：" if row.get("execution_release") and not allowed(row) else "推荐理由：")
+            reason_text=row["reason"].strip() or "DeepSeek 未提供理由。"
+            if not details:
+                reason_text=reason_text.split('。',1)[0][:200]+'。完整证据可展开查看。'
+            reason=QLabel(('处理依据：' if not details else prefix) + reason_text)
             reason.setTextFormat(Qt.TextFormat.PlainText)
             reason.setWordWrap(True)
             layout.addWidget(reason)
             explanation=QPlainTextEdit()
             explanation.setReadOnly(True)
-            explanation.setPlainText(recommendations.explanation_text(row))
+            members = row.get("execution_release", {}).get("members", ())
+            explanation.setPlainText(recommendations.explanation_text(row)
+                + ("\n\n此前方案检查（保留记录，不代表当前已通过）\n"
+                   + recommendations.explanation_text(row["previous_recommendation_review"])
+                   if row.get("previous_recommendation_review") else "")
+                + ("\n工程成员放行与外发状态\n" + s.dump(members) if members else ""))
             explanation.setMaximumHeight(230)
             explanation.setAccessibleName('数据依据与推荐边界')
             explanation.hide()
@@ -1192,27 +1762,619 @@ class Window(QMainWindow):
             toggle.toggled.connect(explanation.setVisible)
             layout.addWidget(toggle)
             layout.addWidget(explanation)
-            self.recommendation_checks.append(check)
-        self.recommend_cards.addWidget(card)
+        (self.recommendation_detail_cards if details else self.recommend_cards).addWidget(card)
 
     def render_recommendations(self, reply):
+        from .release_gate import selectable as allowed
         self.clear_recommendation_cards()
         rows=reply["recommendations"]
-        groups={}
+        final_rows = [recommendations.display_record(row) for row in rows if row.get("final_verified_recommendation")]
+        self.recommend_json.setPlainText(s.dump(final_rows) if final_rows else "")
+        groups={};hidden={}
+        available=[row for row in rows if allowed(row) and not row.get('advisory_only')]
+        self.single_continue_option=len(available)==1
         for row in rows:
-            group=(row["task"],row["id"]) if row.get("advisory_only") else tuple(row["steps"])
-            groups.setdefault(group,[]).append(row)
-        self.recommendation_rows=[row for group in groups.values() for row in group]
+            group=(row["task"],row["id"]) if row.get("advisory_only") or recommendations.is_private_fusion_candidate(row) else tuple(row["steps"])
+            target=groups if allowed(row) and not row.get('advisory_only') else hidden
+            target.setdefault(group,[]).append(row)
+        self.recommendation_rows=[row for group in [*groups.values(),*hidden.values()] for row in group]
         for group in groups.values():
             self.add_recommendation_card(group)
-        self.search_button.setEnabled(self.original_background_ready() or
-                                      any(not row.get("advisory_only") for row in rows))
-        executable=sum(any(not row.get("advisory_only") for row in group) for group in groups.values())
-        self.recommendation_status.setText(f"{reply['mode']} · {executable} 种方案可勾选，"
-                                            f"{len(groups)-executable} 种待核验"
-                                            + ("\n"+usage if (usage:=request_batches.describe_usage(reply)) else ""))
+        for group in hidden.values():
+            self.add_recommendation_card(group,details=True)
+        self.refresh_recommendation_action()
+
+    def retry_final_recipe(self, candidate):
+        scan = self.scan
+        assert_current(scan)
+        plan = dict(target_model=dict(id=self.decision_model, name=discovery.MODELS[self.decision_model]),
+                    tasks=[dict(id=candidate["task"], operation="fusion", allowed_recipes=candidate["local_recipe_options"])])
+        mock = candidate.get("recommendation_origin") == "simulated"
+        key = self.effective_api_key()
+
+        def request(log):
+            trial = dict(candidate)
+            receipt = recommendations.finalize_recipes(plan, [trial], mock=mock, api_key=key, progress=log)
+            assert_current(scan)
+            return trial, receipt
+
+        def finish(result):
+            if self.scan is not scan:
+                return
+            trial, receipt = result
+            candidate.update(trial)
+            self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="最终推荐复核"))
+            self.detail.appendPlainText(s.dump(dict(最终推荐回执=receipt)))
+
+        self.work(request, finish)
+
+    def send_next_automatic_fallback(self):
+        from .fallback_evidence import approved_fields, eligible
+
+        if self.thread is not None:
+            return False
+        if not self.scan or not self.effective_api_key() or self.mock.isChecked():
+            self.recommendation_review_busy=False
+            self.refresh_recommendation_action()
+            return False
+        for row in self.recommendation_rows:
+            if (row.get("execution_release", {}).get("status") == "failed" and not row.get("automatic_fallback_started")
+                    and eligible(row) and approved_fields(self.scan, row)):
+                row["automatic_fallback_started"] = True
+                self.recommendation_review_busy=True
+                self.refresh_recommendation_action()
+                self.show_progress("抽检未通过，正在生成全量扰动副本并自动提交 DeepSeek。")
+                self.review_full_fallback(row, automatic=True)
+                return True
+        self.recommendation_review_busy=False
+        self.refresh_recommendation_action()
+        return False
+
+    def review_full_fallback(self, recommendation, *, automatic=False):
+        from copy import deepcopy
+        from uuid import uuid4
+        from . import fallback_evidence as fallback
+
+        scan = self.scan
+        fields = fallback.approved_fields(scan, recommendation)
+        if not fallback.eligible(recommendation) or not fields:
+            raise ValueError("目前缺少科学依据或独立参考，请先补齐原始资料")
+        previous_recommendation = deepcopy(recommendation)
+        task = self.gated.get(tuple(recommendation["task"].split(":", 1)))
+        fields = fallback.task_scoped_fields(scan, task, fields)
+        key = self.effective_api_key()
+        if not key or self.mock.isChecked():
+            raise ValueError("发送补充证据需要已连接的 DeepSeek API")
+        members = {scan["rows"][index]["name"]: index for index, _ in fields}
+        if not automatic and len(members) > 1 and any("!/" in name for name in members):
+            name, ok = QInputDialog.getItem(self, "选择需要补样的 ZIP 成员", "授权范围",
+                                          ["全部获准成员", *members], 0, False)
+            if not ok:
+                return
+            if name in members:
+                fields = [item for item in fields if item[0] == members[name]]
+        targets = {}
+        tables = {scan["rows"][index]["name"]: index for index, _ in fields
+                  if scan["rows"][index]["format"] in {"CSV", "TSV", "Excel"}}
+        if automatic or scan.get("source_sampling_records"):
+            tables = {}
+        if tables:
+            name, ok = QInputDialog.getItem(self, "定向补样", "选择站点或工作表所在文件",
+                                          ["按当前覆盖范围补样", *tables], 0, False)
+            if not ok:
+                return
+            if name in tables:
+                index = tables[name]
+                choices = ["站点", "工作表"] if scan["rows"][index]["format"] == "Excel" else ["站点"]
+                mode, ok = QInputDialog.getItem(self, "定向补样", "分组方式", choices, 0, False)
+                if not ok:
+                    return
+                group, ok = QInputDialog.getText(self, "定向补样", f"输入{mode}名称，只用来在本地定位")
+                if not ok or not group.strip():
+                    return
+                targets[index] = ("station" if mode == "站点" else "sheet", group.strip())
+        archive = Path(self.task.name) / f"outbound-evidence-{uuid4().hex}.zip"
+        selected_classification = []
+
+        def build_copy():
+            classifications = [] if automatic else fallback.classification_fields(scan, fields)
+            if classifications:
+                options = {f"{scan['rows'][index]['name']} · {field['name']}": (index, field)
+                           for index, field in classifications}
+                selected, ok = QInputDialog.getItem(self, "分类波段授权", "原样保留的分类波段",
+                    ["仅连续数值", *options], 0, False)
+                if not ok:
+                    return
+                if selected in options:
+                    selected_classification.append(options[selected])
+            self.work(prepare, confirm)
+
+        def prepare(log):
+            if self.scan is not scan:
+                raise ValueError("当前任务已变化")
+            entries = fallback.build(scan, [*fields, *selected_classification], archive, log,
+                                     include_native=not automatic)
+            return entries, fallback.digest_file(archive)
+
+        def confirm(value):
+            entries, digest = value
+            if self.scan is not scan:
+                archive.unlink(missing_ok=True)
+                raise ValueError("当前任务已变化")
+            count = sum(item["records"] for item in entries)
+            size = sum(item["bytes"] for item in entries)
+            batches = sum(len(item["parts"]) for item in entries)
+            native_parts = [part for item in entries for part in item.get("native_upload", ())]
+            scope = "\n".join(f"{scan['rows'][index]['name']} · {field['name']}（"
+                              + ("分类编码原样" if field.get("approved_classification") else str(field.get("unit"))) + "）"
+                              + ("\n  合并的日分片：" + "、".join(
+                                  PurePosixPath(name).name for name in scan["rows"][index]["precipitation_members"])
+                                 if scan["rows"][index].get("precipitation_members") else "")
+                              for index, field in [*fields, *selected_classification])
+            if automatic:
+                usage=scan.setdefault('automatic_supplement_budget',dict(used_requests=0))
+                budget=fallback.automatic_budget(entries,usage['used_requests'])
+                recommendation['supplementary_budget']=budget
+                if not budget['allowed']:
+                    archive.with_suffix('.budget.json').write_text(s.dump(budget),encoding='utf8')
+                    archive.unlink(missing_ok=True)
+                    self.show_progress(f"可选补充推荐预计 {batches} 个分片，超过自动联网预算 {budget['max_parts']}；已跳过此项外发，继续已验收方案和合法候选搜索。原失败结论保留。")
+                    self.send_next_automatic_fallback()
+                    return
+                usage['used_requests']+=budget['reserved_requests']
+                self.show_progress(f"正在向 DeepSeek 自动发送 {count:,} 条扰动记录，共 {batches:,} 个分片。")
+            else:
+                answer = QMessageBox.question(self, "审核全量扰动证据",
+                    f"准备向 api.deepseek.com 分批发送 {count:,} 条获准数值记录，约 {size:,} 字节，{batches:,} 个数据分片。"
+                    "若分片意见分散，将追加一次候选汇总请求。\n\n"
+                    f"{scope}\n\n副本保留必要的网格或时间区间信息，省略站点编号和非选定字段。"
+                    "随机扰动不提供正式的隐私保证。全量范围需重新取得独立回检证据。\n\n是否批准发送这个副本？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+                if answer != QMessageBox.StandardButton.Yes:
+                    archive.unlink(missing_ok=True)
+                    self.show_progress("全量扰动证据未发送")
+                    return
+            native_approved = False
+            if native_parts and not automatic:
+                native_bytes = sum(part["bytes"] for part in native_parts)
+                native_answer = QMessageBox.question(self, "附加原生 GeoTIFF 审核",
+                    f"是否另外上传 {len(native_parts)} 个原生 GeoTIFF 文件或图块，共 {native_bytes:,} 字节？\n"
+                    "文件保留坐标系、位置、掩码及已获准的分类值。DeepSeek 将它们作为视觉资料解析，"
+                    "可能按页计费。数值判断仍用前面已审核的 CSV。选择否将只发送 CSV。",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+                native_approved = native_answer == QMessageBox.StandardButton.Yes
+
+            from .independent_review import fields as bound_fields, invalidate
+
+            def identity(index, field):
+                return index, field["name"], field.get("sheet"), field.get("band")
+
+            approved_sources = {identity(index, field) for index, field in [*fields, *selected_classification]}
+            outbound = scan.setdefault("member_outbound", {})
+            for item in entries:
+                outbound[item["source_member"]] = "approved_pending_transmission"
+            def overlaps(item):
+                return not item.get("standalone_alignment") and any(
+                    identity(index, field) in approved_sources for index, _, field in bound_fields(scan, item))
+
+            def existing_task(item):
+                return self.gated.get(tuple(item["task"].split(":", 1)))
+
+            trigger_reason = fallback.trigger(recommendation)
+            for item in self.recommendation_rows:
+                if overlaps(item):
+                    invalidate(scan, item, existing_task(item))
+            self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="已批准外发范围"))
+            archive.with_suffix(".approval.json").write_text(s.dump(dict(
+                digest=digest, fields=entries, trigger=trigger_reason, records=count,
+                bytes=size, requests=batches, approved=True, native_geotiff=native_approved,
+                authorization="automatic_numeric_rejection" if automatic else "manual_confirmation")), encoding="utf8")
+
+            def transmit(log):
+                assert_current(scan)
+                return fallback.transmit(archive, entries, digest, api_key=key, progress=log,
+                                         recipes=recommendation.get("local_recipe_options", ()),
+                                         native_approved=native_approved,automatic=automatic)
+
+            def sent(result):
+                from .independent_review import start
+                from .issues import checks, recommendation_checks
+                for item in entries:
+                    outbound[item["source_member"]] = "transmitted"
+                candidate = start(previous_recommendation, result)
+                rows = []
+                for item in self.recommendation_rows:
+                    if candidate is not None and item["task"] == recommendation["task"]:
+                        continue
+                    if overlaps(item):
+                        invalidate(scan, item, existing_task(item))
+                    rows.append(item)
+                if candidate is not None:
+                    invalidate(scan, candidate, existing_task(candidate))
+                    rows.append(candidate)
+                continuation = recommendations.supplementary_search_continuation(previous_recommendation, self.gated)
+                if continuation is not None:
+                    rows = [item for item in rows if not (
+                        item["task"] == recommendation["task"] and item.get("search_admission"))]
+                    rows.append(continuation)
+                self.render_recommendations(dict(recommendations=rows, mode="全量分片复核"))
+                self.present_issues([*checks(self.checked_decisions), *recommendation_checks(rows)])
+                self.show_progress("补充推荐已结束；可继续合法候选变异，独立证据不足时保留基线，不确认精度提升。" if continuation else
+                    "已形成新候选，等待独立数据复验" if candidate else
+                    "已收齐分片回复，各分片依据尚不足以形成一致候选")
+                self.detail.appendPlainText(s.dump(dict(分片回执=str(result["receipts"]), 已响应分片=result["received"],
+                                                        形成待复验候选=candidate is not None, TIFF回执=result["native_receipts"])))
+                if automatic:
+                    self.send_next_automatic_fallback()
+
+            self.work(transmit, sent)
+
+        def consider(samples):
+            supplemental = [item for item in samples if item["perturbed_samples"]]
+            if not supplemental:
+                build_copy()
+                return
+            answer = QMessageBox.question(self, "先补充小样本",
+                "已找到仍在推荐范围内、未发送的少量记录。先向 DeepSeek 发送这些扰动样本再判断？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+            def send_supplement(log):
+                messages = [
+                    dict(role="system", content='仅判断额外小样本是否解决覆盖问题，返回 JSON 键 needs_more（布尔值）和 reason。'),
+                    dict(role="user", content=s.dump(dict(samples=supplemental,
+                        blockers=[dict(reason=item["reason"], format=item.get("format"))
+                                  for item in recommendation["execution_release"]["blockers"]]))),
+                ]
+                message, receipt = s.tool_turn(messages, [], key, log)
+                answer = json.loads(message.get("content") or "{}")
+                if type(answer.get("needs_more")) is not bool:
+                    raise ValueError("DeepSeek 未明确说明补样是否充足")
+                return answer, receipt
+
+            def reviewed(value):
+                answer, receipt = value
+                from .holdout_plan import snapshot
+                (Path(self.task.name)/"supplement-exposure.json").write_text(s.dump(snapshot(scan)), encoding="utf8")
+                for index, _ in fields:
+                    scan.setdefault("member_outbound", {})[scan["rows"][index]["name"]] = "supplement_reviewed"
+                self.detail.appendPlainText(s.dump(dict(补样结论=answer, 回执=receipt)))
+                if answer["needs_more"]:
+                    build_copy()
+                else:
+                    self.show_progress("补样已完成 · 请核对回复并用独立数据复验")
+
+            self.work(send_supplement, reviewed)
+
+        if recommendation["execution_release"]["status"] == "failed":
+            build_copy()
+        else:
+            self.work(lambda _: fallback.supplement(scan, fields, targets), consider)
+
+    def check_deepseek_connection(self):
+        from .deepseek_self_check import check
+
+        key = self.effective_api_key()
+        if not key:
+            raise ValueError("请先在连接设置配置密钥，再运行合成数据自检")
+        if QMessageBox.question(self, "DeepSeek 联机自检",
+                "是否向 DeepSeek 上传一张程序生成的 GeoTIFF，并发送两行合成 CSV 进行自检？"
+                "不会读取当前项目文件。该调用可能产生少量 API 费用。",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+
+        def complete(result):
+            self.show_progress("DeepSeek 联机自检通过 · 原生 TIFF 上传及 CSV 计算响应已核验")
+            self.detail.appendPlainText(s.dump(dict(合成数据联机自检=result)))
+        self.work(lambda log: check(key, log), complete)
+
+    def deliver_netcdf_precipitation(self, recommendation):
+        from .independent_review import fields
+        from .release_gate import require
+        from .precipitation_delivery import export
+
+        scan = self.scan
+        require([recommendation])
+        covered = {item["field"] for item in recommendation["local_holdout_review"] if item.get("precipitation_trial")}
+        entries = {f"{scan['rows'][index]['name']} · {field['name']}": (index, field)
+                   for index, fid, field in fields(scan, recommendation) if fid in covered}
+        if not entries:
+            raise ValueError("没有已核验的降水率字段")
+        entry, ok = QInputDialog.getItem(self, "导出降水累计", "字段", list(entries), 0, False)
+        if not ok:
+            return
+        periods = ["保留原始时间区间", "仅导出证据完整的 UTC 日累计"]
+        period, ok = QInputDialog.getItem(self, "导出时间口径", "目标", periods, 0, False)
+        if not ok:
+            return
+        name, _ = QFileDialog.getSaveFileName(self, "保存降水产品", "precipitation-amount.nc", "NetCDF (*.nc)")
+        if not name:
+            return
+        destination = Path(name).resolve()
+        root = Path(scan["path"]).resolve()
+        if destination == root or root.is_dir() and destination.is_relative_to(root):
+            raise ValueError("请将转换结果保存到原始输入目录之外")
+        index, field = entries[entry]
+
+        def run(_):
+            assert_current(scan)
+            with TemporaryDirectory(dir=destination.parent) as staged:
+                temporary = Path(staged) / "checked.nc"
+                result = export(scan["rows"][index], field, temporary, daily=period == periods[1])
+                assert_current(scan)
+                temporary.replace(destination)
+            return result["groups"]
+
+        self.work(run, lambda groups: self.show_progress(f"已导出 {groups} 个累计时间区间 · {destination.name}"))
+
+    def review_new_independent_data(self, candidate):
+        from .independent_review import apply, apply_many, fields, ordered_fields, review, review_pair
+        from .recipe_trials import required
+
+        scan = self.scan
+        task = self.gated.get(tuple(candidate["task"].split(":", 1)))
+        entries = {f"{fid} · {scan['rows'][index]['name']} · {field['name']}": fid
+                   for index, fid, field in fields(scan, candidate)}
+        if not entries:
+            raise ValueError("该候选没有可复验的字段")
+        if required(task):
+            paths = []
+            for index, fid, field in ordered_fields(scan, candidate, task):
+                label = f"{scan['rows'][index]['name']} · {field['name']}"
+                name, _ = QFileDialog.getOpenFileName(self, f"为 {label} 选择未外发的独立数据")
+                if not name:
+                    return
+                paths.append(name)
+            answer = QMessageBox.question(self, "确认独立观测",
+                "这两份新文件仅用于本地复验。验收通过后，仅发送方案编号和验收统计供 DeepSeek 确认。继续？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            mock, key = self.mock.isChecked(), self.effective_api_key()
+            model = dict(id=self.decision_model, name=discovery.MODELS[self.decision_model])
+
+            def validate_pair(log):
+                trial = dict(candidate, local_holdout_review=[])
+                reports = review_pair(scan, trial, task, paths, model=model["id"])
+                apply_many(scan, trial, task, reports)
+                plan = dict(target_model=model, tasks=[dict(id=trial["task"], operation=task["action"],
+                            allowed_recipes=trial["local_recipe_options"])])
+                receipt = recommendations.finalize_recipes(plan, [trial], mock=mock, api_key=key, progress=log)
+                return trial, receipt
+
+            def reviewed_pair(result):
+                if self.scan is not scan:
+                    return
+                trial, receipt = result
+                candidate.update(trial)
+                self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="双源独立复验"))
+                self.detail.appendPlainText(s.dump(dict(独立复验=trial["local_holdout_review"],
+                                                        放行=trial["execution_release"], 最终推荐回执=receipt)))
+
+            self.work(validate_pair, reviewed_pair)
+            return
+        entry, accepted = QInputDialog.getItem(self, "独立复验", "选择要复验的字段", list(entries), 0, False)
+        if not accepted:
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "选择未用于推荐或外发的独立数据")
+        if not path:
+            return
+        answer = QMessageBox.question(self, "确认独立数据来源",
+            "确认这份资料的观测记录没有用于之前的推荐、调参或全量外发。该文件只用于本地复验。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        def reviewed(report):
+            if self.scan is not scan:
+                return
+            apply(scan, candidate, task, report)
+            self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="独立复验"))
+            self.detail.appendPlainText(s.dump(dict(独立复验=report, 放行=candidate["execution_release"])))
+
+        self.work(lambda _: review(scan, candidate, task, entries[entry], path), reviewed)
+
+    def adjust_review_candidate(self, previous):
+        from .independent_review import fields
+        from .release_gate import assess
+
+        options = {f"{option['id']} · {option['name']}": option for option in previous["local_recipe_options"]
+                   if option["id"] != previous["id"]}
+        if not options:
+            raise ValueError("当前任务没有其他已登记的候选方案")
+        name, accepted = QInputDialog.getItem(self, "调整候选", "从已登记方案选择", list(options), 0, False)
+        if not accepted:
+            return
+        choice = options[name]
+        candidate = dict(previous, **{key: choice[key] for key in ("id", "name", "steps", "description")})
+        candidate.update(independent_required=True, local_holdout_review=[],
+                         previous_independent_hashes=list(dict.fromkeys([
+                             *previous.get("previous_independent_hashes", ()),
+                             *(item["independent_sha256"] for item in previous.get("local_holdout_review", ())
+                               if item.get("independent_sha256"))])),
+                         previous_independent_periods=list(dict.fromkeys([
+                             *(tuple(period) for period in previous.get("previous_independent_periods", ())),
+                             *(tuple(item["independent_period"]) for item in previous.get("local_holdout_review", ())
+                               if item.get("independent_period"))])))
+        candidate.pop("final_verified_recommendation", None)
+        candidate.pop("final_recommendation_origin", None)
+        candidate["previous_independent_supports"] = [*previous.get("previous_independent_supports", ()),
+            *(item["independent_support"] for item in previous.get("local_holdout_review", ())
+              if item.get("independent_support"))]
+        task = self.gated.get(tuple(candidate["task"].split(":", 1)))
+        candidate["execution_release"] = assess(self.scan, candidate, task, fields(self.scan, candidate))
+        rows = [candidate if row is previous else row for row in self.recommendation_rows]
+        self.render_recommendations(dict(recommendations=rows, mode="候选已调整"))
+        self.detail.appendPlainText(s.dump(dict(上一轮失败=previous["execution_release"], 新候选=choice["id"])))
+
+    def review_source_document(self):
+        scan = self.scan
+        documents = list(dict.fromkeys(name for name, _ in scan.get("engineering_docs", ())))
+        if not documents:
+            raise ValueError("目前没有可复查的工程说明")
+        name, ok = QInputDialog.getItem(self, "复查工程说明", "选择原始文件", documents, 0, False)
+        if not ok:
+            return
+        actions = ["复查相关章节或页面", "提取观测表到本地 CSV"]
+        if PurePosixPath(name).suffix.lower() == ".pdf":
+            actions.append("查看 PDF 原页并确认原文")
+        action, ok = QInputDialog.getItem(self, "读取范围", "操作", actions, 0, False)
+        if not ok:
+            return
+        section, ok = QInputDialog.getInt(self, "读取范围",
+            "PDF 页码、Word 表格号或段落批次、文本分页，从 1 开始", 1, 1, 10000)
+        if not ok:
+            return
+        root = Path(scan["path"])
+        locator = name.removeprefix(root.name + "!/") if root.is_file() else name
+        if root.is_file() and name == root.name:
+            locator = ""
+        extension = PurePosixPath(name).suffix.lower()
+
+        def run(_):
+            from . import document_evidence, file_tools
+            assert_current(scan)
+            if action == "查看 PDF 原页并确认原文":
+                with file_tools.selected(root, locator) as (path, _, __):
+                    image = document_evidence.render_original_page(path, section)
+                assert_current(scan)
+                return {"original_page": image}
+            if action == "提取观测表到本地 CSV":
+                with file_tools.selected(root, locator) as (path, _, __):
+                    table = document_evidence.observation_table(path, section)
+                assert_current(scan)
+                return {"table": table}
+            offset = section - 1
+            if extension == ".docx":
+                offset *= 20
+            elif extension != ".pdf":
+                offset *= 16384
+            if extension in {".pdf", ".docx"}:
+                with file_tools.selected(root, locator) as (path, _, __):
+                    evidence = document_evidence.extract(path, extension, offset, prefer_outline=False)
+            else:
+                evidence = file_tools.inspect(root, "read_text", dict(path=locator, offset=offset))
+            assert_current(scan)
+            checks = document_evidence.cross_check(dict(scan, engineering_docs=[(name, evidence["text"])]))
+            return {"evidence": evidence.get("evidence", []), "checks": checks}
+
+        def reviewed(result):
+            if "original_page" in result:
+                self.verify_document_page(scan, name, section, result["original_page"])
+                return
+            if "table" in result:
+                self.save_document_observations(scan, result["table"])
+                return
+            self.apply_document_review(scan, result["checks"])
+            self.detail.appendPlainText(s.dump(dict(复核原文=name, **result)))
+            self.show_progress("本地说明复查完成 · 查看检查记录及原文位置")
+
+        self.work(run, reviewed)
+
+    def review_runtime_dependencies(self):
+        from .native_dependencies import verify_runtime_manifest
+
+        scan, model = self.scan, self.decision_model
+        filename, _ = QFileDialog.getOpenFileName(self, "选择实际运行记录生成的依赖清单", "", "JSON (*.json)")
+        if not filename:
+            return
+
+        def run(_):
+            with Path(filename).open("rb") as stream:
+                content = stream.read(1024**2 + 1)
+            if len(content) > 1024**2:
+                raise ValueError("运行依赖清单超过可审核范围")
+            return verify_runtime_manifest(scan, model, json.loads(content.decode("utf-8-sig")))
+
+        def reviewed(checks):
+            self.apply_document_review(scan, checks)
+            self.detail.appendPlainText(s.dump(dict(运行时依赖复核=checks)))
+            self.show_progress("已核对 ZIP 和依赖成员指纹 · 工程仍须通过目标模型的原生准入检查")
+        self.work(run, reviewed)
+
+    def verify_document_page(self, scan, name, section, png):
+        from .document_evidence import cross_check
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"复核原件 · 第 {section} 页")
+        dialog.resize(900, 750)
+        layout = QVBoxLayout(dialog)
+        image = QLabel()
+        rendering = QPixmap()
+        if not rendering.loadFromData(png, "PNG"):
+            raise ValueError("原页无法显示")
+        image.setPixmap(rendering)
+        scroller = QScrollArea()
+        scroller.setWidget(image)
+        layout.addWidget(scroller, 1)
+        text = QPlainTextEdit()
+        text.setPlaceholderText("逐字填写原页中已核对的单位、时区、变量说明或引用")
+        text.setMaximumHeight(95)
+        layout.addWidget(text)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if not dialog.exec() or not text.toPlainText().strip():
+            return
+        if self.scan is not scan:
+            return
+        assert_current(scan)
+        observed = text.toPlainText().strip()
+        if len(observed) > 4000:
+            raise ValueError("只需记录本次核对的原文片段")
+        audit = cross_check(dict(scan, engineering_docs=[(name, observed)]))
+        for item in audit:
+            item["verified_original_page"] = section
+        self.apply_document_review(scan, audit)
+        self.detail.appendPlainText(s.dump(dict(复核原件=name, 页码=section, 原页抄录=observed, 核对=audit)))
+
+    def apply_document_review(self, scan, updates):
+        from .release_gate import assess, resolve_field, task_fields
+
+        if self.scan is not scan or not updates:
+            return
+        def identity(record):
+            return tuple(record.get(key) for key in ("document", "check", "reference", "data", "variable"))
+        merged = {identity(record): record for record in scan.get("document_evidence_checks", ())}
+        merged.update({identity(record): record for record in updates})
+        scan["document_evidence_checks"] = list(merged.values())
+        for recommendation in self.recommendation_rows:
+            if "execution_release" not in recommendation:
+                continue
+            fields = [(index, fid, field) for index, name, fid in
+                      task_fields({"fields": recommendation.get("execution_fields", ())})
+                      if (field := resolve_field(scan["rows"][index], index, name, fid))]
+            task = self.gated.get(tuple(recommendation["task"].split(":", 1)))
+            recommendation["execution_release"] = assess(scan, recommendation, task, fields)
+        self.render_recommendations(dict(recommendations=list(self.recommendation_rows), mode="本地复核"))
+
+    def save_document_observations(self, scan, table):
+        import csv
+        location, _ = QFileDialog.getSaveFileName(self, "保存复查用观测表", "观测表.csv", "CSV (*.csv)")
+        if not location:
+            return
+        destination, source = Path(location).resolve(), Path(scan["path"]).resolve()
+        if destination == source or source.is_dir() and destination.is_relative_to(source):
+            raise ValueError("请将提取表保存到本次输入目录之外")
+        with destination.open("w", encoding="utf-8-sig", newline="") as stream:
+            csv.writer(stream).writerows(table)
+        self.show_progress("已保存观测表 · 可转入 CSV 核验")
+        proceed = QMessageBox.question(self, "转入表格核验",
+            "已经保存原表日期、表头、单位和数值。确认表格结构后，是否用 CSV 流程开始核验这份观测表？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if proceed == QMessageBox.StandardButton.Yes:
+            self.path.setText(str(destination))
+            self.scan_now()
 
     def continue_recommendations(self):
+        if self.recommendation_review_busy or self.thread is not None:
+            raise ValueError('后台检查和补充推荐尚未完成，请稍候。')
+        if self.conversion_only.isChecked():
+            self.execute_conversion_only()
+            return
+        from .release_gate import require
         selected=[row for row,check in zip(self.recommendation_rows,self.recommendation_checks)
                   if check is not None and check.isChecked()]
         if not selected:
@@ -1227,6 +2389,7 @@ class Window(QMainWindow):
                 return
             raise ValueError("请至少勾选一个推荐方案")
         assert_current(self.scan)
+        require(selected, allow_search=True)
         engineering=[row for row in selected if row["steps"][0].startswith("engineering.")]
         if engineering and len(engineering)!=len(selected):
             raise ValueError("原版整包工程和逐项寻优请分开选择")
@@ -1280,8 +2443,8 @@ class Window(QMainWindow):
         self.table.blockSignals(False)
         self.page_label.setText(f"{self.page_number+1} / {max(1,(len(self.display)+119)//120)} 页 · {len(self.display)} 个数据成员")
         if self.scan.get('on_demand') and self.scan.get('shallow'):
-            count=self.scan.get('initial_directory',{}).get('total',0)
-            self.page_label.setText(f"目录包含 {count} 个条目；自动流程中由DS按需读取")
+            count=len(self.scan.get('file_cards', ()))
+            self.page_label.setText(f"已采集 {count} 个文件的结构信息，等待 DeepSeek 判断类型")
 
     def paginate(self,delta):
         if self.scan and 0<=self.page_number+delta<max(1,(len(self.display)+119)//120):
@@ -1379,7 +2542,7 @@ class Window(QMainWindow):
                 self.alg.setPlaceholderText("确认后填写（可留空）：" + "，".join(reply["algorithms"]))
             elif approved.stage=="review": self.review_reply=reply
             self.advice.setPlainText(s.dump(reply))
-        key=self.api_key.text().strip()
+        key=self.effective_api_key()
         self.work(lambda log:s.send(approved,approved.digest,mock,api_key=key,on_progress=log),finish)
 
     def execute_now(self):
@@ -1405,20 +2568,36 @@ class Window(QMainWindow):
         self.result=self.review_reply=self.approved=None
         self.export_button.setEnabled(False)
         self.set_candidate_options(None)
-        self.result_cards.reset("正在本地处理，请稍候…")
+        self.result_cards.reset("正在本地处理，请稍候…",processing=True)
+        self.record_step('本地处理','正在执行已确认的处理流程')
+        self.report_milestone('正在本地处理…')
         state=self.prepared
         model=(state.get("profile") or {}).get("id")
         self.work(lambda log:s.run(state,folder,confirmed,log),lambda value:self.show_result(value,model))
 
     def execute_selected(self):
         from .selected_processing import run
+        from .release_gate import require, require_whole_scope
         assert_current(self.scan)
+        require(self.selected_recommendations, allow_search=True)
+        if not self.selected_recommendations:
+            require_whole_scope(self.recommendation_rows)
         self.alg.hide()
         self.execute_button.hide()
         recipes={}
+        verified_alignments={}
         for row in self.selected_recommendations:
             recipes.setdefault(row["task"],[]).append(row["steps"])
-        tasks=[(task_id,dict(self.gated[tuple(task_id.split(":",1))],recipes=steps))
+            for report in row.get("local_holdout_review", ()):
+                if report.get("basis") == "joint_recipe_acceptance_passed" and report.get("alignment"):
+                    verified_alignments[row["task"]] = report["alignment"]
+                    break
+        tasks=[(task_id,dict(self.gated[tuple(task_id.split(":",1))],recipes=steps,
+                             recommendation_origin=next((r.get("recommendation_origin","confirmed_registered_recipe") for r in self.selected_recommendations if r["task"]==task_id),"confirmed_registered_recipe"),
+                             verified_recipe_alignment=verified_alignments.get(task_id),
+                             runtime_fields=list(dict.fromkeys(
+                                 field for row in self.selected_recommendations if row["task"] == task_id
+                                 for field in row.get("execution_fields", ())))))
                for task_id,steps in recipes.items()]
         if self.run_temp is not None:
             self.run_temp.cleanup()
@@ -1428,11 +2607,15 @@ class Window(QMainWindow):
         self.result=self.review_reply=self.approved=None
         self.export_button.setEnabled(False)
         self.set_candidate_options(None)
-        self.result_cards.reset("正在执行已核验方案并生成结果，请稍候…")
-        self.work(lambda log:run(scan,tasks,folder,progress=log,model_id=model_id),
+        self.result_cards.reset("正在执行已核验方案并生成结果，请稍候…",processing=True)
+        self.record_step('本地处理','正在执行已核验的处理方案')
+        self.report_milestone('正在本地处理…')
+        key=self.effective_api_key()
+        self.work(lambda log:run(scan,tasks,folder,progress=log,model_id=model_id,api_key=key),
                   lambda value:self.show_result(value,model_id))
 
     def execute_original(self):
+        from .release_gate import require, require_whole_scope, runtime
         if not self.scan or not self.decision_model:
             raise ValueError("请先在首页选择目标模型并扫描工程")
         assert_current(self.scan)
@@ -1445,17 +2628,29 @@ class Window(QMainWindow):
         folder=Path(self.run_temp.name)
         scan,model=self.scan,self.decision_model
         selected=tuple(self.selected_recommendations)
+        require(selected)
+        if not selected:
+            require_whole_scope(self.recommendation_rows)
         self.result=self.review_reply=self.approved=None
         self.export_button.setEnabled(False)
         self.set_candidate_options(None)
-        self.result_cards.reset("正在生成原版工程输出包…")
-        self.result_cards.append_progress('已接收所选方案；正在准备工程数据。推荐能否作为搜索初始图，仍须真实契约检查；结果仅为预算内最佳。')
-        self.work(lambda log:s.run_original_workbench(scan,model,folder,
-                  lambda msg:log(msg if isinstance(msg,str) else "正在核验原版候选与质量…"),recommendations=selected),
-                  lambda value:self.show_result(value,model))
+        self.result_cards.reset("正在生成原版工程输出包…",processing=True)
+        self.record_step('本地处理','正在准备工程数据和输出包')
+        self.report_milestone('正在生成工程输出包…')
+        self.show_progress('已接收所选方案；正在准备工程数据。推荐能否作为搜索初始图，仍须真实契约检查；结果仅为预算内最佳。')
+        key=self.effective_api_key()
+        def perform(log):
+            fields = list(dict.fromkeys(field for row in selected for field in row.get("execution_fields", ())))
+            review = runtime(scan, {"fields": fields, "steps": [step for row in selected for step in row.get("steps", ())]}, folder)
+            result = s.run_original_workbench(scan,model,folder,
+                lambda msg:log(msg if isinstance(msg,str) else "正在核验原版候选与质量…"), recommendations=selected,api_key=key)
+            result["input_runtime_checks"] = review
+            return result
+        self.work(perform, lambda value:self.show_result(value,model))
 
     def show_result(self, result, model_id):
-        self.show_progress("4/4 · 产品已生成，正在核对输入/输出格式、原生要求和实际试读状态")
+        self.record_step('本地处理','已取得执行结果，正在核对输出与未完成项')
+        self.report_milestone('已取得本地执行结果，正在核对输出。')
         if self.scan and self.scan.get('file_agent_audit'):
             result['file_inspection'] = self.scan['file_agent_audit']
         self.result=result
@@ -1464,24 +2659,31 @@ class Window(QMainWindow):
         check=output_review.describe_output(result,self.profiles.get(model_id))
         gate=result.get('manifest',{}).get('final_check')
         if gate:
-            self.basis_summary.setPlainText(self.basis_summary.toPlainText()+'\n执行反馈 · 格式 '+gate['format']['status']+' / 工程 '+gate['project']['status']+' / 模型试读 '+gate['native']['status']+'；具体依据和范围见结果页。')
+            self.log_event('执行反馈 · 格式 '+gate['format']['status']+' / 工程 '+gate['project']['status']+' / 模型试读 '+gate['native']['status']+'；具体依据和范围见结果页。')
         items=output_review.cards(result,check)
-        self.result_cards.render(items,check)
+        summaries=output_review.selection_summaries(items,result.get('failed_tasks',[]),self.selected_recommendations,
+                                                    result=result)
+        self.result_cards.render(items,check,summaries=summaries)
         self.set_candidate_options(result)
+        self.export_button.setText('下载结果与检查记录')
         self.export_button.setEnabled(True)
-        key=self.api_key.text().strip() or os.environ.get("DEEPSEEK_API_KEY","").strip()
+        key=self.effective_api_key()
         mock=self.mock.isChecked()
         if not key and not mock:
-            self.result_cards.update_check(check,notice="填写首页 API 密钥后可自动补充线上复核。")
+            self.result_cards.update_check(check,notice='在首页连接 DeepSeek 后，可自动补充线上复核。')
+            self.record_step('输出检查','本地检查已结束，线上复核未运行')
+            self.report_milestone('本地处理已结束，请查看输出检查结论。')
             return
 
-        self.result_cards.update_check(check,notice="正在复核脱敏的输出包清单…")
-        request=output_review.review_request(check,items)
+        request=output_review.review_request(check,items,summaries=summaries)
+        self.result_cards.update_check(check,notice="正在复核脱敏的输出包清单…",
+                                       pending=[row['id'] for row in request['selected_plans']])
         summary_file=Path(self.task.name)/"output-review-request.json"
 
         def review(log):
             summary_file.write_text(s.dump(request),encoding='utf8')
-            return s.review_model_output(result,self.profiles.get(model_id),api_key=key,mock=mock,progress=log)
+            return s.review_model_output(result,self.profiles.get(model_id),api_key=key,mock=mock,progress=log,
+                                         summaries=summaries)
 
         def finish(value):
             reply,notice=value
@@ -1492,8 +2694,9 @@ class Window(QMainWindow):
             self.present_issues(rows)
             if reply and mock:
                 notice="模拟复核 · 未调用线上 API"
-            self.result_cards.update_check(check,reply,notice)
-            self.show_progress("处理已结束 · 请在结果页查看格式转换、检查结论与未完成项")
+            self.result_cards.update_check(check,reply,notice,simulated=mock)
+            self.record_step('输出检查','可在结果页查看检查结论与未完成项')
+            self.report_milestone('处理已结束，请查看输出检查结论。')
 
         self.work(review,finish)
 
@@ -1503,9 +2706,8 @@ class Window(QMainWindow):
         for row in candidate_options(result) if result else []:
             score=row['metrics']
             title=recommendations.recipe_name(row['steps'])
-            origin={'mutation':'变异方案','recommended_initial':'DS推荐验证'}.get(row['phase'],'已评价方案')
-            default=' · 默认' if row['selected'] else ''
-            self.candidate_select.addItem(f"{origin} · {title} · RMSE {score['RMSE']:.4g}{default}",row)
+            selected=' · 本次选中' if row['selected'] else ''
+            self.candidate_select.addItem(f"{title} · RMSE {score['RMSE']:.4g}{selected}",row)
         available=self.candidate_select.count()>0
         self.candidate_select.setEnabled(available)
         self.candidate_export.setEnabled(available)
@@ -1557,18 +2759,51 @@ class Window(QMainWindow):
         if "original_archive" in self.result:
             result,reply=self.result,self.review_reply
             self.work(lambda _:s.export_original_zip(result,dst,reply),
-                      lambda path:self.statusBar().showMessage(f"已导出 {path.name}"))
+                      lambda path:self.finish_download(dst))
             return
         planning,review,result=self.plan_reply,self.review_reply,self.result
-        self.work(lambda _:s.export_bundle(result,dst,planning,review),lambda n:self.statusBar().showMessage(f"已导出 {n:,} 字节"))
+        self.work(lambda _:s.export_bundle(result,dst,planning,review),lambda n:self.finish_download(dst))
+
+    def finish_download(self,destination):
+        """Products stay until save succeeds; then release this task's working data."""
+        import gc
+        destination=Path(destination).resolve(strict=True)
+        task=Path(self.task.name).resolve()
+        if destination.is_relative_to(task):
+            self.statusBar().showMessage('结果保存在工作目录内，已保留副本；请另存到个人目录后再清理。')
+            return
+        self.result=self.prepared=self.approved=self.plan_reply=self.review_reply=None
+        self.gated={}
+        self.selected_recommendations=[]
+        self.recommendation_rows=[]
+        self.clear_recommendation_cards()
+        self.search_button.setEnabled(False)
+        self.set_candidate_options(None)
+        self.export_button.setEnabled(False)
+        self.export_button.setText('结果已保存')
+        gc.collect()
+        failures=[]
+        for directory in (self.run_temp,self.task):
+            if directory is not None:
+                try:directory.cleanup()
+                except (OSError,ValueError) as exc:failures.append(str(exc))
+        self.run_temp=None
+        self.task=TemporaryDirectory(prefix='ecodata-desktop-')
+        self.last_cleanup=dict(status='PARTIAL' if failures else 'COMPLETED',failures=failures,
+                               saved_result=str(destination),working_directory=str(task))
+        self.log_event('工作副本清理：'+('部分文件仍占用，下次启动重试；'+'；'.join(failures) if failures else '已完成；原始输入和已保存结果保留。'))
+        self.statusBar().showMessage('结果已保存：'+str(destination)+('；部分临时文件待下次启动清理' if failures else '；工作副本已清理'))
 
     def closeEvent(self,event):
         if self.thread is not None:
             event.ignore()
             self.statusBar().showMessage("当前操作完成后可关闭窗口")
         else:
-            if self.run_temp is not None: self.run_temp.cleanup()
-            self.task.cleanup()
+            for directory in (self.run_temp,self.task):
+                if directory is not None:
+                    try:directory.cleanup()
+                    except (OSError,ValueError) as exc:
+                        self.log_event('临时文件仍被占用，将在下次启动时重试清理：'+str(exc))
             event.accept()
 
 def main():

@@ -1,0 +1,58 @@
+[
+  {
+    "status": "PASS",
+    "native_data_model": "NETCDF3_CLASSIC",
+    "changed_values": 9,
+    "edited_variable": "t2",
+    "other_variables_and_metadata_equal": true,
+    "time_flags_equal": true,
+    "unprocessed_support_equal": true,
+    "native_model_executed": false,
+    "resource": "official_archives/met/camx.2d.36km.20160610.nc",
+    "run_index": 0,
+    "processed_times": 9,
+    "processed_cells": 1
+  },
+  {
+    "status": "PASS",
+    "native_data_model": "NETCDF3_CLASSIC",
+    "changed_values": 9,
+    "edited_variable": "t2",
+    "other_variables_and_metadata_equal": true,
+    "time_flags_equal": true,
+    "unprocessed_support_equal": true,
+    "native_model_executed": false,
+    "resource": "official_archives/met/camx.2d.12km.20160610.nc",
+    "run_index": 0,
+    "processed_times": 9,
+    "processed_cells": 1
+  },
+  {
+    "status": "PASS",
+    "native_data_model": "NETCDF3_CLASSIC",
+    "changed_values": 7,
+    "edited_variable": "t2",
+    "other_variables_and_metadata_equal": true,
+    "time_flags_equal": true,
+    "unprocessed_support_equal": true,
+    "native_model_executed": false,
+    "resource": "official_archives/met/camx.2d.36km.20160611.nc",
+    "run_index": 1,
+    "processed_times": 7,
+    "processed_cells": 1
+  },
+  {
+    "status": "PASS",
+    "native_data_model": "NETCDF3_CLASSIC",
+    "changed_values": 7,
+    "edited_variable": "t2",
+    "other_variables_and_metadata_equal": true,
+    "time_flags_equal": true,
+    "unprocessed_support_equal": true,
+    "native_model_executed": false,
+    "resource": "official_archives/met/camx.2d.12km.20160611.nc",
+    "run_index": 1,
+    "processed_times": 7,
+    "processed_cells": 1
+  }
+]

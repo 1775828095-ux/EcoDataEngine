@@ -94,7 +94,7 @@ def describe_hdf(content: bytes) -> list[dict]:
     return result
 
 
-def read_structure(name: str, content: bytes, *, hdf_value: str = "", hdf_x: str = "", hdf_y: str = "", crs: str = "", record_read_source: bool = True) -> xr.Dataset:
+def read_structure(name: str, content: bytes, *, hdf_value: str = "", hdf_x: str = "", hdf_y: str = "", crs: str = "", record_read_source: bool = True, excel_sheet: str | None = None) -> xr.Dataset:
     suffix = Path(name).suffix.lower()
     if suffix == '.rdb':
         from ecodata.io.raw_readers import USGSRDBReader
@@ -124,7 +124,13 @@ def read_structure(name: str, content: bytes, *, hdf_value: str = "", hdf_x: str
     elif suffix == ".xlsx":
         book = pd.ExcelFile(io.BytesIO(content), engine="openpyxl")
         from ecodata.io.raw_tables import select_excel_sheet
-        frame, evidence = select_excel_sheet(book)
+        if excel_sheet is None:
+            frame, evidence = select_excel_sheet(book)
+        else:
+            if excel_sheet not in book.sheet_names or excel_sheet == "_ecodata_metadata":
+                raise SchemaError("已核验工作表无法在原件中定位")
+            frame = pd.read_excel(book, sheet_name=excel_sheet, dtype=object, keep_default_na=False)
+            evidence = {"sheet": excel_sheet, "basis": "authorized_worksheet"}
         dataset = table_dataset(frame)
         dataset.attrs['reader_evidence']=json.dumps(evidence,ensure_ascii=False)
         if "_ecodata_metadata" in book.sheet_names:

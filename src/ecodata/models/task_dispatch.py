@@ -66,8 +66,8 @@ def discover(uploads):
                     audit.append(dict(file=name,action='HEADER_DEFERRED'))
                     continue
                 # HDF metadata is not necessarily contiguous in its first 64K.
-                # Reuse xarray/h5netcdf's seekable reader, not full array loading.
-                with files.files[name][0]() as stream, xr.open_dataset(stream,engine='h5netcdf') as opened:
+                # Materialize only this selected member; never seek HDF5 metadata through a compressed ZIP stream.
+                with files.netcdf(name) as opened:
                     facts=dict(attributes=dict(opened.attrs),variables={n:dict(attributes=dict(a.attrs)) for n,a in opened.variables.items()})
             # Raw native states stay with their existing format drivers. CF
             # standardised inputs can use task services without native engines.
@@ -189,46 +189,54 @@ def dispatch_preparation(uploads, model_id, folder, progress=None, task=None, *,
         if not candidates:raise ValueError('声明任务没有满足契约的观测/背景资源，详见task_dispatch.json')
     if not candidates:return None
     from ecodata.algorithms.platform_search import SearchInput, process_current_input
-    results=[];members=[]
+    results=[];members=[];failures=[]
+    from ecodata.core.exceptions import EcoDataError
+    from ecodata.core.continuation import decision,receipt
     for index,(table,matches) in enumerate(candidates):
-        if len(matches)!=1:raise ValueError('同物理量存在多个背景，需明确时间/来源用途，未猜选：'+table['quantity'])
-        stage=folder/f'task-{index+1}';stage.mkdir(exist_ok=False)
-        model,observations,target,original,accepted,report=normalise(table,matches[0])
-        save(stage/'contract.json',report)
-        quantity=table['quantity']
-        inputs=[SearchInput('field.nc','primary',model.to_netcdf()),
-                SearchInput('observations.csv','observations',observations.to_csv(index=False).encode()),
-                SearchInput('target.nc','target',target.to_netcdf())]
-        request=dict(task='multisource',processing_goal='spatial_fusion',variable=quantity,unit=table['unit'],
-            semantic_type='continuous',physical_variable=quantity,temporal_semantics='instantaneous',
-            allow_training=True,mutation_control='random',soft_guidance=False,observation_crs='EPSG:4326',
-            nonnegative=quantity in {'air_temperature','air_pressure','relative_humidity'},target_times=report['times'])
-        if initial_algorithms:
-            request['initial_algorithms']=list(initial_algorithms)
-        if request_builder is not None:
-            request=request_builder(request)
-        budget=dict(objective_limit=240,total_call_limit=240,proposal_limit=40,wall_seconds=60,probe_call_limit=0)
-        save(stage/'request.json',dict(request=request,budget=budget,seed=11))
-        if progress:progress('按数据任务调用公共数值处理：'+quantity+' 缺失恢复')
-        result=process_current_input(inputs,request,stage/'search',budget=budget,seed=11,progress=progress)
-        if result.get('status')!='PASS':raise ValueError('公共数值处理未通过：'+str(result.get('status')))
-        with xr.open_dataset(result['product']) as product:
-            estimates=product[quantity].values
-        output=original.copy();output['estimate']=np.nan;output['estimate_status']='OUTSIDE_BACKGROUND_SUPPORT'
-        ti=pd.DatetimeIndex(report['times']).get_indexer(accepted.time)
-        output.loc[accepted.index,'estimate']=estimates[ti,np.arange(len(accepted))]
-        output.loc[accepted.index,'estimate_status']='MODEL_ESTIMATE_NOT_OBSERVATION'
-        path=stage/'recovered_observations.csv';output.to_csv(path,index=False)
-        readback=pd.read_csv(path)
-        if not np.allclose(readback.loc[readback.estimate.notna(),'estimate'],output.loc[output.estimate.notna(),'estimate']):
-            raise ValueError('恢复产品回读不一致')
-        results.append(dict(task='observation_gap_recovery',field=quantity,status='PASS',report=report,
-            result=result,product=str(path),native_model_updated=False))
-        members.extend([path,stage/'contract.json',stage/'request.json',Path(result['product']),
-            stage/'search/summary.json',stage/'search/selection_comparison.json'])
-    manifest=dict(protocol='ecodata.converter.v1',model_id=model_id,status='TASK_PROCESSED',native_ready=False,
+        try:
+            if len(matches)!=1:raise ValueError('同物理量存在多个背景，需明确时间/来源用途，未猜选：'+table['quantity'])
+            stage=folder/f'task-{index+1}';stage.mkdir(exist_ok=False)
+            model,observations,target,original,accepted,report=normalise(table,matches[0])
+            save(stage/'contract.json',report)
+            quantity=table['quantity']
+            inputs=[SearchInput('field.nc','primary',model.to_netcdf()),
+                    SearchInput('observations.csv','observations',observations.to_csv(index=False).encode()),
+                    SearchInput('target.nc','target',target.to_netcdf())]
+            request=dict(task='multisource',processing_goal='spatial_fusion',variable=quantity,unit=table['unit'],
+                semantic_type='continuous',physical_variable=quantity,temporal_semantics='instantaneous',
+                allow_training=True,mutation_control='random',soft_guidance=False,observation_crs='EPSG:4326',
+                nonnegative=quantity in {'air_temperature','air_pressure','relative_humidity'},target_times=report['times'])
+            if initial_algorithms:
+                request['initial_algorithms']=list(initial_algorithms)
+            if request_builder is not None:
+                request=request_builder(request)
+            budget=dict(objective_limit=240,total_call_limit=240,proposal_limit=40,wall_seconds=60,probe_call_limit=0)
+            save(stage/'request.json',dict(request=request,budget=budget,seed=11))
+            if progress:progress('按数据任务调用公共数值处理：'+quantity+' 缺失恢复')
+            result=process_current_input(inputs,request,stage/'search',budget=budget,seed=11,progress=progress)
+            if result.get('status')!='PASS':raise ValueError('公共数值处理未通过：'+str(result.get('status')))
+            with xr.open_dataset(result['product']) as product:
+                estimates=product[quantity].values
+            output=original.copy();output['estimate']=np.nan;output['estimate_status']='OUTSIDE_BACKGROUND_SUPPORT'
+            ti=pd.DatetimeIndex(report['times']).get_indexer(accepted.time)
+            output.loc[accepted.index,'estimate']=estimates[ti,np.arange(len(accepted))]
+            output.loc[accepted.index,'estimate_status']='MODEL_ESTIMATE_NOT_OBSERVATION'
+            path=stage/'recovered_observations.csv';output.to_csv(path,index=False)
+            readback=pd.read_csv(path)
+            if not np.allclose(readback.loc[readback.estimate.notna(),'estimate'],output.loc[output.estimate.notna(),'estimate']):
+                raise ValueError('恢复产品回读不一致')
+            results.append(dict(task='observation_gap_recovery',field=quantity,status='PASS',report=report,
+                result=result,product=str(path),native_model_updated=False))
+            members.extend([path,stage/'contract.json',stage/'request.json',Path(result['product']),
+                stage/'search/summary.json',stage/'search/selection_comparison.json'])
+        except (EcoDataError,ValueError) as exc:
+            failure=decision('data_task',table['file']+':'+table['quantity'],str(exc))
+            failures.append(failure)
+            if progress:progress('仅跳过受阻数据任务 · '+failure['target']+'：'+str(exc))
+    manifest=dict(protocol='ecodata.converter.v1',model_id=model_id,status='TASK_PROCESSED' if results else 'TASK_BLOCKED',native_ready=False,
         preparation=dict(route='data_task_dispatch_v1',tasks=results),native_model_executed=False,
         note='观测缺失恢复结果，不是模型原生初始场；原观测值及QC未改写，估计值另列')
+    manifest['continuation']=receipt(failures,[r['field'] for r in results])
     save(folder/'handoff.json',manifest)
     archive=folder/'EcoData-task-products.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:

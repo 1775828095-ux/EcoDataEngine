@@ -155,3 +155,29 @@ def contained_cell_grid(source,target):
         if out.sizes[axis]<2:
             raise ValueError('Target grid cannot fully cover enough original reference cells: '+axis)
     return out
+
+
+def common_pair_grid(datasets, variable, conservative):
+    grids = [normalize_grid_axes(ds)[0] for ds in datasets]
+    axes = ("lat", "lon")
+    if not all(set(axes) <= set(ds[variable].dims) and
+               all(ds[a].dims == (a,) and ds[a].size >= 2 for a in axes) for ds in grids):
+        raise ValueError("该重采样需要原版支持的规则经纬网格")
+    differences = [[np.diff(ds[a].values) for a in axes] for ds in grids]
+    if not all(np.allclose(step, step[0]) for pair in differences for step in pair):
+        raise ValueError("目标分辨率需要规则网格间距")
+    steps = [[step[0] for step in pair] for pair in differences]
+    target = next((i for i in (0, 1) if np.all(np.asarray(steps[i]) >= np.asarray(steps[1-i])-1e-10)), None)
+    if target is None:
+        raise ValueError("两个坐标轴粗细交叉，须指定目标网格")
+    base, source = grids[target], grids[1-target]
+    for j, axis in enumerate(axes):
+        half = steps[target][j]/2 if conservative else 0
+        margin = steps[1-target][j]/2 if conservative else 0
+        keep = ((base[axis]-half >= float(source[axis][0])-margin-1e-9) &
+                (base[axis]+half <= float(source[axis][-1])+margin+1e-9))
+        base = base.isel({axis:np.flatnonzero(keep.values)})
+        if base[axis].size < 2:
+            raise ValueError("共同网格覆盖不足两行两列")
+    return base, source, target
+

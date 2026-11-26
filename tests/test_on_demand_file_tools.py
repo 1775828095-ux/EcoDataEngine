@@ -36,7 +36,8 @@ def test_nested_config_header_and_real_refs(tmp_path):
     assert listing['ok']
     result=tools.call('read_text',dict(path='nested.zip!/config/file.cio'))
     assert 'climate.pcp' in result['result']['text']
-    row=result['result']['row']
+    assert 'ref' not in result['result']['row']
+    row=tools.rows[result['result']['row']['name']]
     from ecodata.desktop.scan import local_member
     with local_member(row) as path:assert path.read_text().startswith('weather_file')
     assert all(e['temporary_directory_removed'] for e in tools.events)
@@ -96,9 +97,15 @@ def test_shared_entry_uses_only_model_requested_files(tmp_path,monkeypatch):
         dict(role='assistant',content=None,tool_calls=[dict(id='two',type='function',
             function=dict(name='read_text',arguments=json.dumps(dict(path='nested.zip!/config/file.cio'))))]),
         dict(role='assistant',content=json.dumps(dict(summary='read config',engineering_evidence=[],dependencies=[],unknowns=[])))])
-    monkeypatch.setattr(service,'tool_turn',lambda *a,**k:(next(turns),dict(model='unit-test')))
+    def tool_turn(messages, tools, api_key, progress):
+        assert api_key == 'unit-test'
+        return next(turns), dict(model='unit-test')
+    monkeypatch.setattr(service,'tool_turn',tool_turn)
     def decide(request,*args,**kwargs):
+        assert kwargs['api_key']=='unit-test'
         contents=json.loads(request.summary)
+        if request.stage == "file_classification":
+            return dict(classifications=[dict(file=file["id"], kind="uncertain") for file in contents["files"]])
         assert contents['task_goal']=='evaluate_gain'
         assert contents['task_requirements']['time_investigation']=='check original receipt'
         return dict(decisions=[],questions=[])
@@ -123,6 +130,58 @@ def test_gui_scan_entry_keeps_directory_only(tmp_path,monkeypatch):
     assert window.scan and window.scan['on_demand'] and window.scan['rows']==[]
     window.batch_timer.stop()
     window.close();app.processEvents()
+
+
+def test_local_file_cards_precede_targeted_deepseek_read(tmp_path, monkeypatch):
+    from ecodata.desktop import discovery, service
+    from ecodata.desktop.file_agent import run
+
+    root = tmp_path / "input.zip"
+    with zipfile.ZipFile(root, "w") as archive:
+        archive.writestr("docs/README.md", "# Project setup\nPRIVATE_DESCRIPTION\n")
+        archive.writestr("data/rain.csv", "station,rain\nPRIVATE_STATION,2.4\nOTHER_STATION,3.0\n")
+        for number in range(65):
+            archive.writestr(f"other/note-{number}.bin", b"opaque")
+    scan, _ = scan_index(root)
+    assert len(scan["file_cards"]) == 67 and scan["rows"] == []
+    summary, _ = discovery.discover(scan, "data_only")
+    classified = []
+
+    def send(request, *args, **kwargs):
+        if request.stage != "file_classification":
+            return dict(decisions=[], questions=[])
+        files = json.loads(request.summary)["files"]
+        classified.extend(files)
+        assert all("kind" not in file for file in files)
+        assert "PRIVATE_" not in request.summary
+        # An intentionally different judgement verifies the tool context uses the model's reply.
+        return dict(classifications=[dict(file=file["id"], kind={"md": "mixed", "CSV": "data"}.get(
+            file["format"], "uncertain")) for file in files])
+
+    def turn(messages, tools, key, progress):
+        if len(messages) == 2:
+            assert len(classified) == 67
+            first = json.loads(messages[1]["content"])["file_types"]
+            cards = {item["path"]: item for item in first["entries"]}
+            assert first["total"] == 67 and first["next_offset"] == 60
+            assert cards["docs/README.md"]["basis"] == "heading_prefix"
+            assert cards["docs/README.md"]["kind"] == "mixed"
+            assert cards["data/rain.csv"]["kind"] == "data" and cards["data/rain.csv"]["columns"] == 2
+            assert "PRIVATE_" not in messages[1]["content"]
+            return dict(role="assistant", tool_calls=[
+                dict(id="one", function=dict(name="list_file_types", arguments=json.dumps(dict(path="", offset=60)))),
+                dict(id="two", function=dict(name="read_header", arguments=json.dumps(dict(path="data/rain.csv")))),
+            ]), {}
+        remaining = json.loads(messages[-2]["content"])["result"]
+        assert len(remaining["entries"]) == 7 and remaining["next_offset"] is None
+        header = json.loads(messages[-1]["content"])["result"]
+        assert header["header_lines"] == ["station,rain"]
+        return dict(role="assistant", content='{"summary":"字段已核对"}'), {}
+
+    monkeypatch.setattr(service, "tool_turn", turn)
+    monkeypatch.setattr(service, "send", send)
+    *_, full = run(scan, summary, {}, False, "synthetic", lambda _: None, lambda _: None)
+    assert [row["name"].split("!/")[-1] for row in full["rows"]] == ["data/rain.csv"]
 
 
 def test_declared_goal_is_not_erased_by_missing_validation(tmp_path):
@@ -160,6 +219,8 @@ def test_final_json_gets_only_one_bounded_format_correction(tmp_path,monkeypatch
             return dict(role='assistant',tool_calls=[dict(id='not-executed',function=dict(name='read_header',arguments='{}'))]),dict(model='functional-test')
         return dict(role='assistant',content='{broken'),dict(model='functional-test')
     monkeypatch.setattr(service,'tool_turn',turn)
+    monkeypatch.setattr(service, "send", lambda request, *args, **kwargs: dict(classifications=[
+        dict(file=file["id"], kind="uncertain") for file in json.loads(request.summary)["files"]]))
     with pytest.raises(ValueError,match='连续两次|修正阶段'):
         run(scan,summary,{},False,'test-key',lambda _:None,lambda _:None)
     assert len(messages)==2

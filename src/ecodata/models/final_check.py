@@ -120,6 +120,12 @@ def check_model_output(result,model_id,folder,*,run_native=True,timeout=30):
             for name in names:safe_name(name,posix=True)
             report['format']['zip_readback']=True
             manifest=result.get('manifest',{})
+            if manifest.get('status') in {'TASK_PROCESSED','TASK_BLOCKED'}:
+                report['format']=dict(status='NOT_REQUESTED',reason='本阶段为数据处理或缺项诊断，尚未请求模型原生格式转换')
+                report['project']=dict(status='NOT_REQUESTED',reason='数据处理无需完整工程；模型转换及运行条件另行验收')
+                report['native']=dict(status='NOT_RUN',reason='数据处理阶段未运行模型',model_read_confirmed=False)
+                (folder/'final_check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf8')
+                return report
             for change in manifest.get('changes',[]):
                 if _digest(z.read(change['path']))!=change['after']:raise ValueError('写回文件与转换记录指纹不同：'+change['path'])
             for info in z.infolist():
@@ -130,6 +136,29 @@ def check_model_output(result,model_id,folder,*,run_native=True,timeout=30):
                 if isinstance(declaration,dict) and declaration.get('status')=='WORKING_ASSUMPTION_ONLY' and isinstance(declaration.get('rule'),str):
                     report['scientific_definitions']['assumptions'].append(dict(declaration,source_document=info.filename))
             if report['scientific_definitions']['assumptions']:report['scientific_definitions']['status']='WORKING_ASSUMPTIONS'
+            if manifest.get('status')=='COMPONENT_EXPORTED' and not (model_id=='swat_plus' and all(
+                    t.get('operation') in {'weather','precipitation'} for t in manifest.get('preparation',{}).get('tasks',[]))):
+                # A component is a legitimate deliverable, not an incomplete
+                # claim to a runnable project. Verify the delivered bytes and
+                # NetCDF serialization independently; keep native semantics in
+                # the writer's separate validation, never certify a full run.
+                checked={}
+                for entry in manifest.get('output_inventory',[]):
+                    name=entry['path'];raw=z.read(name)
+                    if _digest(raw)!=entry['sha256']:raise ValueError('组件指纹不一致：'+name)
+                    if raw.startswith((b'CDF',b'\x89HDF')):
+                        import xarray as xr
+                        import io
+                        with xr.open_dataset(io.BytesIO(raw),decode_times=False) as ds:
+                            checked[name]=dict(bytes=len(raw),dimensions=dict(ds.sizes),variables=list(ds.variables))
+                    else:checked[name]=dict(bytes=len(raw),sha256=entry['sha256'])
+                if not checked:raise ValueError('没有实际组件文件')
+                report['format'].update(status='PASS',scope='component_hash_and_serialization_only',
+                    component_files=checked,qualification='写出器科学校验另见validation；本关不认证完整模型兼容')
+                report['project']=dict(status='NOT_REQUESTED',reason='组件导出不要求完整模型工程；工程绑定未完成时另见continuation')
+                report['native']=dict(status='NOT_RUN',model_read_confirmed=False,reason='仅交付组件；未请求或未满足完整模型运行条件')
+                (folder/'final_check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf8')
+                return report
             if model_id=='swat_plus':
                 tasks=manifest.get('preparation',{}).get('tasks',[])
                 if manifest.get('status')=='COMPONENT_EXPORTED' and tasks and all(t.get('operation') in {'weather','precipitation'} for t in tasks):
@@ -204,8 +233,14 @@ def attach_final_check(result,model_id,folder):
     report['evidence_prefix']='_ecodata/final_check/'+uuid4().hex
     (folder/'final_check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf8')
     result['manifest']['final_check']=report
+    from ecodata.core.continuation import final_events,receipt
+    previous=result['manifest'].get('continuation',{})
+    events,completed=final_events(report)
+    result['manifest']['continuation']=receipt([*previous.get('decisions',[]),*events],
+        list(dict.fromkeys([*previous.get('completed_steps',[]),*completed])))
     result['final_check_folder']=str(folder)
     with zipfile.ZipFile(archive,'a',zipfile.ZIP_DEFLATED) as z:
+        z.writestr(report['evidence_prefix']+'/continuation.json',json.dumps(result['manifest']['continuation'],ensure_ascii=False,indent=2))
         for name in ('final_check.json','runner.log','native_listing.log','runner_manifest.json','runner_status.json','success.fin'):
             path=folder/name
             if path.is_file():z.write(path,report['evidence_prefix']+'/'+name)

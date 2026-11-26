@@ -8254,43 +8254,8 @@ weather_ports新增按真实外部来源物理量判断错误相关性：非本�
 
 旧案例转换绑定 `integrations/existing_air/existing_air_converters/bindings.json` 和 `integrations/local_swat/local_swat_converter/binding.json` 仍含原开发机路径及指纹，属于有界旧案例配置，不能冒充另一台机器可用的通用资源。此次未擅自替换这些科学资源或捏造新路径。公共上传工程路线与这些旧固定案例配置的限制应分别核查。
 
-## 2026-11-05 本机三组原包复验与小修复
-
-基于本机 main 来源 a4cd41f4b839946bdd31c40e6f34e55596cd18d6，按用户授权测试新整理的 CMAQ、CAMx、CALMET/CALPUFF 原包并修复小问题。原包最终 SHA256 全部不变；未修改科学资料、算法搜索/评分/选型或运行上传脚本。本轮未推送 GitHub。真实日志及逐包状态位于本机工作区 `三组数据平台验收_20261105/验收汇总.md`、`核验明细.json` 与各案例 `result.json`；大文件测试输出单独放在 `D:/EcoDataValidation_20261105/`，不是仓库交付资源。
-
-小修复包括：本地上传身份计算用流式SHA256替代整包读内存；恢复已审查的中文路径NetCDF读取/原生写回兼容，并补上共享工程模板读取遗漏；经典NetCDF来源/处理产品角色识别先探测至多1MiB文件头，避免SciPy文件流后端提前分配大型数组。不能识别文件头仍保留原逻辑回退，因此不是任意体量保证。旧嵌套包测试改为核验缺失time_control的实际拒绝原因，不再期待已过时的“不支持展开”。新增流式身份、Unicode读取和大文件头用途探测定向测试。
-
-定向回归78项通过（`outputs/three-case-final.xml`）；随后将内存防回归用例扩大到大于64KiB文件头，3项再通过，包含于前述用例集合，不能合计为81个不同用例。五模型新公共路线的页面/工具包小型测试通过；这不代表三个真实包都完成浏览器操作或原生模型验收。`git diff --check`通过。
-
-实际原包结果：CALPUFF返回CONVERTED，站点与MM4风分量搜索、产品及原生SURF.DAT导出回读完成；840条记录中不透明云量168个缺测按原掩码保留，导出包CRC通过，native_ready/full_model_ready均为false，未运行CALMET/CALPUFF。CMAQ最初触发验收进程内存保护，修复后32.39秒完成工程盘点，进程树峰值307421184字节；返回ENGINEERING_INSPECTED，原两日控制引用缺第二天气象，而资料仅首日；MODIS LAI未被当前准入识别为融合来源，未融合/写回/运行模型。CAMx约3.29GB原包嵌套展开触发10GiB接收上限，在接收阶段明确失败；未放宽保护或删减输入来绕过，不能判断下游适配已经通过。
-
-当前本机8502实例已重启加载本同步项目的小修复，解释器复用D盘现有环境，源码仍指向本C盘同步项目，依赖补充目录在本项目outputs；不等于创建了可移植完整环境，也不改写其他旧部署。其余资源和预测精度限制仍按本报告原有边界处理。
-
 仓库保留原有SWAT二进制及其运行库，不新增上传本机环境、密钥、原始大数据、输出或缓存；GitHub源码并不包含所有历史原始工程、观测、实验结果及WRF/CMAQ/CAMx/CALPUFF原生程序。此次没有启动上述原生模型做新积分，没有重新核验历史真实案例的全部物理结果，也未做融合精度验收。历史报告中的本机output路径不意味着对应文件已经随Git传给队友。
 
-## 2026-11-05 CAMx修复分支同步
-
-用户随后明确要求将当前修复同步GitHub，撤销前述“融合后才同步”的等待条件。本轮交付的是已验证的接收/解析修复及真实未完成项，不把融合失败改成成功。目标仓库仍为1775828095-ux/EcoDataEngine，独立分支codex/camx-template-intake-20261105；保留origin、main和已有历史，不强推。修复提交71b87cd，合并远程main fa6b3ba的提交0abe131，双方总报告及依赖均保留，WRFDA功能未被覆盖。
-
-合并后定向回归165项全部通过，40条依赖弃用警告，无新增大型科学积分。包含CAMx模板、嵌套接收、资源预算、Unicode I/O、公共页面、CMAQ绑定和WRFDA后端的小型测试；实际日志outputs/github-camx-merge.log、JUnit outputs/github-camx-merge.xml。`git -c core.whitespace=cr-at-eol diff --check origin/main...HEAD`通过。原始大数据、运行环境、缓存及本机完整结果不随提交上传；这些通过记录不证明任意工程或CAMx实际积分与融合已经通过。
-
-## 2026-11-05 CAMx脚本静态计划与融合准入补验
-
-后续本轮新增camx_templates.py，复用现有有界C-shell求值与f90nml解析heredoc，支持标量:r/:e、有限foreach与受限echo/awk整数减法，不执行脚本。project_inventory接入生成逐日派生控制、输入指纹和重启依赖说明，仍为ENGINEERING_INSPECTED，不代表多日materialize与原生驱动已接通。使用原字节保留的expanded_inputs.zip经公共入口，MPICH3/noMPI两模板各47条外部输入绑定、0条缺失/未知、2条需前一天实际运行产出的重启依赖，首日冷启动/次日重启正确。原外层ZIP不在原路径，本轮不声称重新验原外层包。
-
-NOAA实际65条记录、QA通过63条，仅1站；调用既有气温融合准入拒绝“至少需要三个合法气温站点”。双网格原生气温写回也未支持。下载包现有required_information列出单站与嵌套限制，未补站点、未改融合算法或伪造成功。定向26项通过，日志outputs/camx-schedule-tests.log；真实证据在工作区通用适配修复_20261105/CAMx页面公共入口复验。用户同步条件是验证且融合完成，尚未满足，故没有提交推送。远程main现fa6b3ba，已fetch并保留本地修改，未覆盖或合并远程WRFDA更新。本节描述比下方前一轮的“仅模板未解析”有所推进，但不替代剩余验收。
-
-## 2026-11-05 陌生资料、大工程接收与短时原生运行补验
-
-本节为上节之后的新进展，上节的原失败记录仍保留。复用GitHub开源fsspec的TarFileSystem索引及既有psutil磁盘检查，增加服务端展开预算、磁盘余量、失败回执及大包旧扫描内存保护，保留路径/链接/递归防护。默认10GiB不变，本机8502进程显式配置ECODATA_ARCHIVE_LIMIT_GIB=32；允许1–64GiB并保留1GiB磁盘。上传资料不能自行提高预算，也未证明浏览器/代理可接收任意GB文件。新增MODIS来源与QC/时间/网格诊断，不改融合/评分算法；CAMx脚本模板仅只读盘点，不执行脚本或伪造控制文件。
-
-CAMx原3.29GB包累计解码16,149,465,033字节，207.59秒返回ENGINEERING_INSPECTED，峰值245,563,392字节。接收通过，但原包只有生成CAMx.in的脚本模板，动态日期/变量尚未完整绑定，未原生运行。证据：工作区三组数据平台验收_20261105/camx_safe_intake，以及D:/EcoDataValidation_20261105/camx_safe_intake_153735。此前异常退出和内存保护终止日志保留，不计成功。
-
-CMAQ原包32.41秒完成新诊断，峰值305,967,104字节。识别MODIS LAI，列明集合版本、QC策略、四日合成时间支持、LAI物理面积定义及目标网格缺口；绑定仍拒绝原两日脚本缺第二日GRIDCRO2D/METCRO2D。未静默缩短时段、补造变量或套用另一案例白名单，未原生运行。证据：工作区三组数据平台验收_20261105/cmaq_modis_diagnostic，D:/EcoDataValidation_20261105/cmaq_modis_diagnostic_154433。
-
-CALPUFF使用平台当前产物和已校验安装的CALMET5.8.5/CALPUFF5.8.4，在新授权请求启用run_models后完成真实4小时原生链路。31×20网格、7物种有限且非负，SO2最大36.214088439941406µg/m³；有原生日志、气象到浓度链路、二进制独立回读、CSV与浓度图。原始资料及控制参数未改，但CALMET内部按IEXTRP调整BIAS的警告保留。真实气象/地理与演示排放，未评估预测精度，不宣称全工程通用。证据：D:/EcoDataValidation_20261105/calpuff_native_152208；工作区通用适配修复_20261105/CALPUFF原生运行.json。
-
-定向回归140项通过；最后两处小改相关26项复验通过，其中1项新增，合计141个不同用例有通过记录，不能相加称166项。日志outputs/verified-intake-tests.log、verified-intake-tests.xml、intake-followup-tests.log。沙盒回环socket阻塞不算平台通过；页面测试在允许本机回环环境完成。三个原包SHA最终一致。当前C盘源码8502已重启；未重跑SWAT/WRF大型案例，未提交推送GitHub。本机完整报告、开源复用来源/许可与原包校验见工作区通用适配修复_20261105，不随代码自动携带D盘环境和数据。
 
 ## 2026-11-05 WRFDA常规3DVAR真实后端接入与两套原始资料验收
 
@@ -8334,173 +8299,1293 @@ CALPUFF使用平台当前产物和已校验安装的CALMET5.8.5/CALPUFF5.8.4，�
 官方代码：https://github.com/wrf-model/WRF/tree/v4.7.1/var ；官方数据：https://www2.mmm.ucar.edu/wrf/users/wrfda/download/testdata.html ；北极资料：https://www2.mmm.ucar.edu/wrf/users/wrfda/Tutorials/2015_Aug/class/wrfda_testdata.html 。
 
 
-## 2026-11-05 桌面CMAQ首日输入与多源LAI原包只读实测
+## 2026-11-18 DeepSeek按需文件工具与Saguling连续运行验收
 
-用户要求测试C:/Users/LX/Desktop/01_CMAQ_官方首日输入与多源LAI.zip。本轮未改平台源码或原始资料，未新增科学声明、改运行日期、截断脚本、替换工程或启动CCTM。原包2527092725字节，70个文件，展开10398067609字节，完整ZIP CRC通过，测试前后SHA256相同。
+用户授权把默认完整深读改为由DS按工作规则主动列目录、读表头、查工程配置和依赖。核对现有Scanner、归档成员读取、scientific元数据读取器、DeepSeek transport、three_phase及下游契约和推荐。原流程在浅扫后无条件Scanner().scan全输入，是本次替换的连接点。新流程保持既有GUI控件，由scan_index只读取根目录／外层归档目录，确认发送后three_phase统一分派file_agent。DS实际使用原生function calling，按返回结果决定下一工具。列目录不解码成员，只有DS选中的成员才通过现有materialize_member流式落盘、scientific读元数据或按页读文本。无默认递归解包、全数组加载或完整字段目录预扫描。参考DeepSeek官方tool_calls协议及MCP filesystem的只读根目录／分页工具设计，复用本地Python能力，未添加Node服务或模型框架。
 
-实际app.py页面使用原包本地路径、选择CMAQ并点击自动处理，无处理函数模拟；耗时约87.7秒，未抛页面异常，最终ENGINEERING_INSPECTED，并生成实际诊断下载。融合、随机变异搜索、原生写回及CCTM运行均未发生，不能称为融合成功。
+新增公共file_tools与file_agent；service.tool_turn复用已有认证／网络／重试，deepseek_transport增量拼装原生tool_calls。工具仅有list_directory、read_text、read_header，限制在本次授权输入及内部成员，拒绝越界和任意命令。工作规则只指导调查顺序和证据要求，不给定算法赢家。列表150项、文本16KiB分页，显式返回next_offset；资源不清楚保留UNKNOWN。每次工具调用使用独立子进程和TemporaryDirectory，正常及错误退出清理。单任务最多12轮、48次工具调用，单读取120秒，API回复最多8192token；达到边界返回未完成状态。读完选中元数据后复用原有discovery、catalog_decision、兼容性核验及推荐入口。未检查的文件仍未知，工程依赖完整性不因LLM判断自动PASS。
 
-确认的第一阻塞是控制范围不一致：保留的官方run_cctm_Bench_2018_12NE3_CRACMM2.csh请求2018-07-01和07-02两日，但包只收集首日。当前绑定器实际展开到了第二日，GRID_CRO_2D和MET_CRO_2D缺20180702文件，返回“核心气象/网格声明不能覆盖各运行日”。这是资料打包范围与原控制脚本不一致，不是压缩包损坏。平台也没有根据首日子集自动形成经确认的首日运行范围。本轮没有擅自截短日期来绕过。
+额外发现GUI静态导入会触发大量计算线程的提交内存。控制实验中，同一空窗口在限制线程前约5.49GiB私有提交，进程启动前将BLAS/OMP/MKL/NumExpr设为1后约153MiB。两个启动器添加默认单线程，保留显式环境配置；读取子进程固定单线程。线程限制可能影响后续数值计算的耗时，本轮未比较算法耗时或效果。不是修改科学算法的数学定义。
 
-独立直接读取了真实MCIP LAI和随包MODIS解码数组。MCIP METCRO2D的LAI维度25×1×105×100，262500个有限值，范围0至8；原生TFLAG从2018-07-01 00UTC至07-02 00UTC，网格12km。卫星解码LAI维度401×401，实际像元约463.31m，145293个有限值、15508个缺测，有限范围0.1至7.0；原元数据声明四日合成区间2018-06-30至07-04，覆盖宾夕法尼亚子区，保留原质量位。该解码NetCDF是派生副本，原始ORNL JSON也在原包中，不能冒称官方原始NetCDF。存在真实尺度/覆盖差异，但不能直接制造逐小时卫星真值；QA、合成时段与模型LAI/VEG支持仍需科学适配。
+真实输入为用户03_Saguling_完整工程与多源降水.zip，613367712字节。前后SHA256一致，d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f。通过实际Qt Window、相同公共three_phase入口及真实DeepSeek调用连续运行两次，未使用模拟回复。第一轮9次工具、检查8份文件，77.34秒；第二轮13次工具、检查11份文件，96.84秒。两轮均由模型主动停止，未耗尽轮数；数量差异为模型自主调查差异，没有挑选有利种子。实际查阅原始副本ZIP内file.cio、time.sim、pcp.cli、指定corrected_pcp降水文件及POWER／CMORPH表头，并按真实目录检查引用。未深读完整7z副本，也未把所有711条深读。目录／文本／表头工具及真实父路径均保存在JSON工具轨迹。
 
-确认的另一个平台缺口：只读直接调用现有source_fields检查原解码NetCDF（没有添加任何声明或改值），返回0个可用来源，audit为UNRECOGNIZED_SOURCE/SOURCE_ROLE_UNCONFIRMED；当前产品适配器未将MCD15A3H与现有MCIP LAI端口贯通。完整页面source_admission.json同样为外部来源0。因此修好运行范围也不能直接宣称LAI融合链已通，这不是随机变异选优失败。页面下载另有反馈问题：required_information.json为空数组，而真实绑定失败保存在binding_failure.json及manifest.binding_failure；页面未集中展开该原因。本轮仅记录，没有扩大修复。
+最终版本连续两轮的内存和清理结果如下，峰值含测量到的读取子进程，并按0.15秒抽样。
 
-原脚本还存在其他声明/官方文件名约定与GRIDCRO3D启用性待核查，本轮没有将静态声明一概认定为必需缺文件，也不据此认证整套CCTM工程。附带臭氧观测不能直接作为LAI融合真值，本轮未用它计算精度。
+|指标|结果|
+|---|---|
+|父子进程合计常驻内存峰值|约492.48MiB|
+|父子进程合计私有提交峰值|约363.58MiB|
+|第1轮结束常驻／私有提交|约290.37／220.29MiB|
+|第2轮结束常驻／私有提交|约293.30／223.19MiB|
+|两轮结束临时文件|均0；实际工具记录全部确认临时目录已删除|
+|原始包变化|无，SHA一致|
 
-实际任务目录D:/codex/EcoDataEngine/output/workbench/1440aac856964884bde78ab53a831c50。证据集中D:/codex/EcoDataEngine/output/desktop_cmaq_lai_20261105：input_inventory.json、documents.json、lai_arrays.json、source_admission_probe.json、page_result.json、findings.json、page.log及实际页面下载_工程盘点与错误.zip。当前结论为原包可读、工程盘点完成，新增LAI未融合、未写回、未运行CCTM；本轮无算法效果结论。
+此前完整深读测试常驻峰值约1.85GiB、私有提交峰值约7.12GiB，生成约5.73GiB测试产物；本次为按需检查任务，未再跑原生工程处理，不能把两者当相同算法执行成本。当前证明了此包两次按需调查的峰值、释放和临时清理，没有证明无限次运行无泄漏，抽样也可能遗漏短暂峰值。保存的JSON审计、源码快照和测试记录属于主动保留的证据，和已清理的解压临时文件分开计量。
 
+本次验收为数据和工程调查链路。DS结论、已读字段和依赖证据可交给后续平台处理；未执行新的融合、原生写回或SWAT+求解。历史MODEL_DAY_UNCONFIRMED仍需根据真实工程日界证据核验，工作规则未将其猜成UTC或当地日。界面可在原决策记录查看工具反馈；检查结果暂存为任务file-inspection.json，结果导出携带desktop_file_inspection.json或同等审计字段。未手工操作可见窗口，Qt离屏运行不冒充人工GUI验收。
 
-## 2026-11-05 CALPUFF官方多源气象与演示工程原包实测
+新增及直接关联测试11项通过（路径越界、未授权工具、输入变化、嵌套引用、未请求成员不读取、原生SSE工具参数拼装、选定NetCDF表头、公共入口只消费请求文件、GUI目录模式、既有表布局回归）。旧网页残留测试因fusion_state已随队友覆盖而收集失败，另有3项旧native-header测试失败；两模块哈希与队友原版一致，错误日志保留，不将它们标PASS，也未为本任务恢复旧网页或改模型处理。旧版原始读取测试和本次新增工具测试应分别解释。
 
-原包03_CALPUFF_官方多源气象与演示工程.zip共19697197字节；外层及五个官方内层ZIP均通过CRC，测试前后原包SHA256为2e9b3d3e07ba31656b1426108c1d34bbacf758da815d353a804b98eee346ca0c，未修改原始资料或平台源码。实际app.py页面提交原包并选择CALPUFF，约76.45秒完成，无页面异常，最终CONVERTED；这代表处理与原生SURF文件转换完成，不代表原生模型模拟完成。
+初次联调出现最终输出截断、非JSON回复，按明确的简洁摘要规则、JSON响应模式及8192输出协议修复；两次失败记录保留。v3证明API和工具链两次执行，随后使用启动前线程设置的final版本重新做完整两轮验收，不混用旧内存数据。
 
-平台依赖检查选择了完整的旧版DEMO控制与资料，未将缺本地依赖的新版CODE示例冒充完整工程。读取168小时、5站、840记录及8个地面字段，并核对原控制的时区与小时结束标签；真正多源搜索发生在原工程1990-01-09四小时窗口的风场。东向、北向分量共用平台随机变异搜索（random_graph_search），候选真实执行，所选图包含MM4背景与保留站点观测；没有人为指定赢家。融合评估为PLATFORM_SELECTION_COMPLETED，但独立参考未确认、单独来源影响未做干预检验，accuracy_improvement=NOT_ESTABLISHED，不能从内部验证RMSE或稳定性宣称独立精度收益。
+证据目录output/on_demand_agent_20261118，最终真实结果在final/result_0.json、result_1.json、memory.json、runs.json及tools_*.jsonl，汇总findings.json；协议、网页来源、测试JUnit和修改前／执行源码指纹同目录。源码修改__main__.py、discovery.py、three_phase.py、service.py、deepseek_transport.py、Start_PySide.bat及本机launch_platform.ps1；新增file_agent.py、file_tools.py和定向测试。主运行目录和原PR4工作目录同步本次源码，未推送GitHub。
 
-直接比较处理前后真实数组，风速11个值发生数值变化、最大约1.078m/s，变化限于上述四小时；风向按圆周差核查，10个值变化超过1e-6度，最大约167.49度，不能把0/360度跨界的普通差当成误差。其余六个字段保持原值，opaque_cover的168个原始缺测保留。原生SURF.DAT回读一致、缺测掩码保持，未改科学设置。输出包含新SURF、处理NetCDF、谱系和CALMET/CALPUFF控制与依赖副本；未执行上传EXE，未复用作者历史模型输出。CALMET尚未重新生成气象场，CALPUFF尚未运行，native_ready=false、full_model_ready=false；因此不能交付为已完成污染扩散模拟，也不证明整套原生模型运行有效性。
-
-实际任务目录D:/codex/EcoDataEngine/output/workbench/738367b6d96c4de3a32283c717665920。证据集中D:/codex/EcoDataEngine/output/calpuff_official_package_20261105，含原包和内层清单、真实数组检查、页面日志与结果、搜索摘要、逐字段变化及findings.json；可交接CALPUFF_平台处理结果.zip已再次CRC核验。
-
-
-## 2026-11-05 教师Windows免安装试用包与展开大小限制修正
-
-用户要求老师电脑无需安装Python、完整解压后双击一个文件打开。交付D:/codex/交付/EcoDataEngine_教师免安装版_20261105.zip，1703161517字节，展开4419050999字节，82325个文件，SHA256 90295b38d8a9044f9820891dca12751afc716b550bfcc3da61eb63390ca63c1d，完整CRC通过。包内自带Python3.12.14、主要科学依赖、已有外部组件、转换插件及CALPUFF示例；未包含用户密钥、Streamlit凭据、历史结果、WRFDA虚拟机或其他独立算法环境。界面与随机变异/评分/模型选择机制未改。入口为EcoDataEngine/打开平台.bat，日志在output/launcher。
-
-原启动服务在当前Windows环境出现Proactor套接字失败，打包专用teacher_server.py仅设置Windows Selector事件循环后调用原Streamlit CLI；未改科学源码。启动器使用包内解释器与相对路径、关闭用户site-packages并从包内加载两组转换插件，绑定loopback、检测端口及健康状态、自动打开浏览器。老师需Windows10/11 x64，完整解压到可写短路径，保留运行文件；专用模型求解、缺元信息、可选算法与WRFDA后端边界均写入使用说明和补充说明。
-
-用户另明确要求取消10GiB限制：移除公共嵌套接收archive_inputs.py中的固定累计展开门槛及未使用的engineering_upload.py大小常量，保留路径、CRC、声明长度、成员数、嵌套层数等检查。ZIP/TAR/7z的旧边界计数回归、成员长度完整性及工程输入测试合计39项通过。边界测试使用超过10GiB的累计计数及小真实成员，不冒充十余GB完整负载验收。现有平面扫描原本不引用这些常量，之前“所有入口均有10GiB限制”的概括不准确；本次修正实际生效的嵌套展开限制。浏览器上传仍沿用框架既有设置，大资料建议本地路径；内存和磁盘不足仍会失败，不能解释为无限资源。修改同步到运行目录、协作目录和教师包，没有推送远端。
-
-包内独立Python已实际调用app.py页面完成CALPUFF示例，CONVERTED、原生SURF回读通过；大小限制修改后再次确认包内页面及旧边界检查通过。最终ZIP完整解压到D:/codex/teacher_portable_unpack_20261105，全部82325成员展开成功；异路径启动健康ok，页面无错误或异常，ecodata及两转换插件来源均在新解压目录，关键源码/启动文件SHA与包内验收记录一致。未在老师的实际电脑上测试，不能保证其组织安全策略和硬件条件；不认证任意模型数据适配或原生求解。压缩中断和恢复记录保留，最终全包CRC及完整解压均重新完成。
-
-打包、初次示例、包内验收、重定位验收与收据证据集中D:/codex/交付/EcoData_教师试用_20261105；校验文件位于ZIP同目录、后缀.zip.sha256。
+发布补充：增加读取期间输入变化拒绝测试，共11项通过（tests_release.xml）；桌面初始提示改为目录模式，两个本机快捷启动入口统一进入当前运行目录。launch_platform.ps1线程设置、根目录启动器及发布前源码已保留。
 
 
-## 2026-11-05 队友读取与工程解析改进本地合入（本轮不跑测试）
+## 2026-11-18 Saguling平台完整链路续验与日期证据复核
 
-按用户“ok把这个补上”授权，将队友分支codex/camx-template-intake-20261105（0f5f5d9）快进合入本地协作checkout，包含流式文件身份、有限文件头识别、中文NetCDF I/O、嵌套压缩包/磁盘检查、CAMx静态模板与LAI来源诊断。修改前checkout与运行目录30个受影响文件指纹一致；备份、原本地未提交补丁、完整stash和合并记录保留在output/reading_integration_20261105及Git stash。本轮没有推送远程，也没有覆盖用户原始数据或历史产物。
+本轮复用原包及Qt桌面公共服务，以真实DeepSeek工具调用检查工程和来源，再经公共决策、推荐、数值处理、产品导出以及原工程接入尝试。原始ZIP未改动。此前“日期不对上”表述不准确：time.sim为2001—2023年，覆盖2018年来源；真正未确认的是模型日降水记录的起止小时，而非年份不重合。
 
-与本地上一轮取消10GiB限制的改动发生两处冲突，已保留双方意图：默认不设固定累计展开门槛，只有服务器显式设置ECODATA_ARCHIVE_LIMIT_GIB时才使用正整数GiB预算；上传资料不能提高该预算。保留声明长度、路径/链接、成员数、嵌套层数和磁盘不足检查。去除队友新加的固定256MiB内存回退门槛，改为按当前psutil可用内存检查预计常驻开销（本步数据三倍加既存字节）；这是保守资源预估，不是数据大小政策，不保证任意大文件可执行。原生流式路线不经该内存回退；尚未匹配流式适配器且内存不足的数据仍明确拒绝，不强行加载。
+**时间调查**：DS按需读取file.cio、time.sim、降水控制和来源表头、原始获取凭证。POWER原始请求明确time-standard=UTC并经已有凭证校验，CMORPH依据实际时间坐标/bounds按UTC处理。工程日降水未提供UTC/当地日的边界定义；经纬度、文件日期与模型运行年限不足以证明日界。未任意平移日总量，未把推测标为已核实。
 
-中文路径的原生netCDF4读取不再使用memory=read_bytes整容器加载，改为流式复制到ASCII临时文件再读取，只有写模式才复制回新目标；原文件只读。component_service复用同一上下文管理器，不再另做整模板memory读取。目标临时盘不足或临时目录不具备ASCII路径时明确失败；完整数值字段和产品字节仍由既有writer持有，因此不宣称全平台任意规模零内存。
+**修复**：file_agent原先未将用户task_requirements及显式task_goal持续传入后续公共决策，现修复转发；discovery.check不再将DS因缺独立验证参考给出的pending_goal，误当用户未声明用途。用户明确evaluate_gain后仍执行原单位、物理变量、时空支持检查；没有放宽科学契约，也没有修改融合内核、评分或预置赢家。未明确用途仍不自动开放融合。新增定向用例验证两者区别。
 
-用户明确要求“不用跑”，本轮未执行单元测试、数据处理、模型运行或新端到端验收；只做Python AST静态语法检查、冲突标记检查和运行目录逐文件SHA对照。队友分支已有测试记录保留作历史证据，不能替代这次冲突解决与内存策略修改后的测试。相关测试定义已随明确的新资源策略调整，但未运行，不标PASS。
+**真实执行**：首轮保存了失败记录；第二轮完成DS调查和两源空间对齐、日降水率到日量转换，以及原工程接入。修复用途转发后复用同一次已冻结的DS决策和输入重新走公共检查，并由真实DS推荐后调用selected_processing实际执行单源/多源图对比。使用一个共同UTC日期2018-02-03、POWER较粗目标网格7×5，共35格；这是小规模链路验收，不代表整个包所有日期完成融合。CMORPH其余两天未纳入本次数值对比。
 
-现有公共页面/工具包路径保持，未改融合内核、评分、搜索或质量语义。CAMx模板增强依然属于受支持语法下的解析和依赖盘点，不代表任意脚本、嵌套气象融合、多日重启执行或原生求解已接通。教师免安装旧ZIP未重打包，本轮更新目标为D:/codex/EcoDataEngine本地平台及协作源码。后续如要发布该旧ZIP，需另行更新和验证，不能当作已同步。
+|项目|实际结果|状态|
+|---|---|---|
+|真实API调查、源时间核实|查到POWER UTC凭证及CMORPH时间定义；工程日界仍未知|部分完成|
+|单位转换、空间对齐、图执行|实际单源9个、多源2个通过评价；无执行失败|PASS|
+|选择队列26格，RMSE/MAE|单源7.3313/6.5342，多源16.7647/11.8812 mm；最终保留NASA_POWER单源|PASS，不证明融合提升|
+|冻结后9格代理复核|单源RMSE5.7176，多源5.2567 mm；未据此改选方案|仅代理诊断|
+|产品ZIP和NetCDF回读|3文件，各1×7×5、mm、全部有限且非负，ZIP CRC通过|PASS|
+|SWAT+原生写回|完整原包接入尝试明确返回MODEL_DAY_UNCONFIRMED|未通过|
+|SWAT+求解|未运行|未运行|
+
+上述误差参考为PRIMARY_GRID_RECONSTRUCTION_PROXY，非独立雨量站真值；不能由9格代理上的误差下降宣称真实降水精度提升。最后selected.nc与NASA_POWER相同属于保留单源的真实结果，不能将导出产品称为最终多源融合获胜。
+
+**成本与保护**：第二轮调查至工程接入166.94秒，抽样峰值RSS1,171,599,360字节、私有提交1,068,904,448字节；后续数值续跑未监测内存，不将其并入此峰值。数值服务自身0.6003秒，45次算法调用（搜索36、部署3、核验6），失败0；单独保留API和处理日志，不将此时间当完整用户耗时。删除仅本轮生成的展开工程副本、expanded_inputs.zip及测试暂存，释放6,132,968,736字节，原包和实际产品、图、指标、审计、失败记录保留；清理后D盘可用347,340,484,608字节。完整工程后端仍会产生大临时副本，已清理，不宣称其达到按需表头检查同等低内存。
+
+**定向测试**：9项通过，包含真实GUI处理函数的目录模式、按需读取和临时目录释放、输入变化拒绝、SSE工具参数重组、用户目标/调查要求转发、明确用途与缺参考的区别。第一次测试因既有.pytest_tmp权限失败，日志保留，改为本轮独立测试目录后9项全通过；未运行无关全量回归。本轮Qt离屏公共流程并非人工可见浏览器验收。
+
+证据：output/saguling_full_20261118/v2/inspection.json、engineering/required_information.json，continued/result.json、processing/group-2/search-1下图与评价轨迹，continued/Saguling_fusion_result.zip，verification.json、cleanup_manifest.json、tests_final_retry.xml及source_hashes_final.json。真实产品ZIP SHA256为579d3a29621bd18e2e7a50145390216bda43aec2becc46c221d1d090f76a77f5。修改前和执行源码均留存，当前运行目录与PR4工作目录同步本轮源码，未推送GitHub。结论：已完成小规模真实数值处理、对照与导出；没有证明融合优于单源，工程日界缺证导致原生写回未完成，不能标全工程任务成功。
+
+## 2026-11-18 Saguling显式UTC工作约定下的原生写回链路验收
+
+用户要求先验证链路可用。本轮不再寻找日界证据、不改科学算法或关闭质量门，而是复用既有ecodata.engineering-semantics.v1资源声明，为实际工程引用的降水端口明确声明time_basis=UTC。本声明只用于链路测试，另附test_assumption.json标记WORKING_ASSUMPTION_ONLY和original_model_day_verified=false，随输出工程保留；confirmed表示本轮主动采用这一测试约定，不表示原作者历史定义已证实。原输入ZIP保持不变，不修改来源原始日期或人为拆分日总量。没有新增页面选项，也没有任务专用算法补丁。
+
+执行入口为公共automatic_preparation.prepare_uploads，经已有归档规范化、工程语义/端口绑定、产品适配、公共platform_search真实搜索、双层质量门、SWAT+原生替换及打包回读。使用两种实际来源（POWER与三天CMORPH），全部28项端口任务共用一个真实搜索执行记录，不将重复端口回执计为28次独立搜索。更新共同日期3天，原降水文件每份8400日；其余日期与原生缺测记录保留。最终选图为spatial.source与spatial.observations进入spatial.residual_idw，实际执行结果PASS；这不是独立雨量精度评价，也不据此宣称融合优于原工程。
+
+|验收项|结果|
+|---|---|
+|按显式约定进入工程端口处理|PASS，原先MODEL_DAY_UNCONFIRMED不再阻止本轮已声明约定的任务|
+|公共数值处理、搜索及质量门|PASS，保留真实请求、图、评价和部署记录|
+|原生降水更新|PASS，27份文件的前后SHA不同|
+|独立原生回读|PASS，逐份27文件按原生pcp解析并核对输出SHA；公共流程同时校验ZIP CRC及所有非目标成员未改变|
+|原始输入不变|PASS，SHA复核一致|
+|作者工程原始日界已核实|未证实，本次未改变此结论|
+|SWAT+求解/独立精度提高|未运行/未验证|
+
+总执行206.58秒；未新增内存峰值测量，不用以前峰值冒充本轮测量。清理本次两级解包/展开ZIP副本，释放11,118,222,147字节；保留约0.89GB的实际完整更新工程、原始输入及决策证据。没有改动平台生产源码，本轮改动为独立测试操作脚本和声明，复用现成公共机制。
+
+证据目录output/saguling_full_20261118/native_utc_chain：engineering_semantics.json、test_assumption.json、result.json、verification.json、native_readback.json、cleanup.json、cleanup_extra.json；实际完整工程processing/engineering_inputs/EcoData-processed-project.zip，公共搜索轨迹在该目录0/decision/search。脚本test_native_chain.py与check_native_output.py在上一级。本轮结论：在明确测试约定下，数据到数值处理到原生工程写回与回读链路已跑通；科学日界定义、模型运行和精度收益仍分别未验证。
 
 
-## 2026-11-05 桌面CAMx两日嵌套原包：本次公共入口重测
+## 2026-11-18 DS推荐组合到真实变异搜索的公共连接验收
 
-使用桌面`02_CAMx_两日嵌套工程与站点观测.zip`原包（3,292,398,499字节），不改资料、不换样本、不运行上传脚本，通过现有prepare_uploads(model_id=camx)实际重测。累计展开16,149,465,033字节；原包前后SHA一致。先发现本轮资源策略整合遗漏：archive_preflight仍以整数比较None导致TypeError；已最小改为limit is not None再比较，同步运行目录和协作目录。中间一次补丁缩进错误及失败日志保留，修正后静态语法检查通过。不是数据格式错误，也未恢复固定大小门槛。
+### 原缺口与本轮公共改动
 
-为避免再次解包16GB，后续仅复用本次公共规范化产物expanded_inputs.zip，先完整SHA核对与archive_intake记录一致，再从同一公共入口继续；这不是重复宣称第二次原外层接收。继续处理约49.04秒，返回ENGINEERING_INSPECTED，下载报告ZIP的CRC通过。没有融合、原生写回或CAMx求解结果。
+原工程入口没有将DS选中的组合传入搜索；另一些入口仅把步骤压平为initial_algorithms，不能表达串联父边，不能证明以推荐图继续变异。本轮保留现有随机变异、误差排名、质量门、原生写回及历史结果，只接入推荐资源与合法探索，不增加算法。
 
-实际发现：MPICH3和noMPI两份官方模板均解析两日、2网格；每份47条外部输入BOUND、0条UNKNOWN/缺失、2条GENERATED_DEPENDENCY。这2条为首日运行后生成的重启文件，未伪装为已存在，也不算上传缺件。该结论只针对已识别声明，不等于全模型可执行闭包认证。模板解析结果目前仍由project_inventory输出，尚未升级为实际多日/多网格融合及writeback绑定驱动。
+1. platform_search.with_recommendations建立公共建议协议：带变量作用域、步骤顺序、推荐ID和理由；不接收赢家分数或预置fitness。未知作用域明确报缺条件；其他变量的建议不应用到当前端口。建议数量最多16，每条最多8步。
+2. desktop.recommendations.validate从已核验任务上下文绑定变量；主页面execute_original把已选择推荐传给service.run_original_workbench，服务通过同一个公共函数传入工程请求。independent_alignment也传入完整组合，不只传算法名。页面未新增控件，工具包与页面处理函数共用此服务。
+3. engineering.preparation复用既有GridRegridder执行推荐的保守重网格，按真实网格关系取共同较粗支持、保留时间bounds并记录输入输出指纹；不把未执行的对齐冒充已完成。对齐后的实际数组再进入端口提取和搜索。新增逻辑不含Saguling路径、日期、站名或指定获胜源。
+4. spatial_fusion_task按步骤编译真实DAG；blend→残差时，下游实际父边为上游blend输出和合法conditioning观测，不能退回原始输入。缺背景、禁止拟合、不支持步骤、错误串联及未完成前置处理明确拒绝；通过现有类型化执行器端口验证后，按固定留出队列真实评价。失败/预算未执行者不成为推荐父图。
+5. 推荐图与普通候选共用去重和预算。每个已通过的可参数变异推荐图获得一次有界探索机会，参数从现有域中选择不同值；随后回到既有best-parent随机变异。所有最终选择仍按真实RMSE，不给DS建议奖励分，不保证其留到最终。无推荐时保持原默认搜索行为。后端仍是现有random_graph_search，不把它称作官方GOLEM优化器或全局最优证明。
 
-NOAA气温65条记录、63条QA接受、2条按原标记拒绝，唯一站点1个，未重复平均。现有气温空间融合准入要求至少3站且非共线，因此此数据不足以支持当前方法；不是所有融合在数学上都需要3站，单站局部校正需要相应合法执行契约，不能拿已有3站方法直接冒充。第二个明确阻塞是当前气温原生写回仅有唯一二维网格路径，未完成本包嵌套双网格融合。包内EPA臭氧不能充当额外气温站；本轮未做O3输出融合或精度评价。
+### 原包真实验收与关闭推荐对照
 
-所以当前是“输入读取和模板解析通过；嵌套执行能力仍缺、气象观测空间支持有限”，不能笼统归为缺工程文件或数据不可用。没有新增算法、改阈值、删站点、截取单网格或放松质量规则凑成功。未跑单元/全量测试，只有本次真实数据入口复测；原生模型未运行，数值精度未评价。
+复用同一Saguling原包（SHA256 d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f）、前次真实DeepSeek回复及本轮已声明的UTC日工作约定；没有重新抽取有利DS答案，没有更改作者历史日界证据。两个来源分别为POWER与CMORPH，3个共同日期，28个端口回执共用一个实际搜索。所有来源先做真实保守对齐，27个工程位置；63个留出代理目标参与选型，原工程数据并非独立雨量站真值。
 
-证据目录：output/camx_desktop_retest_20261105，含原包指纹、外层清单、首轮失败、规范化收据、continued_v2_result.json、findings.json及下载检查包。源码补丁为src/ecodata/models/archive_preflight.py。无远程推送，教师旧免安装ZIP未重打包。
+|机制验收|真实证据|结果|
+|---|---|---|
+|推荐有执行消费者|保守对齐产生新数组；DS的blend图最先按recommended_initial执行|PASS|
+|推荐图的真实评价|权重0.5，RMSE23.9399584 mm、MAE20.7685484 mm，63目标|PASS|
+|以推荐图继续变异|首个变异父fc2d0aa32864cb5c2a7e，子0e36ba06456a4198fcf7，保持同一对源父边，权重0.5→0.75|PASS|
+|子图真实效果|子图实际执行，RMSE14.0866447 mm、MAE12.2979029 mm；非模拟分数|PASS|
+|关闭推荐行为对照|相同已对齐输入字节、种子11、预算和完整评价协议；首个父图变为IDW，普通algorithm操作；没有recommendation_parameters|PASS|
+|最终误差是否更优|开启与关闭均RMSE9.4677636 mm、MAE3.4259807 mm；最终均选IDW(power=3)|未证明额外优势|
+|完整原生写回与独立回读|27份pcp文件SHA改变，逐份原生解析通过，ZIP CRC及非目标成员保护通过；原包SHA未变|PASS|
+|SWAT+求解及真实环境精度|未运行模型；代理参考不是独立雨量真值，UTC日仍是测试约定|未运行/未验证|
+
+两种搜索均实际评价80个不同图，搜索阶段73个新变异图，其余初始化；各249次算法调用且失败0。沿用工程入口既有上限：objective/total calls=1800、proposal=400000、wall=3600秒；两组实际各触发400000次有界提议，其中399927次未形成新数值评价，不能当作400000次真实执行。数值服务用时开启20.4636秒、关闭20.0706秒，不是端到端全部耗时。关闭推荐对照复用相同预处理输入，不能凭这一对照宣称总成本优势。现有去重后重复提议较多的效率问题未在本轮另行重构或掩盖。
+
+本次证明推荐改变了首先验证的图和变异路径，并且推荐组合经真实变异得到更低的代理误差；没有证明相对既有搜索的最终精度或效率优势。最终保留IDW而非强行融合，是按相同指标选型的真实负结果。没有宣称原始观测、独立测站真值或全局最优。
+
+### 测试、失败、成本与保护
+
+新增及受影响定向回归45项通过：顺序父边、推荐真实执行和实际变异父图、重复图不重复评价、非法串联、拟合权限、未完成保守处理、未知算法拒绝、关闭推荐、变量作用域、真实保守数组转换、页面处理函数与工具包同公共请求、既有空间各关系路径和按需文件工具回归。未跑无关全量回归。Qt处理函数离屏测试不是人工操作可见窗口验收。
+
+保留首轮缺time坐标处理测试失败并修复为合法静态栅格也能使用公共对齐；Windows跨盘硬链接失败后改为清理得掉的临时输入副本。完整工程处理实际成功后，初次对照断言因内存元组与持久化JSON数组类型差异失败；保存结果规范JSON比较显示输入指纹、预算、种子和全部评价协议一致，已修正断言并独立核验现有产品，没有重跑寻找好结果。完整墙钟因该断言未最终落盘，标未记录；两组数值服务成本和所有失败日志保留，不用估算值冒充测量。
+
+本次解包/展开临时副本释放6,132,565,887字节，另删除本次613,367,712字节输入副本；保留原始数据、旧结果、本次完整更新工程和决策轨迹。未新增本轮内存峰值测量。没有改变单位、时区事实、质量门、参考队列或数学内核来追求胜出。
+
+新版本spatial_relationship_fusion_v1_3_verified_recommendations。证据output/ds_recommendation_search_20261118：source_before/source_executed、source_hashes.json、tests3.xml、native_v2/provenance.json、ds_recommendations.json、verification.json、processing/engineering_inputs/0/decision/search下真实图、评价和transitions、recommendation_off下同条件对照、processing/engineering_inputs/EcoData-processed-project.zip。完整源码指纹逐项保存，旧产物不覆盖，未推送GitHub。
+
+支持边界：本轮贯通已有连续量空间融合/工程端口及既有独立格网对齐搜索中的推荐组合；支持当前空间组件所定义的blend、IDW、残差和显式允许的拟合节点及其合法顺序。没有把所有历史时间、神经模型和模型专用后端一律宣称迁移；不支持的推荐必须记录拒绝，不能静默当成已验证。DS建议是可否决的探索起点，不是精度预测模型。
 
 
-## 2026-11-05 通用多运行段／嵌套工程执行补齐与桌面CAMx原包写回验收
+## 2026-11-18 推荐依据展示与用户选择已评价方案
 
-### 范围、复用与真实调用链
+本轮按用户要求增加推荐解释和候选选择，保留当前Qt页面主题、模型列表、默认选型、科学内核与质量门。新增用户选择是本轮明确授权的交互扩展，不恢复旧网页或添加实验专用规则。
 
-先核对适用AGENTS、队友接入说明、转换接口、当前总报告及源码。已有公共工程上下文、来源身份、单位／时间契约、端口识别、残差数学内核、类型化DAG执行器、双层质量门和原生副本writer均复用。本次不新增科学算法ID、不改随机变异／评分、不运行研究搜索，不执行上传Shell或CAMx程序。新增的只是缺失的绑定驱动、运行依赖编排、局部观测支持契约和多端口写回连接，没有包名、站号、日期、固定网格尺寸等案例分支。
+### 推荐解释
 
-真实链路：页面与工具包既有prepare_uploads → 工程声明绑定 → 有限C-shell模板展开／f90nml → 多运行段依赖计划 → 逐气象端口的时间、单位、计算区／存储网格校验 → 真实背景采样和观测残差 → Registry的fusion.residual适配与NumericalDAGExecutor → RawInputQualityGate＋ResultQualityGate → 原生副本更新／逐变量回读 → 派生控制与工程ZIP。这里使用Pipeline同源数值DAG执行器，未假称调用旧GOLEM图搜索或另建优化器。该局部契约只有一条合法残差路线，不作精度选优宣称。既有三站凸包空间融合函数及准入条件保留，没有降低其门槛。
+原页面已有一段推荐理由。本轮在recommendations公共模块依据实际任务上下文构造explanation：来源/字段ID、变量、单位、原始时间统计和采样信息、真实网格间距，与DS推荐理由、公共检查前提、仍缺的信息分开保存。无法核实的字段显示UNKNOWN，不以模型文字充当文件证据。页面每张推荐卡增加“展开数据依据与检查前提”，展开后可查看原记录；平台补充方案的理由保持原标注，不把建议包装为效果保证。未伪造评分、权重依据或动态思考过程；任务执行进度仍由既有真实进度回调显示。
 
-|通用机制|检查前|本轮处理及证据|状态与边界|
+### 用户选择候选与真实产品
+
+结果页新增“已验证候选”下拉框，显示变异/已评价来源、方法、RMSE、默认标记和参数；保留同队列MAE、样本数、代理参考限制。各任务最多显示前10种验证预测行为；已有same_validation_predictions_as用于合并同验证预测的重复图，不能将重复名称计作额外效果。默认工程/结果ZIP与“导出所选方案数据产品”是两个明确分开的按钮。
+
+公共platform_search现在为支持的空间搜索暂存可回放的实际输入及哈希；新增execute_evaluated_candidate只接受已有PASS记录、非空且相同评价支持、相同顺序/角色/元数据和字节哈希的输入。它调用既有冻结图执行器，重新执行用户选定图、通过产品质量检查与NetCDF回读后导出selected-product.nc、graph.json、selection.json。没有在选择后重搜或重算排名，原通用execute_frozen_graph对未知current_input迁移的限制仍保留。输入变更、无评价候选或评价队列不明时拒绝，不能沿用旧分数。
+
+产品包明确记录USER_SELECTED、原默认图、所选图、原验证指标、参考依据、部署轨迹与成本；native_writeback=false、native_model_executed=false，不能冒充已替换默认原生工程。比较当前产品与默认产品，数值相同或不同均如实记录并显示，不把结构更复杂或用户手动选择当作效果提升。临时重放目录在成功/失败后自动清理，当前任务输入暂存随既有任务目录关闭清理；用户主动导出的包保留。
+
+### 验收
+
+联合定向回归49项通过；导出细节补充后，最终5项候选/页面定向测试再次通过，包括新增页面导出处理函数真正使用用户选择、原输入不变、产品生成、原默认结果不变、未知候选拒绝、输入篡改拒绝、公共API同输入隔离、依据与UNKNOWN展示和展开控件。没有跑无关全量回归。
+
+复用前轮Saguling真实运行及真实DeepSeek回复，只补入旧结果遗漏的回放目录引用并从原评价记录重新组织显示，不更改图、分数或评价队列。通过当前公共执行器生成变异候选3f80dca44e83cf46e854的真实产品（IDW→blend，weight=0.25；原代理RMSE9.4892123 mm、MAE3.5262999 mm，63样本），完成ZIP和NetCDF回读，输出3个日期×27位置，非负且有限。此次默认工程未修改，没有重新下载、重做全年准备或重跑大规模搜索。
+
+该例所选方案部署在当前输入上与默认产品数值相同（最大差0），尽管其留出代理评分不同；已明确保留比较结果，不声称额外精度收益。新功能提供可核查选择，不保证任意备选更优。独立实测真值仍缺，原工程UTC日仍是前轮测试约定，SWAT+未运行。
+
+Qt离屏截图已实际渲染并检查文字及布局；离屏字体库未自动发现系统字库，验收脚本显式载入本机字体后重渲，不修改生产主题。未进行人工可见窗口或浏览器操作验收。初次导出遇到既有current_input冻结迁移保护，随后增加经过同输入和已评价记录检查的公共“用户选择部署”入口，未简单删除保护条件；初次失败日志保留。
+
+证据目录output/recommendation_explanations_20261118：source_before/source_executed、source_hashes.json、tests4.xml、tests_export_final.xml、acceptance.json、推荐依据页面.png、候选选择页面.png，以及所选变异方案_数据产品.zip。当前支持具有实际空间搜索、类型化图与回放资源的任务；没有回放资源的旧入口不显示可用选择，不能冒称所有历史模型任务均可更换原生工程方案。源码同步至本机PR4工作目录时仅覆盖与修改前一致的文件，未推送GitHub。
+
+
+## 2026-11-19 转换后最终检查关卡：SWAT+真实读入验收
+
+本轮复用前轮Saguling真实转换工程和冻结数据，不重跑融合选型、搜索或大规模研究实验；在平台公共转换末尾接通最终关卡。原始用户包、前轮工程、原始输入和历史结果保留。新输出采用独立目录output/final_model_gate_20261119/release。
+
+### 公共调用链与职责
+
+automatic_preparation.prepare_uploads完成原转换后统一调用models.final_check.attach_final_check。最终关卡读取本次实际输出工程，不引用旧机器默认工程：验证归档、写回SHA、模型版本、天气字段/元数据/日期/有限值及缺测规则、CIO/天气站/索引/WGN/对象关联；随后只选择登记且哈希校验通过的匹配模型程序进行有界试读。
+
+SWAT+复用swat_runner.check_project、set_dates、engine_path、start_job及其返回码和新success.fin联合判据；不执行上传的程序、脚本或DLL。既有禁止程序后缀规则提取为共享常量，最终依赖也消费同一规则，不复制新的科学内核。日期仅在临时副本中按既有setter限制为一天，优先选原模拟期内真实更新的首日。原time.sim、file.cio、模型参数和未更新数据不因此改变。试读证据包含程序SHA、输入SHA、原/试读时间控制SHA、日志、返回码和新成功标记；结束清理临时工作目录。
+
+公共service.review_model_output由Qt结果页和工具包共同调用，复用现有DeepSeek transport、预览和输出复核协议。DS收到登记模型要求、实际CIO版本、101项实际活动资源、100条控制引用、31份天气检查结果及本地原生回执。只提供必要元数据/有界日志，不把整个数组发给DS。AI回复不能覆盖本地格式/引用失败或把未试读模型说成通过；无钥匙/网络失败明确保持未完成。相同请求指纹命中已有复核，要求或证据变化后重新核对，保留独立版本回执，避免ZIP重复成员。
+
+### 原包真实结果
+
+|检查层|实际结果|结论|
+|---|---|---|
+|转换文件格式|31份原生气象文件通过已有表头、字段、日记录、日期连续性、数值和缺测规则检查；27份写回文件SHA与记录一致|PASS|
+|工程引用|复用版本感知检查及天气/WGN/对象关联；实际file.cio为60.5.7|PASS（现有检查范围）|
+|原生程序|已登记官方60.5.7程序，SHA256 de01a927eebe00b4467ff53424175e247e7808e0bee99790f3d75db1b0a64179|匹配且实际执行|
+|模型试读|临时副本仅运行2018-02-03，日志逐项读取降水、温度、辐射、湿度、风速、WGN和天气站，出现执行成功；返回0且新success.fin非空|PASS，model_read_confirmed=true|
+|DS实际调用|DeepSeek真实API最终核对完成，补入实际资源与控制引用后missing_data为空；仍提示完整模拟期、通用参考画像范围和科学定义待核实|COMPLETED，非科学全面通过|
+|原模拟期及精度|未运行2001—2023完整模拟期；UTC日仍为前轮明确工作假设；没有独立雨量真值评价|未验证|
+
+独立核对最终工程与原转换工程的全部既有成员CRC/大小一致；原生试读101个实际输入逐个SHA与最终工程匹配，唯一例外是已记录的临时时间控制变化。原转换归档SHA未改变。最新验收收据为result_current.json中final_check.final_receipt所指complete.2.json，归档无重复成员，ZIP回读通过。
+
+### 发现并修复的资源与证据问题
+
+初版将平铺工程中的作者旧输出也装入试读副本，涉及3,423,781,737字节；虽试读成功但浪费资源。现复用project_inventory的CIO绑定并沿实际字面文件引用补齐依赖，只装入101项、14,150,741字节；68项未到达成员共3,409,630,996字节不进入模型输入副本。未根据Saguling文件名或固定日期筛选，未知隐式依赖仍由检查/原生失败明确暴露，不能据此宣称所有模型版本和分支已覆盖。排除的作者历史输出在交付原工程中仍保留，没有删除用户资料。
+
+另发现原DS复核只收到通用产品files列表，原生工程场景为空而产生不必要缺项建议。已传入真实活动资源和引用关系，并告知通用产品空列表不等于工程缺文件；重新真实核对后不再列确定数据缺失。DS关于62通用画像与60.5.7工程、完整时段和工作假设的意见保留为待核实信息，不覆盖匹配60.5.7程序的实际读入成功证据。
+
+闭包试读及该轮初次DS复核57.235秒，采样进程族峰值RSS549,879,808字节、私有提交493,543,424字节；不含可见Qt窗口，也不能宣称任意大工程长期无泄漏。资源证据补齐后的最终DS复核15.359秒，9025输入token/1285输出token，单独记账，不冒充一次请求。归档完整性仍需流式CRC读取，不等于把全部历史输出深读成数组。所有native-read临时目录均移除；删除本轮被发布版取代的重复完整工程副本和测试暂存，明细cleanup.json；仅保留发布工程及日志/收据/源码证据。
+
+### 测试和支持边界
+
+最终联合35项定向回归通过；原生运行器及最终关卡37项定向检查通过（两组含重复，不累加为独立用例数）。覆盖格式通过但未运行、工程失败与天气格式分离、日期重复、程序缺失、AI不能提权、同请求缓存、公共转换钩子、任意文件名的工作假设声明、重传历史收据、其他模型旧运行证据保留、非依赖旧输出不加载、上传DLL拒绝，以及既有版本、日期副本、超时、旧成功标记和进程状态检查。旧Streamlit页面测试未运行，未跑无关全量回归。最初合成夹具缺WGN条件及UTF编码别名错误均保留失败日志并修复，未降低生产约束；三个真实短试读均成功，保留修复前后日志，没有按结果调参。
+
+本轮实际完成SWAT+最终格式/工程/匹配程序试读适配；公共入口覆盖其他模型时，尚无对应最终适配者明确UNKNOWN或NOT_RECHECKED，保留其原流程运行记录，不冒称五个模型的新最终试读全部完成。页面分别显示“原生格式检查”“工程引用检查”“模型实际试读”，已通过短试读也明确完整时段和精度未验证。仅回读、仅改后缀或AI认可均不能替代原生试读。
+
+源码：新增models/final_check.py；连接algorithms/automatic_preparation.py、desktop/service.py、output_review.py及现有Qt回调，复用interface/swat_runner.py并共享已有安全后缀常量。source_before/source_executed及source_hashes.json保存版本，程序及请求/输入/输出指纹与实际日志同目录。独立核验release/verification_current.json，运行日志release/current_checks/runner.log，真实DS回复release/enriched_review.json，当前完整工程release/Saguling_最终检查工程.zip。未改算法、质量门和用户原始数据，未推送GitHub。
+
+
+## 2026-11-19 四个模型接入公共最终检查：有界集成验收
+
+本轮在SWAT+已有最终关卡上扩展WRF、CAMx、CMAQ、CALPUFF分派；不重跑融合、搜索或科学实验。页面与工具包继续沿用automatic_preparation.prepare_uploads → attach_final_check → check_model_output → desktop.service.review_model_output，同一份本地结果进入DS并写入交付副本。无数据包名、日期、站点或赢家规则。原始数据、旧SWAT+成功证据和历史结果保留。
+
+### 修改与支持范围
+
+- models/final_native_check.py复用project_binding/ProjectFiles的实际依赖、CMAQ的有界C-shell静态绑定、CALMET/CALPUFF的既有dependency_plan/read_surface、现有程序登记指纹与外部原生运行契约；仅流式复制激活的NetCDF依赖到临时目录检查表头、维度、字段/单位及TFLAG。这里不是全数组数值/全部化学物种认证。
+- WRF复用wrf_external_project实际检查器，提取inspect_project_files供已绑定输入调用；原inspect_project API兼容。检查不等于预报运行。现有外部检查仅支持单域及显式时间分量，嵌套工程返回明确未通过；WRFDA不能代替WRF forecast。当前未注册可匹配任意上传工程的预报运行契约，原生试读保持NOT_RUN，不能称WRF通用运行已完成。
+- CAMx复用已登记7.40程序SHA及既有inspect原生契约。程序可用且工程符合现有短运行/网格/化学参数契约时，复制实际绑定输入，改写副本路径，直接启动固定程序并限定超时，绝不运行上传脚本。当前主机登记程序不存在，此执行分支未获本机真实模型运行验收。
+- CMAQ复用已登记5.5程序及inspect_manifest。核心气象绑定不等于完整化学运行清单，project明确为UNKNOWN；只有唯一ecodata.cmaq.local-project.v1清单、机制、全部输入及运行契约验收后才能直接调用固定CCTM。缺清单、缺程序分别提示。当前程序及所需登记资源不可用，真实模型运行未验收。
+- CALPUFF复用已有5.8依赖闭包与SURF回读，程序SHA固定、控制版本匹配后在新临时目录直接有界调用，要求本次日志及成功终止证据。支持范围不是全部CALPUFF版本/源类型；不运行包内EXE/DLL。二进制气象内部仍需模型验证。
+- final_check.py统一分派、保存日志/回执；output_review.py将原生文件检查、工程范围/原因交给DS，分别展示格式、引用、实际试读。旧native_ready不能覆盖新关卡失败/未知；AI不能抬升本地失败。旧native_model_executed仅作为历史证据保留，不冒充本次试读。
+
+### 本轮实际验收结果（不是新融合结果）
+
+| 模型 | 实际资料/范围 | 本地检查 | 模型试读 | 结论 |
+|---|---|---|---|---|
+| WRF | 轻量包内现有WRF工程，只读解包副本 | 实际依赖及NetCDF已检查；原检查器报告嵌套域不支持、start_minute未显式提供 | NOT_RUN | 公共关卡接通；该真实工程未通过当前检查范围，不推断原工程科学数据错误，不称模型已读入 |
+| CALPUFF | 轻量包内原有5.8完整工程副本 | dependency_plan/SURF回读PASS；保留范围说明 | NOT_RUN：本机无固定指纹CALPUFF程序 | 已完成真实公共检查与DS复核；未完成原生运行 |
+| CAMx | 桌面02_CAMx原包（含上游tgz） | ZIP/指纹核验；找不到直接可绑定的本次原生工程，未标格式PASS | NOT_RUN | 这是原始上游归档，不是已写回工程；本轮未重新展开数GB工程及重跑融合，最终工程级正例仍未验收 |
+| CMAQ | 当前检索路径未找到原有完整CMAQ包 | 公共分派、已有静态绑定及负例定向测试通过；完整真实工程未验收 | NOT_RUN：登记程序不存在，运行清单亦需核对 | 不以合成边界测试冒充真实CCTM验收 |
+
+真实DS请求通过desktop.service.review_model_output对CALPUFF工程副本执行，约7.172秒，ai_review=COMPLETED，verdict=needs_verification，错误为空；本地native仍NOT_RUN。输出CALPUFF_final_gate_copy.zip包含本地final_check及DS complete回执，供下载复核。这是已有工程副本的最终核对，不是本轮新增融合或精度改善；未新做人工GUI/浏览器操作验收。
+
+### 测试、证据与历史保护
+
+64项新增/受影响定向测试通过，0失败0错误（tests_final.xml）：四模型公共分派、WRF真实格式检查器调用、错误维度、报告包拒绝、CAMx缺TFLAG、缺程序/程序哈希错误、旧ready不得覆盖最终失败、SWAT+旧关卡、CMAQ动态绑定、桌面候选交付及推荐搜索相关回归。合成fixtures仅为行为测试。初次pytest因旧.pytest_tmp权限失败，改用独立basetemp；随后旧测试预期NOT_RECHECKED与新关卡的NOT_RUN不一致，更新为“本次未运行但保留previous_native_execution”，未删除测试或改写历史。
+
+本轮证据统一位于output/final_four_models_20261119：source_before（修改前三份源文件）、source_executed、source_hashes.json、acceptance_protocol.json、runtime_availability.json、三项actual/final_check.json、real_api_review.json、page_status.txt、verification.json、tests_final.xml。三份实际输入的SHA复核均一致。只清理本轮解出的WRF/CALPUFF临时检查副本421761077字节，原用户轻量包及桌面CAMx原包未改；保留有回执的CALPUFF交付副本及全部失败记录。未推送GitHub。
+
+复现定向测试（项目根目录，先限制BLAS线程并设置PYTHONPATH=src;integrations/existing_air;integrations/local_swat）：
+`.venv/Scripts/python.exe -m pytest tests/test_final_model_check.py tests/test_final_four_models.py tests/test_wrf_external_project.py tests/test_cmaq_dynamic_binding.py tests/test_desktop_candidate_choice.py tests/test_recommendation_search.py --basetemp=output/自行选新目录 -q`
+
+验收边界：四模型不再落入“无最终适配器”的统一空分支，公共检查与DS复核已接入；不能据此宣称四模型均真实试读通过。当前无新增原生模型运行，WRF通用预报运行契约、CAMx/CMAQ完整真实产物及匹配运行环境仍未验收。格式检查、依赖检查、实际模型运行与科学精度四层继续分别记录。
+
+
+## 2026-11-19 模拟技术引擎：桌面主流程简化与格式说明
+
+按用户最新授权修改当前Qt桌面入口，未重建页面、改科学算法/评分/预算或重跑历史大型实验。界面名称与窗口标题改为“模拟技术引擎”；桌面原“EcoData Engine 1.0.lnk”备份后改名为“模拟技术引擎.lnk”，保持指向当前项目launch_platform.ps1，继续从用户环境变量读取密钥，不要求每次粘贴。
+
+操作主线改为：选择文件/文件夹（或拖入/输入路径）→选择目标模型→一次“开始自动处理”。内部继续使用既有scan_index（只列目录）、file_agent/three_phase、公共建议与契约核验、原有处理与最终模型检查。目录准备完成后自动发起DS按需检查，核验后的可执行推荐自动加入原有处理流程；原始输入只读。旧手动扫描、确认发送、算法ID输入、重复执行按钮不在主操作面展示；JSON、分批记录与API设置折叠到技术记录。推荐理由保留可查看；已经数值评价的其他方案只在实际存在时显示为可选项。没有合法方案、仍有失败、整包工程混有未放行任务或整包与独立任务不能混用时，明确暂停并提供原因，不以自动化绕过原合同与质量门。
+
+格式说明使用公共output_review.format_conversion与conversion_text，结果页和下载包共用。明确原始数据格式、实际输出格式、已记录的来源→目标路径、内容更新与格式改变的区别、实际写回文件清单；ZIP只标为下载容器。后缀标签不等于完整编码认证，具体模型原生结构与试读状态仍由final_check判定，来源不足明确未确认。逐文件来源关系缺失时保留written_files_without_source_mapping，不捏造追溯。导出附desktop_format_conversion.json；重复导出原工程时不覆盖同名历史记录。
+
+复用Saguling历史handoff进行显示核对：保存记录显示NetCDF→SWAT+降水文本（.pcp），实际写回27个文件，明确仅2条任务来源→目标关系可直接追溯；其余文件不人为补来源。此项仅显示旧成果，未重跑融合或模型，也没有赋予新模型运行/精度PASS。
+
+验收：tests_verified.xml记录48项新增及受影响测试通过；末次UI文案与格式修正后tests_last.xml记录12项相关检查通过（含重复项，不相加为独立测试数）。覆盖一次开始后自动进入公共决策、重复提交阻止、缺密钥、合格方案自动继续、未放行整包不执行、无可执行方案不伪装融合成功、格式不变提示、未知格式、下载记录回读与原件不变；亦包含已有最终关卡/桌面候选/按需工具回归。初次新增测试有一处括号语法错误，已修复并通过。测试中的模拟科学后端仅验证UI行为，不作为模型运行或精度证据。
+
+另通过Qt实际start按钮+真实DeepSeek API，使用现有examples/ai_round1/cmaq/A_existing_case开发资料开展有界检查。首次运行20.578秒，DS最终JSON语法无效；失败截图与日志保留failed_ui_01。修复为只在既有12轮预算内允许一次最终说明格式修正，修正阶段不允许重新调用文件工具，连续失败返回中文说明，不能无限重试。修复后同一资料通过真实界面自动衔接，93.609秒，读到4份资料，无异常/超时；没有通过核验的可执行处理方案，正确提示补条件、尚未运行融合，未生成新数据产品。此例证明按需检查与自动衔接/真实暂停，不证明融合转换成功；未换好样本追求成功。已有数值处理回归仍通过。
+
+证据统一保存在output/desktop_flow_20261119：source_before、source_current、source_hashes.json、tests_verified.xml、tests_last.xml、home.png、format_result.png、saguling_format_display.json、ui_acceptance.py、real_api_ui.json及日志/截图、failed_ui_01。截图为Qt offscreen实际渲染/事件循环，并非人工桌面点击验收。已将正常桌面入口重新启动到新代码；调试过程中误继承offscreen环境启动的空闲测试实例已结束，未结束用户数据任务。未推送GitHub，未改原始用户数据。
+
+
+## 2026-11-19 自动入口衔接修复：Saguling原包页面全链路验收
+
+### 根因与公共修复
+
+| 实际断点 | 公共修改 | 验证与边界 |
+|---|---|---|
+| DS工具已读控制，但原始字节未进入native_dispatch；未读file.cio被当成空坏文件 | file_tools/FileTools按字节偏移累计文本；只有完整覆盖才登记original_probe_payload，单独保留表头/片段状态 | 完整控制与分页行为测试通过；未读控制返回“尚未完整读取”，不谎报simulation/climate缺失 |
+| 已读取原始下载回执却未读取对应数据头；已有POWER UTC核验器缺少回执 | read_header携带精确同名receipt副本；已读且含url/sha256回执至多补核4个对应表头，计入原48次工具预算 | 不遍历全部数据；日界仍由已有哈希绑定URL检查决定，不从文件名或相关性猜测 |
+| 目录列过但未打开的依赖被报为实际缺失 | 传递已列目录的存在证据；按需不完整目录下返回尚未核对，完整工程仍在处理时实际绑定 | 元数据存在不当作内容/模型验收PASS |
+| 显式任务目标在浅入口丢失，处理建议停在独立格点模块 | 主界面明确“评估多源处理价值并准备模型输入”；浅/深公共catalog保留evaluate_gain；识别实际工程后转到既有工程输入端口服务 | 状态为待工程核验，不是质量PASS；单位/物理量冲突和最终关卡不绕过。工程端口、搜索、写回均复用原实现 |
+| 原模型日界历史约定不在用户原包 | 新增通用models.input_context：仅用原文件SHA256和model_id复用已登记科学上下文，增补已有engineering-semantics声明及原工作假设文档 | 不含算法偏好、图或赢家；换文件名可匹配，改内容/目标模型不匹配。此包上下文是从历史真实输入配置迁移的数据记录，不是代码中的Saguling分支。WORKING_ASSUMPTION_ONLY全程保留 |
+
+原始POWER回执明确time-standard=UTC并与原文件SHA一致，因此可作为来源UTC证据；原生站点日界仍没有被历史文献/元数据证实。历史配置中的confirmed字段表示当时采用该声明，不能升级为作者时间定义已证实；本轮科学状态明确为WORKING_ASSUMPTIONS。
+
+### 实际页面执行（未模拟DS、数值或模型）
+
+使用原用户03_Saguling_完整工程与多源降水.zip，经当前Qt Window的开始按钮事件 → scan_index → file_agent真实DeepSeek → discovery/推荐 → run_original_workbench → prepare_uploads → 公共端口处理/真实变异搜索 → 原生写回 → final_check → 真实DS最终复核 → 页面下载按钮导出。没有调用单独Saguling转换器或向候选生成提供真值。GUI事件循环为offscreen Qt自动验收，截图与导出来自实际组件；不是人工浏览器验收。
+
+第一轮67.828秒未形成候选：DS读POWER回执但漏其表头，仅有一份可用科学数据头；失败记录保存在attempt_01，未删除。修复上述依赖补核后，第二轮302.047秒完成全链路：按需检查10份资料，14次只读工具调用，形成3项工程处理建议。没有换数据、改误差标准或加种子追效果。
+
+- 真实格点来源：NASA POWER与NOAA CMORPH（后者3日成员），实际统计日与单位按已有adapt_products处理，再经公共端口空间绑定。站点日界采用历史UTC [00:00,24:00)联调假设，明确不作为独立科学确认。
+- 公共数值搜索评价99张图，单源53、多源46；按已有预算/提议上限停止（400000次提议），没有扩大预算。账本记录307次新节点调用：search 300、deploy 3、validation_audit 4，失败0，服务墙钟约23.578秒；缓存遍历不冒充新调用。此项只验工程链路，不是新增GOLEM优势实验。
+- 选中残差IDW、power=3路线，包含spatial.source→spatial.residual_idw及实际站点观测父边，phase=mutation；输入索引1对应CMORPH，另有原工程站点条件观测。两套格点都参加比较，不等于最终一定将两个格点直接加权混合。未把工程站点的作者订正产品当成全新独立实测。
+- 选择队列63项：单源最低RMSE=9.4677635985，多源所选RMSE=9.1319103375、MAE=3.8019922207；未用于选型的18项留出复核，多源RMSE=4.0599524998、单源RMSE约3.358，多源未优于单源。reference_basis=PRIMARY_GRID_RECONSTRUCTION_PROXY，accuracy_improvement=NOT_ESTABLISHED。不得宣传真实精度提升。
+- 实际更新27份原生降水文件、合计81个原生日期/站点值；来源NetCDF日降水经处理写入SWAT+ .pcp，非共同日期保留原值/缺测状态。新ZIP CRC与27个写回after-SHA全部回读一致。
+- 最终格式PASS、工程引用PASS，31份天气文件检查通过。匹配固定SHA官方60.5.7程序完成2018-02-03单日试运行：返回0、新success.fin、updated_date_exercised=true、model_read_confirmed=true；日志确认读取降水、温度、辐射、湿度、风、WGN与站点。原2001—2023完整模拟及预测精度未验收。
+- 最终DS复核真实完成，verdict=needs_verification，原因包括科学约定/完整模拟仍待核实；没有推翻本地格式和试读PASS，也没有把它改成无条件ready。
+
+重要推荐边界：本轮3项建议是工程适配/端口绑定/启动搜索的编排步骤。它们确实引导了公共工程入口，但当前数值搜索编译器不接受engineering.*作为空间算法节点，recommendation_validation保留REJECTED、confirmed_initial为空。本轮真实数值图由已有公共搜索候选产生；不能宣称这些工程包装步骤已作为DS数值初始图通过验证，或据此证明DS提高搜索效果。该限制不阻止已验收的融合处理/写回/模型试读，但后续若要评价DS数值推荐效果，需单独修复该层协议，不能拿本次结果充数。
+
+### 依据展示与成本、保护
+
+保留现有模拟技术引擎样式，新增“决策依据与执行链”区域，按实际读取展示字段/单位、处理判定、工作约定及最终反馈；完整文本可滚动，避免裁切。连接重试/生成等待细节收进技术记录，首页保留重要步骤。结果页用实际原生格式替代ZIP容器标签，明确NetCDF→SWAT+降水文本、原生写回、模型试读和科学边界；技术目录名改为工程任务名。不用虚构评分、提升百分比或AI置信度装饰页面。
+
+成功轮累计10次线上响应（去重响应ID）、291661服务Tokens，成本见costs.json；不宣称低Token成本，也不拿节点执行耗时替代全流程302.047秒。第一轮失败成本与记录保留。临时工具目录与整个本次Qt处理目录均已清理，保留约893.9MB必要交付包；原用户ZIP最终SHA仍为d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f。
+
+证据统一在output/flow_bridge_20261119：ui_acceptance.py、real_api_ui.json/日志/原始运行截图、processing_evidence（真实图、预测/产品、成本与评分）、final_native_evidence（程序日志与新标记）、verification.json、完整处理结果.zip、source_before/source_current/source_hashes.json。data/approved_input_contexts保存指纹绑定的历史科学声明；源代码无案例名称或站点/日期条件分支。evidence_panel_current.png/result_current.png是用本次真实回执重新渲染的展示修正版，不冒充另一轮数值运行。
+
+48项新增与受影响定向测试通过，0失败/0错误（tests_final.xml），覆盖原始控制字节、分页、回执侧证、浅入口目标传递、内容/模型作用域、公共工程委派仍待验收、旧按需工具/桌面/最终关卡/推荐搜索。展示调整后又跑16项相关测试（tests_display.xml，通过，含重复项不另加为独立测试数）。未重跑历史大型研究实验、未改算法内核与质量门、未推送GitHub。
+
+本轮验收：公共衔接PASS；原包Qt页面真实全链路PASS；格式/写回回读PASS；匹配程序单日读取PASS；原始数据保护和临时清理PASS。历史日界真实性未证实、独立精度改善未证明、完整原模拟期未运行、DS工程包装建议作为数值种子未接通，分别保留，不能与功能运行成功混同。
+
+
+## 2026-11-19 推荐页手动继续误拦截修复
+
+用户同一Saguling原包在推荐页继续时遇到“整包工程仍含未放行任务”。此前真实302秒全链路验证走自动继续，漏验推荐页手动按钮。源码确认放行布尔值原先只在continue_automatically设置，手动continue_recommendations依赖默认/被重置的False，因此存在有有效核验却误拦截的状态路径；不能归咎用户数据或认定新坏包。
+
+本轮只改Qt编排状态：统一update_task_checks保存实际核验记录，完成检查时即登记；自动和手动继续共用require_engineering_checks，依据当前记录重新计算，不信任单独布尔缓存。数据/目标重置清空记录；无勾选回退路径也不能绕过检查。真正阻塞时错误显示具体候选ID、操作和核验原因，而非笼统要求隔离输入。科学处理、搜索、原生写回和最终质量关卡不改。
+
+19项受影响测试通过（output/continuation_gate_20261119/tests.xml，0失败0错误），实际Qt按钮覆盖：同一批准记录自动继续与手动点击进入同一执行入口、缓存布尔被误清零仍可按实际记录继续、真实阻塞原因显示、数据重置后失效和无勾选不得旁路。数值后端在此行为测试中使用spy，未再次重跑5分钟融合或模型；不得将本轮机械状态测试表述为新的完整数值实验。此前原包成功工程、失败记录与原始文件均保留。修改前及当前源码和指纹同目录保存。
+
+
+## 2026-11-19 具体缺项与失败原因的持续显示
+
+用户指出数据/工程缺条件时只看到笼统暂停。此轮只接通诊断展示与导出，未重跑融合/模型或改质量门。新增desktop/issues.py，归一化已有checked/failures、IncompleteProject.completeness.findings、SearchNotReady.report、source_admission.required_information、requirements_check、模型输入缺项、最终格式/工程/原生运行结果和DS待核实信息。沿用后台原始依据及action；已知block_code只给与该定义一致的补充要求，其他原因明确“后台未提供具体补充步骤”，不捏造缺文件/单位/时区。
+
+界面全局增加“问题与待核实事项”表，切换页面后仍可见，逐项显示检查阶段、任务/文件及字段、状态、具体问题和补充要求。候选/任务ID通过当前真实candidates与scan绑定来源文件；完整路径在提示和下载清单中保留。输入/目标变化时清空陈旧问题；暂无可执行方案而后台没有具体原因时明确标未知，不能笼统说数据损坏。异常弹窗仍可提醒，但不是唯一证据渠道；即使没有产物也可单独下载JSON问题清单，禁止覆盖原始输入/写入原始目录。
+
+selected_processing不再只把结构化异常压成一串str，逐任务保留issues。结果ZIP追加desktop_issues.json，同名旧记录使用修订名保留。格式通过、模型未运行、科学待核实分别列项，不因其中一项失败改写其他PASS；部分成功的产物和失败清单同时保留。
+
+本轮定向回归：tests_final.xml为49项通过0失败0错误，随后问题绑定展示与继续按钮复核tests_last.xml为22项通过0失败0错误（含重复测试，不相加为独立测试数）。覆盖实际公共异常类型的具体文件/行动透传、时间定义缺项、未知不得编造、跨页持续显示、独立下载/原件保护、部分失败、原生未运行不覆盖格式PASS、原始准入缺项、候选到来源真实身份绑定及去重、旧手动/自动继续回归。数值后端未新执行；没有以界面测试充当融合或模型运行证据。
+
+output/problem_display_20261119保留源码快照、指纹、测试XML和issues_preview.png。截图明确标注合成缺项功能验收，不是当前Saguling原包又出错。当前已知限制：后台完全没有提供字段/文件原因时，本轮只能准确展示诊断不足，不能可靠推断具体缺失项。未推送GitHub，既有真实原包成功结果保留。
+
+
+## 2026-11-19 质量筛查误拦截与工程上下文衔接：双入口真实复验
+
+此前“quality_screen：逐格比较只需核验对齐……”是平台把质量筛查建议混入处理目标放行判断的衔接错误，不能据此断言原包损坏。上一轮只测自动继续，未完整覆盖手动继续和DS不同读文件路径，历史PASS的范围应据此限定。
+
+最小修复：desktop/discovery.py把quality_screen登记为待执行质量核验，不预判质量PASS；blocking_checks/deferred_quality_check由自动、手动按钮和问题展示共同消费，只有同一候选存在公共工程执行路线时才委派给真实质量门。单独质量建议、其他候选的路线、真正缺时间/科学语义仍阻塞。three_phase.py不再另维护质量建议分支；__main__.py、issues.py统一调用。theme.py仅补错误弹窗背景/文字对比度。
+
+实际可见Qt复验v4又发现：DS只读说明、数据回执和网格表头而未读file.cio时，已登记原包被误送到通用格点处理，缺原生写回。因此v4明确FAIL，保留failed.json、outcome.json和截图。随后只在native_dispatch.py复用input_context.find，重新校验原文件SHA及目标模型，把已登记engineering-semantics声明送入已有工程准入路径；不伪造本轮已读控制文件，不预先给原生PASS。discovery保留显式evaluate_gain目标，不因DS仅建议quality_screen就丢弃用户目标；DS明确拒绝/直接使用不会被覆盖。无匹配历史上下文的新数据仍需自己的科学证据。
+
+本轮真实验收output/quality_gate_gui_20261119/visible_run_v5：原始Saguling ZIP、真实DeepSeek、可见Qt窗口和真实按钮点击，自动处理与推荐页手动继续分别跑完整处理及导出。自动完成273.969秒；手动处理从283.953秒开始，到462.094秒留档；两个导出全部结束470.844秒。非模拟后端。两次均为输入及输出质量PASS、原生格式PASS、工程引用PASS、SWAT+实际单日试读PASS；27份.pcp、81/81个目标日值更新，31份气象表格式核验。NetCDF降水经现有平台流程转为SWAT+降水文本(.pcp)，更新工程副本，原文件保留。
+
+两份ZIP分别893895374、893900704字节，独立CRC全读无损坏，27份变更的实际字节SHA全部匹配写回清单；两入口所选图9591823b972565a8f0b8及指标完全相同。选型队列63样本，RMSE9.1319103375、MAE3.8019922207；99图（53单源/46多源），每轮307次真实节点调用，其他缓存与预算见实际summary/total_cost。不因工程接通宣称精度提高：参考为格点代理，精度改善NOT_ESTABLISHED；选中的是背景加训练站残差校正，不能称两个外部格点必然均被加权融合。工程推荐包装节点尚不能作为数值搜索种子，confirmed_initial为空，此限制未由本次修复解决。
+
+模型程序60.5.7的SHA256 de01a927eebe00b4467ff53424175e247e7808e0bee99790f3d75db1b0a64179；在副本以2018-02-03单日实际试读，退出0、新success.fin、updated_date_exercised=true。仅有界试读，不是2001—2023全期模拟通过；原manifest旧字段native_model_executed=false是准备阶段状态，实际试读证据以随后final_check.native为准。最终DS仍needs_verification，版本参考差异与历史模型日界UTC工作约定未证实，均保留在问题清单，未伪装历史事实。
+
+原包最终SHA仍d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f；工具临时目录及本轮ecodata-desktop任务目录已清理。保留两份必要导出及失败记录。成功双入口共去重10条线上响应，服务234601 Tokens（api_costs.json）；包含共享的首次扫描，不把手动重用扫描重复记账，失败v4成本不混入该数字。未推送GitHub，未改科学内核、随机变异、评分或质量门。
+
+定向测试tests03.xml：34项通过、0失败/错误，覆盖同候选质量委派、不同候选不得借用、真正缺条件仍拒绝、自动/手动同消费者、输入改变后上下文失效、原始控制字节/回执传递、具体失败展示与旧简单流程。tests02.xml为前一轮24项通过，含重复，不累加。source_before/source_current及source_hashes.json保留修改前后；verify_delivery.py、verification.json、真实auto/manual截图、各图及质量/模型证据可复核。
+
+交互验收边界：这是可见原生Qt窗口的QTest实际按钮点击，路径输入及保存目的地由验收程序填入；DS、数值处理、模型和质量门未mock。原生文件选择器及人工鼠标操作未验收，电脑自动化工具初始化报路径错误，不能称完成了该项。v1—v3为自动化模态对话框设置失败，未作为数值成功证据。v5自动与手动处理/导出PASS，OS级文件选择交互未验收，独立环境精度提升未证明。
+
+
+## 2026-11-19 推荐方案确认步骤恢复
+
+用户反馈开始后直接跳第三步，未得到选择算法方案的机会。核实当前continue_automatically在检查后默认勾选全部可执行项并立即continue_recommendations，选项并未删除，而是被自动跳过。现仅改Qt编排：保留按需检查、共同质量验收与默认推荐勾选，检查完成后停在第二步，显示推荐依据和选择控件，由用户点击“按当前方案继续处理”才进入执行。查看方案提示和流程说明同步更正。第三步既有“其他已验证方案”选择/导出不变：该处仅能在真实数值执行后展示；第二步推荐不等于已验证精度。未改科学算法、搜索、质量门或历史结果。
+
+19项受影响定向测试通过（output/recommendation_pause_20261119/tests.xml，0失败/错误），验证检查结束不执行且停第二步、默认推荐可编辑、用户取消一项后实际仅提交保留项、待核验质量记录不丢失、真正缺条件仍阻塞及既有输入/导出行为。科学后端以spy隔离，本轮不重复真实融合/模型试读；之前真实双入口470.844秒证据仍是此前自动跳转版本，不能冒称新交互也已完整真实重跑。修改前后源码和指纹保留在同目录。新流程需重新打开Qt进程加载；未强制关闭用户现有窗口，未推送GitHub。
+
+
+## 2026-11-19 第三页真实处理进度与空黑底修复
+
+用户反馈第三页只有“正在生成原版工程输出包”和大块黑色区域。ResultCards原先仅在产物返回后填卡片，QScrollArea未指定浅色背景，系统深色主题下空区变黑；搜索真实候选评价也未回调页面。现保持原布局与算法：显式设置浅色滚动面板，新增有界300行只读过程记录；第三页收到show_progress即显示，完成渲染保留，重新任务reset清空。工程开始明确推荐仍需契约核验、只承诺预算内最佳。
+
+空间搜索在实际完整候选执行后发出图指纹、真实节点列表、阶段、成功/失败、RMSE/MAE/样本及当前最佳；重复已评图不重复声称新执行。实际推荐契约回执、变异开始和停止统计同样经既有公共progress传到Qt，不虚构推荐已成为种子、不改数值算法、搜索策略或预算。其他后端仅显示其实际已有回调，不冒称所有后端都已有逐图进度。格式/工程/模型最终关卡沿用原回调。
+
+21项受影响定向测试通过（output/process_display_20261119/tests02.xml）；首次测试因测试夹具缺model字段失败，保留tests.xml，修正夹具后复测，未屏蔽生产异常。新增检验实际小型合成数据候选的数值指标进入页面、缓存重复不新增事件、完成后保留/新任务清空。progress_preview.png为当前Qt离屏渲染、两条真实小型合成候选计算的功能截图，明确不是Saguling新运行、不是环境精度证据。已人工查看截图，黑底消失、文字可读。本轮没有重新调用DS或完整SWAT模拟，未强制关闭用户旧窗口；需重新打开加载改动。
+
+另读取用户桌面问题清单，7项全部为待核实：单日试读不能代替全期模拟、版本参考差异、通用摘要覆盖不足、原始日界假设及站点映射复核。清单明确31天气文件无失败且format/project PASS、model_read_confirmed true，不能把这些提醒误说成7项执行失败，也不能仅凭摘要空列表断言工程缺文件。
+
+
+## 本轮最小任务条件 自动补齐及工程推荐搜索闭环
+
+本轮用户授权优先完成目标分流、非关键缺项补齐及推荐到搜索接通。不是取消所有科学条件，不让DS凭空填写地理位置、时间基准、流域拓扑、观测值或模型状态。只改公共适配/编排，不重写随机变异、评分或融合内核，未下载新数据或训练模型。新证据统一output/minimum_task_contract_20261119，protocol.json显式版本minimum_task_and_engineering_recommendations_v1。
+
+### 目标和最低输入
+
+Qt现有目标菜单增加“仅数据处理（融合/对齐，不生成模型工程）”，不是增加一套页面。该目标跳过模型画像与原生工程要求，仍走公共识别、真实算法及质量门。已有模型组件服务本来就可不带完整工程，本轮补齐独立组件在页面无配对推荐时的确认路径：不得因没有第二份数据、没有融合候选而拦住单份组件转换；确认后仍由公共写出器核验必需科学字段，未在界面给预先PASS。data_only、component_conversion、model_project的最终复核范围分开，组件未请求全工程检查记NOT_REQUESTED，模型未运行记NOT_RUN，不以缺少无关土壤/温度等资料把组件格式成功改成失败。
+
+新增SWAT+单站降水组件绑定复用现有SWATPlusWriter._weather_file/_cli和真实_records回读，不新增科学算法。最小输入为真实precipitation/time、mm单位、明确逐日累计/86400秒及日时间基准、实际EPSG:4326站点经纬度和海拔。可仅交付station.pcp与pcp.cli；不强求温度、土壤、landuse或file.cio。目录中没有工程时不会借用Ames或本机流域。单日数据也支持。不能按默认值补造日降水或位置；缺关键数据明确失败。其他模型继续已有组件契约，本轮未证明五模型任意缺字段均可自动补全。
+
+models/minimum_inputs.py为公共非关键配置补齐：非物理项目标签、稳定输出站点标识、实际时间覆盖、标量坐标属性，以及写出器按真实文件生成索引。已声明值优先；与实际元数据冲突拒绝，不静默覆盖。逐项auto_completion保存字段、值和依据，真实progress显示；这不是DS自由编造物理缺值。DS工作规则也区分独立融合/组件/全工程，允许建议登记补齐项，但确定性服务决定是否安全执行。generic_requirements增加可读的最低输入与不需要的资料清单。
+
+### 工程推荐到真实搜索
+
+原问题是把engineering.port_binding/port_search等流程动词送入只接受数值算法的编译器；旧记录REJECTED、confirmed_initial空不应抹去。本轮recommendations.make_request从现有COMPONENTS给工程融合提供具体spatial.blend/residual_idw/idw组合；不把通用port_search包装成某个数学算法，也不预设赢家。推荐匹配不能仅因共同工程前缀而把全部不同算法混为匹配。
+
+自主检查入口原先只from_decisions补候选，未调用已有recommendation线上协议。本轮抽出公共recommend_plan复用service.preview/send与目录验证，页面实际调用；失败允许原已核验候选回退，但明确标PLATFORM_FALLBACK，不能声称DS已选。推荐理由仍为AI建议，不是事实或精度证据。每个工程准备步骤只有公共端口实际对齐、质量通过并附输入指纹后，search_bridge才提供completed_preparation；数值编译器检查这些证据，再将具体算法绑定真实父边和训练观测。仅准备步骤记PREPARATION_ONLY，不能冒充已数值评分的算法。
+
+### 真实及定向验收
+
+1. 真实数据独立融合：accept_data_only.py复用历史已核验POWER/CMORPH规范化产品，按实际公共保守重网格对齐共同日窗口，不带模型工程；页面公共process_search_upload和工具包submit_file_request图及数值产品一致。real_data_only/acceptance.json为PASS，代理队列78样本，RMSE11.1208191076、MAE9.1723382176。这里只证明数据处理能独立执行，没有独立观测证明精度提高，不混同完整Qt上传验收。
+
+2. 最小真实转换：从用户原包内实际单站.pcp提取2018-02-03至05真实值，按现有时间/坐标工作约定标准化为小NetCDF验收输入，再由prepare_uploads自动判定独立降水组件。real_precipitation_component_v2保留原成员SHA、输入与回执；COMPONENT_EXPORTED，format PASS，project NOT_REQUESTED，native NOT_RUN。没有上传完整工程、温度或土壤。真实DS最终复核按component_conversion返回ready，error为空；ready仅限组件。原日界仍采用历史工作约定，非作者定义核实。首个提取脚本错把嵌套成员当顶层，StopIteration后改用实际嵌套ZIP读取；该失败不伪装数据缺失。
+
+3. 原Saguling完整工程：visible_run_v1为FAIL，DS只读工程文档未读科学表头，无法形成候选。保留失败记录。修复仅补有界最低表头检查（至多两份已列出科学结构、总补核上限4、总调用上限48，不深读数组）。visible_run_v2在补具体推荐调用前真实通过375.766秒，属于中间版本；最终visible_run_v3在真实DS具体推荐服务接通后，通过第二步确认按钮、真实数值执行、原生写回、格式/工程检查、SWAT+60.5.7单日试读及ZIP导出，总276.281秒。
+
+最终v3三条DS数值推荐均PASS：blend fc2d0aa32864cb5c2a7e，residual_idw 6ba3cd62c0365efc048d，IDW a0b17d051bb8095d5541，均先在固定63样本队列评分。transitions前三条以对应推荐为父图进行参数变异，其中两条新执行，一条复用已真实评价的子图，不虚记第三次新执行。最终共99图，400000原始提议上限不变；选中9591823b972565a8f0b8，RMSE9.1319103375、MAE3.8019922207；最终真实节点调用307。保持原随机变异后端，不冒称本轮重建了GOLEM或证明全局最优。新推荐确实进入执行与变异，但最优图与旧轮相同，不能据此宣称新机制精度胜出。
+
+v3结果ZIP CRC全读通过，27份降水文件的实际字节SHA与写回清单全部相符；原包SHA保持d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f。模型试读仍仅2018-02-03一日，不是完整模拟期验收；历史科学假设与独立精度未证实继续披露。v3共去重7次线上响应、87961服务Tokens；本轮所有保留尝试及独立组件复核共25次、508526 Tokens，详costs.json，不隐藏失败调用。任务临时目录已清理，保留有效交付和失败证据。
+
+### 测试 范围与来源
+
+tests06.xml为73项定向通过；随后任务范围/组件页修复tests08.xml为33项通过，最终tests10.xml为30项通过（存在重叠，不相加为独立数）。最终新增按钮测试确实由Qt确认入口调用公共真实转换，只有最后DS复核用模拟响应；独立真实组件DS复核另有证据。初次单组件按钮测试发现旧身份判断只识别强语义属性而漏掉Registry正式字段名，修复为仅作为组件候选识别，科学契约仍由写出器验收，不据字段名预判正确物理含义。其他失败包括旧页面/工具包测试把随机final_check收据UUID当科学差异，以及测试错误读取preview.body而非summary；分别校验真实载荷/两端检查状态、改正夹具后复测，失败XML保留。
+
+桌面全工程验收为可见Qt/QTest实际按钮；路径与导出目的地由脚本提供，原生文件选择器仍未验收。源码最终快照source_current及hash在所有修复后保存；全工程v3过程中后续只修改独立组件/无模型的提示与确认路径，未重新跑全工程，不能说每份最终文件都在同一进程重新加载。完整工程、最小组件与无工程数据融合的证据分别列明。
+
+官方/成熟成果核对并复用：SWAT+ Editor官方GitHub文档 https://swat-model.github.io/swatplus-editor-documentation/edit-inputs/weather/、官方程序化入口说明 https://swat-model.github.io/swatplus-editor-documentation/developers/ 与源仓库 https://github.com/swat-model/swatplus-editor，降水格式 https://docs.swat.tamu.edu/62.0.0/input-reference/pcp/。其气象索引与完整工程引用分离的定义支撑组件输出；本轮优先复用本库已有官方格式写出器，未新下载依赖、抄入优化器或给特定数据包设条件分支。
+
+本轮验收：独立数据处理公共入口PASS；SWAT最低降水组件与安全补齐PASS；具体推荐实际评分及作为变异父图PASS；完整原包写回/短时试读/导出PASS；任意五模型缺项自动补齐未验证、完整期水文运行未运行、独立精度提高未证明。用户不需要完整工程也能做相应数据处理，但不能让DS把未知流域拓扑当成真实工程。未推送GitHub；旧协议、用户原数据与历史结果未覆盖。
+
+
+## GitHub同步与队友更新合并
+
+本轮将当前本地实际平台更新整理为代码提交，未上传用户原始数据、运行环境、密钥、大型结果包或本机验证工具安装目录。发现队友PR4最新c347426尚未进本地运行版，因此保留该提交并合并其统计窗口、对象面积换算与确定性校验，未以本地旧文件覆盖。两处冲突分别保留主页面preprocess说明与operation_labels、three_phase的质量建议传递与preprocess处理，未修改科学算法或重跑数值研究实验。
+
+合并后的48项定向测试通过，0失败/错误，覆盖最小组件、线上推荐协议、质量/确认按钮、真实小型执行及队友统计前处理；不是全库回归或新原包完整运行。证据output/github_sync_20261120/tests.xml与teammate_merge.json。保留原运行源码到live_before_teammate_merge，合并代码同步回本地平台；已有两个脏Git工作区未覆盖。远端主分支推送结果以本轮sync_receipt.json为准；旧实验与数据不变。
+
+
+## 不同原生分辨率真实双源通过仅数据处理入口验收
+
+用户要求两份分辨率不齐的数据直接走昨日新增的仅融合入口。本轮未改平台源码、未换算法或调参，未下载新数据；从原Saguling包只读复制两份原始字节及POWER回执：CMORPH_V1.0_ADJ_0.25deg-DLY_00Z_20180203.nc（373379字节，0.25°×0.25°、单日、变量cmorph）与POWER_regional_original.nc（21273字节，0.5°纬×0.625°经、7日、变量PRECTOTCORR）。未人工预对齐、预改数组/单位或提供模型工程，原始SHA保存在input_manifest.json，验收后逐一复核未变。二者都是公开格点降水产品，不是独立站点实测真值；本轮不能验证“粗实测约束细场”的真实精度。
+
+output/unequal_resolution_data_only_20261120保存预定protocol、输入、副本指纹、当前源码指纹、脚本、visible_run_v1完整轨迹和verification.json。可见Qt选择data_only，真实DS按需读表头及原始下载时间回执，展示第二步方案后QTest实际点击继续，走公共selected_processing/independent_alignment/local_search/platform_search。模型工程未上传且未要求；没有通过后台脚本预置最终图。路径及保存目的地由验收脚本提供，原生文件选择器未验收。
+
+平台自行将原日降水率按86400秒区间积分为mm日累计，统一到共同UTC日期2018-02-03，采用公共保守重网格（本环境实际后端xarray-regrid，未安装ESMF，不假称ESMF执行）将CMORPH对齐到POWER粗网格，输出1日×7纬×5经，仍为0.5°×0.625°。原数组未人工修改。对齐任务分别导出两份产品，融合任务执行23候选/100次提议：19单源、4多源，均在相同26个可见格点留出代理样本上评价。最佳单源RMSE7.3312545168、MAE6.5341892531；最佳多源RMSE10.5151597757、MAE8.3842796521。按已有评分最终保留单源图6fb8052607fc23ed9473（observations→IDW(power1)→残差IDW(power3)），不是最终交付双源融合。部署产品与已对齐POWER输入逐像元最大绝对差0.0；不能把该产物描述成已引入细源信息或生成更细分辨率。
+
+完整页面处理及导出114.359秒，0失败任务，6条去重真实线上响应、38479服务Tokens。ZIP重新CRC全读无损坏，三份NetCDF逐一回读，单位mm、有限及非负检查通过；输入指纹均未变，Qt任务临时目录关闭后已清理。DS输出复核ready仅限数据处理交付，不是环境精度PASS。仅有一天、参考为PRIMARY_GRID_RECONSTRUCTION_PROXY且不是独立实测，不能据此推广“融合不如单源”或“粗网格更准确”。
+
+结论分开记录：不同原始分辨率的双源可由仅数据入口识别、对齐、真实比较与导出PASS；真实多源候选已执行PASS；本次最终多源方案NOT_SELECTED；更细目标网格输出NOT_EXECUTED；粗实测作为整体约束后的细场恢复及独立精度NOT_EVALUATED。当前默认入口选择共同粗网格，基础流程跑通不等于用户前述完整细尺度需求已经满足。本轮没有因为结果不理想更换种子或追加试跑，没有启动研究对照；未重跑无关回归、未推送本轮新报告到GitHub。
+
+## 目标细网格作为公共硬约束：仅融合入口真实验收（2026-11-20）
+
+本轮响应用户要求：目标分辨率不能只是最终插值导出参数，候选必须在同一目标网格上执行、评价和交付。保留前一轮默认粗网格结果，不覆盖历史数据、源码证据与协议；未新增算法、未调评分/种子/搜索预算、未下载数据、未启动大型实验。
+
+实现位置：spatial/regridding.py提供target_grid_spec、resolve_target_grid、require_target_grid公共契约；algorithms/spatial_fusion_task.py在构建候选前统一目标坐标，每折真实运行完整细网格、检查形状/有效覆盖/物理范围，再通过既有球面面积重叠算子回聚合到原始粗参考像元评分。粗输入或错误尺寸不能直接取得fitness或入选；最终产品直接使用冻结图在该目标网格上的输出，没有选图后插值放大的步骤。参考始终保留原始粗像元，不将插值结果作为细尺度真值。页面任务声明经file_agent、recommendations、discovery、independent_alignment传入同一公共搜索任务；不消费目标契约的适配器明确阻塞，不能退回默认网格。页面增加仅数据模式的目标网格间距字段，修改即作废旧核验，明确填写才启用新规则。当前该严格重建路径支持同变量cell_mean规则经纬网格、EPSG:4326、共同覆盖；站点/协变量及其他CRS的目标观测算子未在本轮扩展，明确拒绝，不能宣称全任务均支持。无目标声明仍保留历史默认行为。
+
+真实输入沿用output/unequal_resolution_data_only_20261120/inputs内CMORPH与POWER原始字节及哈希绑定UTC回执，分别原生0.25°×0.25°和0.5°纬×0.625°经；本轮明确目标0.1°×0.1°，比两者均细。不是按输入文件名选算法。原坐标基准尚无独立证明，EPSG:4326是公开记录的地理坐标工作约定，产品单位与地理坐标字段先由已有产品契约核验；明确CRS不应被改写成WGS84来绕过检查。
+
+验收路径是可见Qt页面、真实DeepSeek、实际点击第二步确认/处理/导出、公共搜索与真实科学内核；路径和保存目的地由QTest脚本提供，未冒称原生文件选择器/人工浏览器验收。新证据统一在output/target_grid_20261120：protocol.json、source_before、source_after、tests01—05.xml、visible_run_v1/v2/v3、verify.py与verification.json；最终以v3和verification.json为准。初次v1融合成功但单独对齐缺CRS传递而失败，脚本最初仅检查是否有产品，success字段过宽，不能当整体验收依据；已改为同时检查failed_tasks。v2无任务异常但独立回读发现POWER边缘310个NoData，未标完整通过。原因是轻量重网格后端在外半像元边缘不保证有效输出。v3按几何条件将完整目标像元限制在共同原坐标中心支持范围内，不填造边缘，不根据误差裁区域；该修正缩小覆盖，并导致参考队列变化，不能将新RMSE与旧轮直接比较。全部失败及部分成功记录保留。
+
+最终v3页面全流程89.954秒，0失败任务；23个候选实际评价（19单源、4多源），100次提议，72次搜索真实节点调用。23个通过候选均记录相同1×30×25目标网格检查，目标750像元；原粗参考回聚合算子15×750，共同留出评分队列11个真实存在的粗产品像元。最终选择单源重建图6fb8052607fc23ed9473（观测→IDW→残差IDW），代理RMSE5.6213491104、MAE4.7496665452；最佳双源图0e36ba06456a4198fcf7，代理RMSE12.1970960247、MAE9.3891033045。未强迫双源获胜。这里“单源”是目标细网格上的重建路线，不是原粗网格直接交付。目标网格硬约束不等于必须使用多个来源；若以后用户明确要求使用各来源，需要另行声明来源使用契约，不能通过低RMSE抵消该要求。
+
+完整结果ZIP的两份对齐产品与一份选中产品均回读为1日×30纬×25经、0.1°×0.1°、mm；所有像元有限且非负，坐标完全一致，ZIP CRC全读通过，原始输入SHA256均未改变。产品导出为NetCDF→NetCDF，单位日率先按已核实日区间转mm累计；本轮仅融合/对齐，不生成模型工程、不运行SWAT+。source_after保留当前源码及指纹；v3执行后只清理了不参与数值的未用局部导入/变量，并增加回归测试，未改变所执行科学计算。公共重网格实际使用现有xarray-regrid后端，未声称ESMF执行。预处理、搜索节点、缓存与部署成本在summary/verification中分开记录，不能将节点执行时间当作全流程耗时。
+
+定向测试：63项受影响回归通过（tests02.xml）；最终6项目标网格测试通过（tests05.xml，含公共真实搜索、错误候选尺寸拒绝、无目标不自动新增约束、页面参数变更失效/非法参数、边缘NoData回归）。其中测试用温度小场为合成功能数据，不作为环境精度证据。未运行无关全量回归或949图穷举。
+
+验收结论：目标网格硬约束、候选实际细网格执行、原生粗参考回聚合评分、仅融合页面完整处理、同坐标产品回读与原始数据保护均PASS。最终双源方案NOT_SELECTED；细尺度独立精度、融合优越性、真实新增细节NOT_ESTABLISHED。两份输入均是格点产品，不是独立站点真值，且只共同覆盖一天，11个粗参考样本证据很有限。0.1°是已执行的输出网格，不应被描述为已证明的0.1°观测准确度。本轮未自动推送GitHub。
+
+## 通用证据自适应融合评价与仅融合入口验收（2026-11-20）
+
+### 复用、缺口与修改边界
+
+已核实并复用：platform_search公共入口、SpatialTask/SpatialSearch、同一固定评价队列、已有球面面积重叠算子、sklearn坐标分组、单位/时间契约、目标网格硬门槛、NumericalDAGExecutor、随机变异driver、调用/缓存预算、冻结后复核、页面结果卡及统一ZIP打包。此前缺口不是“没有RMSE”，而是主来源粗格点重构代理单独决定细网格方案，无法评价另一个来源的细节信息。本轮修改评价编排，不新增科学算法、不改插值/残差/融合内核、不根据来源数量奖励、不下载数据、不开展正式算法优越性对照。
+
+新公共模块ecodata/evaluation/fusion_protocol.py（fusion_evidence_v1）根据证据选择评价范围，spatial_fusion_task版本为spatial_relationship_fusion_v1_4_evidence_adaptive：
+
+| 条件 | 真实消费者与行为 | 结论边界 |
+|---|---|---|
+| 已有合法观测 | 复用原空间留出及观测尺度契约，输出OBSERVATION_HOLDOUT；观测不参与自身拟合 | 不自动宣称来源与站点独立；上游独立性仍须证据 |
+| 存在已核实的原生cell_mean网格且共同范围足够 | 所有来源先按既有面积算子变粗，以按几何分辨率确定的原细产品为隐藏参考；RMSE反馈真实搜索 | 仅产品重建代理，不是环境真值；不能直接证明原目标尺度的细节精度 |
+| 支持域未知、区域/样本不足，无法构建合法退化实验 | 返回具体missing_evidence；只保留明确标注的粗产品重建代理，不宣称可据此排序细尺度精度 | 这是受限降级，不是已验证的细尺度收益；不存在凭空生成的评分参考 |
+
+平台已有EngineeringMetric仍用于明确声明的工程指标任务；本轮没有把所有物理变量强行塞入一个加权总分，也没有替没有评价依据的任务制造精度排名。新模式自动用于已支持的cell_mean空间路径和观测路径；不满足契约的变量/累计/点支持仍依赖原适配器核验，未扩展未审查的物理算子。legacy_primary_grid_v1显式开关仅保留旧协议复现。适配器不维护数据包专属规则；原生分辨率、单位、统计含义和状态依赖由公共契约消费。
+
+方法参考已核验的GitHub案例：https://github.com/liangjiandeng/DLPan-Toolbox 的退化尺度评价思路，以及 https://github.com/rvalavi/blockCV 的空间隔离思路。实际复用项目已有面积权重和sklearn分组实现；未复制影像专用指标、未引入新训练模型或优化器。降雨不是全色影像，不能声称直接复现其验证协议。
+
+### 冻结协议、隔离与真实执行
+
+新证据目录output/fusion_evaluation_20261120，保留protocol.json、source_before/source_after、输入/代码指纹、测试XML、visible_run_v1/v2、评价预测NPZ、metrics.csv、verification.json及当前卡片渲染记录。输入仍是原CMORPH、POWER及哈希绑定UTC回执；原始SHA256逐一复核未变。目标继续0.1°×0.1° EPSG:4326工作约定，共同有效内部范围，真实应用产品1日×30纬×25经；原坐标基准并未被本轮独立证实。所有候选仍须真实生成完整应用细网格、经过形状/覆盖/非负/范围检查；不存在最后才放大的替代执行。
+
+评价退化采用预先固定的名义2倍，因共同边界和整数网格数，实际轴间距由面积覆盖计算并记录，不伪称严格2倍。两来源退化为POWER 3×2、CMORPH 7×6；原细参考168个像元。退化算子使用所有原观测生成粗输入是重建实验的明确构造，绝不是细参考真值直接输入算法：评价执行器仅接收变粗后的两个来源及变粗主来源的conditioning；任何细参考值、选型/复核误差都不进入该执行器输入。参考仅用于独立误差计算。该退化不是已知真实仪器误差模型，跨尺度可迁移性未证实。
+
+沿用坐标分组seed11，129个样本用于本轮选型，39个外部空间块样本仅在最终图冻结后复核；这里“外部块”不是新独立实测，也不是新独立年份。粗主产品留出11样本的RMSE另存coarse_reference_diagnostic且used_for_selection=false。新RMSE是唯一数值主目标；MAE、Bias、覆盖和失败率独立列出。可观测参考掩码固定，失败不能只删困难样本参与排名。误差极接近时继续按原简化规则选图。来源消融是同一已执行候选集中排除某来源的最佳合法路线，不是声称已穷举所有重训组合。
+
+预算未按结果修改：130搜索调用、180总调用、100提议、45秒搜索墙钟。沿用公共composition_optimizers.random_graph_search；这是当前已用随机变异机制，不冒称本轮重新启动了官方GOLEM对照。新评价的真实调用计入同一账本，未为多源增加预算。第一次v1数值计算成功，但NPZ使用子目录名违反公共下载接口的平铺文件名契约，整体验收FAIL。修正为通用平铺名称后v2完整通过；18张共同图的指标逐项完全相同，证明没有用修复打包之机调整数值结果。
+
+### 实际结果：两类依据必须分开
+
+| 评价范围 | 最佳单源RMSE | 最佳多源RMSE | 单源MAE | 多源MAE | 样本数 |
+|---|---:|---:|---:|---:|---:|
+| 退化尺度产品重建选型 | 12.469866 | 12.390965 | 6.593596 | 7.031880 | 129 |
+| 图冻结后的退化尺度外部块复核 | 25.881368 | 30.316031 | 14.909727 | 16.796942 | 39 |
+| 这两个选型胜出图的粗主产品诊断，不参与选择 | 42.356029 | 32.087446 | 29.304114 | 22.521315 | 11 |
+
+选型Bias分别0.996389和-0.492232；外部块Bias分别-3.431517和-9.404563。通过候选在统一队列覆盖率100%、失败率0。主指标上多源只改善0.6327%，MAE反而更高；12个选型空间块中只有2个改善。冻结复核多源RMSE上升17.1346%，不支持稳定收益。没有像元级bootstrap、没有把12个邻近块称作独立重复，没有显著性或置信区间宣称；只有一天共同数据，时序稳健性未评价。
+
+同一选型队列来源消融：去掉POWER，最佳已执行路线RMSE12.469866（CMORPH单源）；去掉CMORPH，最佳已执行路线RMSE21.414639（POWER单源）。这只能说明CMORPH对恢复CMORPH参考结构更有信息，不能证明其真实降水一定更准确，也不能把模拟/产品与实测的可信度按名称硬排序。精度仍依赖独立观测与支持尺度。
+
+最终选中多源图dea7c689b883e00a5734，实际父边为CMORPH来源场与POWER观测→IDW(power=2)估计进入blend(weight=0.75)。它以冻结选型RMSE选中；即使复核更差，也没有偷偷改回单源或调整参数。最佳单源7d1e002146f28d3bb60b。所有图真实执行，保存18份逐图预测/参考/选型与外部块索引NPZ，独立verify.py重新计算每图RMSE与MAE，确认objective就是RMSE，没有多源加分；没有缓存命中冒充新图。18图、100次提议，76次搜索真实节点调用、4次部署调用，0失败调用；新增退化准备0.015929秒，已另列，不将内核耗时冒充全平台成本。v2含真实DS按需读取/建议/输出核对和导出的完整Qt流程130.265秒；输出核对发生有界API重试，日志保留。v1失败流程87.343秒亦保留，不隐藏失败成本。
+
+### 页面、下载、测试与交付边界
+
+可见Qt实际按钮操作完成“仅数据处理”输入、方案确认、搜索、处理、输出检查与下载；路径/保存目的地由QTest提供，未冒称原生文件选择器或人工浏览器测试。实际结果卡由公共output_review.cards消费同一evaluation_protocol，显示参考来源/尺度、129/39队列、两个来源消融、粗主产品诊断不参与选择和0.63%差异；多源/单源候选仍可由用户选择导出。ZIP含融合评价JSON和18份NPZ，原3份NetCDF回读同一0.1°网格、mm、有限且非负，ZIP CRC全读通过；不是模型原生工程转换，不运行SWAT+。
+
+v2后只修正一处仍写“粗参考决定选图”的旧说明，并将仅数据模式的成功处理说明移出“模型缺项”，没有改数学评分、候选、随机数或产品；当前公共结果卡基于同一真实结果另行渲染回放，证据为evaluation_cards.png/json/txt，不冒称重新跑数值。旧ZIP与旧截图保留，evaluation_protocol.json和逐图数值证据为评分依据。无需因显示文字修正再跑搜索。
+
+定向检查按最新复测记录合并59个唯一用例均通过：包括原目标网格、空间任务、候选导出、评分依据页面消费、参考隔离、外部标签不能改选型、无来源数量奖励、单源/多源共同队列、缺证据/未知、旧协议显式复现、真实父边、打包与回读及页面流程。早期失败XML保留：原测试把主分数样本数等同粗诊断数的假设已按新协议分开验证；下载回归初始只提供1个文件触发原接口要求至少2文件，修正测试夹具后通过，没有放宽生产打包门槛。未运行无关全量回归、949图穷举、正式搜索优越性实验，也未自动推送GitHub。
+
+最终状态：公共证据自适应评价/隔离PASS；目标细网格与真实执行PASS；来源消融与两种评价差异展示PASS；页面完整流程及产品回读PASS；融合稳定收益NOT_ESTABLISHED；独立实测精度NOT_EVALUATED；通用于任意物理支持/任意模型的精度判断NOT_SUPPORTED。无独立真值时仍有产品特定参考偏差，新协议减少“只重构粗主来源”的片面性，不意味着消除了所有评价偏差。
+
+### 冻结结果原因定位：为何选型改善0.63%、复核恶化17.13%
+
+本轮仅查源码、原生坐标和已保存逐图预测，没有重新执行搜索/预测，没有调参数、换划分或改排名；源代码逐项SHA与verification.json相同。诊断保存output/fusion_evaluation_20261120/frozen_result_diagnosis.json。
+
+冻结多源图实际为0.75×CMORPH重建＋0.25×POWER的IDW估计，并非可随位置变化的可信度或偏差模型。选型12个空间块仅2块改善，合计平方误差减少253.04，刚好使总体RMSE低0.63%；其余10块均变差，MAE也变差。这是固定总体RMSE的局部补偿效应，不是指标算错，更不等于普遍改善。
+
+坐标分组未读取降水值，不存在据误差挑复核点的证据；但只有一天、一次空间划分，未验收选型/复核降水结构的代表性。选型参考均值14.536mm、最大124.4mm；复核均值38.933mm、最大166.1mm，强降水分布明显不同。复核多源新增平方误差9719.44，其中块12贡献9258.86，占95.26%；该块参考均值112.378mm。参考166.1mm的一个像元，单源估计102.715mm，多源仅79.597mm，说明POWER分支在该事件的强雨区压低了已偏低的峰值。此处参考是CMORPH产品，不是雨量站真值。
+
+另发现评价范围的具体缺口：退化评价保留了输入halo的共同范围，而没有再次裁到应用目标范围；168个参考中心有48个在实际目标范围外（选型39、复核9）。这意味着评价空间范围与交付范围不完全一致，应后续统一修复；但复核这些范围外像元仅贡献238.74的新增平方误差，约2.46%，不能解释主要的17%退化。本轮仅记录，不改变封存结果。
+
+结论：已经能定位为“本次全局固定权重混合压低强雨＋微弱总体RMSE收益不稳＋单日空间划分代表性不足”；另有评价/交付范围未严格一致的问题。没有证据据此断言两来源永远无融合价值，也不能把17%都归咎于划分或格式。复核与选型还共享构造粗观测约束，并非全新独立实测盲测。后续应先修正通用评价范围一致性，再用预先冻结、多日期的空间验证检验稳定性；不能利用这39个已暴露样本反复调整权重凑改进。
+
+## 评价/输出空间范围统一与现有三日冻结方案验证（2026-11-20）
+
+本轮仅修范围契约与固定方案核验，保留所有旧结果。根目录AGENTS中的历史转换限制已由用户本轮明确授权的公共评价修复覆盖；没有新增科学算法、下载数据、调权重、改变原始资料或启动搜索。
+
+### 公共修复与行为验收
+
+spatial/regridding.py新增contained_cell_grid，按已有cell-edge几何选择完整落在目标范围内的参考像元；仅中心落入但边缘越界的像元不参与。SpatialTask原粗参考裁切和evaluation/fusion_protocol.py细参考裁切共用该函数，不按文件名、变量数值或误差分支。输入halo仍可作为计算输入，但不再自动成为评价区域。新协议fusion_evidence_v2_target_domain记录应用边界、评价边界、裁前/裁后数量、完整参考坐标和outside_cells；队列指纹包含协议版本、坐标、日期和有限值掩码，避免同样像元数而不同区域错误复用。NPZ增加reference_coordinates，支持直接回查。
+
+真实边界核对：应用与评价均为纬度[-8,-5]、经度[106.25,108.75]；细产品参考168→120像元，越界0；实际输出仍为0.1°、30×25。新裁切后按原坐标分组规则和seed11划分，93个开发区/27个外部区，两者空间身份不交叉；3天始终使用同一划分。由于几何总体改变，分组会随之改变，不能把新的数值与旧129/39队列直接比较并宣称提升。新划分在查看新误差前固定，不根据降水数值或结果重抽。外部区仍是产品重建复核，不是独立实测盲测。
+
+定向测试49项通过（output/fusion_domain_v2_20261120/tests02.xml），包括：中心在内而像元边缘越界排除；完整支持不足明确拒绝；粗/细参考共用目标契约；值改变不改变范围和划分；相同数量不同坐标使队列指纹失效；固定图逐日指标、0提议且不能调用随机搜索；既有评价隔离、目标网格、空间处理和真实执行回归。未跑无关全量回归或大型实验。
+
+### 现有日期盘点及原结论更正
+
+原来选取的两份文件确实只有2018-02-03一天共同日期，但不能推断整个原包只有一天。只读检查原03_Saguling_完整工程与多源降水.zip的完整NetCDF成员，找到CMORPH 2018-02-03、04、05三份原始文件；POWER原文件覆盖02-01至02-07。因此本批原包/所选目录可匹配3天，而非1天；02-01、02、06、07只有POWER，不能伪造对应来源或称为双源验证。没有重新下载、补造样本或改时间标签。
+
+通过既有inspect_product、adapt_products、哈希绑定POWER原始请求回执、单位转换和区间核验读取合并，保留原生格点和缺失状态，再经公共parse_inputs、evaluate_bank与execute_graph验证。沿用此前EPSG:4326工作约定，不把坐标基准当本轮新证实事实。首次准备因验收客户端遗漏公共回执契约的resource/receipt_sha256字段而停止，发生在数值评价前；补齐真实回执元数据后在attempt2新目录继续，没有绕过公共核验。失败记录及首次产物保留。
+
+### 固定图、真实数值与负结果
+
+本轮提前冻结原单源7d1e002146f28d3bb60b及原多源dea7c689b883e00a5734，后者仍为75% CMORPH重建＋25% POWER的IDW(power=2)；原图记录逐项核对相同。公共evaluate_bank新增逐日、全目标域及冻结外部区报告；selection_performed=false，提议0，不选择新赢家。两个固定图均通过相同原始数据、固定质量门、完整目标网格与同一队列；不是在各日期重新调参后挑最好的结果。
+
+| 日期 | 全目标域单源RMSE | 全目标域固定融合RMSE | 单源MAE | 固定融合MAE | 相同参考数 |
+|---|---:|---:|---:|---:|---:|
+| 2018-02-03 | 19.321811 | 21.169750 | 10.561360 | 11.165449 | 120 |
+| 2018-02-04 | 12.379652 | 15.823497 | 8.712289 | 11.003162 | 120 |
+| 2018-02-05 | 8.157698 | 10.414999 | 4.601081 | 7.923263 | 120 |
+| 三日合并 | 14.061012 | 16.401358 | 7.958243 | 10.030625 | 360 |
+
+三日合并Bias分别-0.525979、-1.754411。两条图覆盖率100%、失败率0；当前固定融合在三天全域均更差。单独列出的外部27像元/日复核RMSE：02-03单源23.892761/融合27.025681；02-04为12.885219/18.832637；02-05为12.273354/12.941660，也均未改善。全部日期与区域均报告，没有只保留有利部分。固定方案原本开发日期02-03已暴露；02-04/05来自此前已提供原包，不承诺从未被历史工程读取，因此统一称回顾性产品重建验证，不称新盲测。
+
+### 可复现产物与范围
+
+新目录output/fusion_domain_v2_20261120保留修改前快照、attempt2/protocol.json、原始成员SHA与真实时间清单、单位/时区适配记录、canonical输入、两次有界固定图调用、逐图NPZ、逐日CSV、源码快照及verification_final.json。首次数值核验2图16节点调用；为新增全域逐日报告完成受影响复测，再执行同2图16调用，原指标逐项相同；无新候选或权重。两个实际产品部署分别1和4次节点调用。首轮准备/实际核验/两个产品部署12.759秒，受影响复测与独立回读另有日志；不把节点时间当作总成本。
+
+verify_final.py独立重算逐日RMSE/MAE，核对图身份、0提议、93/27隔离、全部参考像元的完整边界及原始子集SHA；读取两份实际NetCDF均为3日×30纬×25经、mm、有限且非负。原包SHA d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f与历史一致。复用公共package_results打包，ZIP CRC全读通过；下载文件frozen_controls_3days.zip含两份真实产品、预测、协议、日期清单、指标和回读记录。不运行模型、不重新调用DS或做页面整轮重复搜索；这是公共固定方案核验入口的真实数值验收，不冒称本轮重新做了浏览器/GUI验收。
+
+最终结论：公共空间范围一致性修复PASS，当前案例参考支持域与输出支持域完全一致；本批原包全部3个共同日期真实验证PASS，额外4个POWER独有日期不适用于双源验证；旧图/权重/原始数据保护PASS。结果不支持当前固定融合优于单源，但不能推广为所有融合无价值；3个连续日期和产品代理不足以建立独立实测精度或统计稳定性。本轮结束，不调权重补救、不新增数据、不推送GitHub。
+
+### ecf2a15同步后功能与决策链核查（2026-11-22）
+
+用户要求核实仅融合、最少必要输入转换及推荐/变异决策是否被新版界面覆盖。对照dae836f与ecf2a15：minimum_inputs.py、component_service.py、spatial_fusion_task.py、fusion_protocol.py、composition_optimizers.py均无变更。当前真实Qt菜单探针确认“仅数据处理（融合/对齐，不生成模型工程）”仍在选择目标模型菜单；选择后可登记目标网格。当前功能定向测试27项通过，记录output/current_capability_audit_20261122/tests.xml；包含无工程降水真实写出SWAT+组件、非关键标签补齐、关键时间/坐标冲突拒绝、页面组件确认、仅数据路径和共享推荐契约。测试中的小数据是合成功能输入，不是新增环境精度实验。没有发现这两个功能被删除，因此未回退界面或修改算法。
+
+推荐调用实际顺序为file_agent/three_phase按需识别→materialize绑定数据字段→discovery.check本地核验与可执行入口→recommendations.make_request生成allowed_recipes→DS在目录内提议。recommendation_only/advisory_only条目可能在条件尚待确认时显示，但步骤为空且界面禁止作为可执行项勾选；不能把显示推荐等同已经具备融合条件或证明融合有效。进入搜索的具体推荐还须validate_recommendations契约检查和真实评分，只有通过者进入推荐父代池。
+
+当前这条空间/仅融合路径使用共享random_graph_search随机图变异，包含来源、参数、结构及删除/重组，真实执行后在统一目标/队列上取RMSE最低合格图，受预算及去重约束；不是全库任意算法排列，也不是本轮已证明的全局最优GOLEM。仅数据模式默认不套目标模型画像，模型特定软引导依赖明确目标模型契约。框架可用于工程筛选，但复杂度近似优先当前仅采用浮点容差，缺少实际最小收益/稳健性通过门槛，因此0.63%微弱优势仍可能选中复杂方案；3日负结果和代理参考限制保持。复核不反馈反复调权，不能将预算内选优说成精度优势已证实。最少输入转换仅承诺所请求的已支持组件，不等于DS能补造完整工程；关键物理定义、位置、时间或必要目标资源缺失仍应明确阻塞。
+
+### 独立仅转换入口与算法选择说明（2026-11-22）
+
+用户授权增加直观的仅转换入口。本轮在现有首页目标模型旁增加“仅转换（不融合、不搜索）”勾选项；保留原仅数据处理及原模型流程。勾选后需明确目标模型，直接登记目录并到第二步确认转换范围，不要求先配置DS，不调用融合推荐、自动融合、评分或变异。切换模式作废旧输入/方案状态，防止借用旧结果；仅数据处理与仅转换不能静默混用。
+
+复用desktop/service.run_original_workbench(declared_only=True)、normalize_archives、component_service.prepare_components、minimum_inputs及final_check.attach_final_check。仅增加公共组件分支的明确缺项提示与最终本地核验，不重写任何转换内核，不构造完整工程；网页/工具包可调用同一已有公共服务参数。最低关键单位、时间、坐标和任务资源仍必须真实具备，非关键补齐继续使用原机制。已知组件契约之外返回缺项/不支持，不回退到融合或搜索；不宣称任意数据均能无配置转换。
+
+新增test_conversion_only_entry.py验证五项行为：实际原生组件写出与ZIP回读；首页无API→第二步确认→真实组件转换；模式互斥；关键时间信息缺失拒绝；无目标模型拒绝。测试显式禁止调用融合入口/搜索/线上send，以确认不是仅隐藏按钮。首次测试钩子错误引用prepare_uploads所在模块，已修正为automatic_preparation，失败日志保留，没有放宽生产条件。与最少输入、确认流程和候选导出回归合计25项通过；补充界面与选型展示回归21项通过，两组按测试身份去重共41项。未重复无关全量回归或降水实验。
+
+可见Qt/QTest另完成两次有界功能验收：输入明确标注的合成日降水1/2/3mm、真实SWAT+ .pcp写出、格式检查PASS、工程NOT_REQUESTED、导出按钮实际点击并ZIP全读；未发DS请求、未融合/搜索、原输入SHA不变。路径及保存目的地程序提供，不冒称原生文件选择器或环境精度验收。首轮发现空方案区使用暗色默认背景，已复用现有卡片容器显示转换步骤/待检查条件，并修正容器背景；最终visible_v2/confirmation.png已回看。输出验证记录在output/conversion_only_20261122（source_before、tests01/02/03.xml、visible_v1/v2、conversion-result.zip）。当前真实格式功能验收为SWAT+降水组件；其他模型仍按原有已注册组件契约开放，不冒称此次逐一重跑。
+
+普通融合流程第二步方案勾选仍保留，第三步可导出已评价候选的选择机制仍在，相关回归通过；某些任务合法配方只有一种，不能承诺全库任意选算法。仅转换模式不显示融合算法候选是范围约束，不是功能丢失。“选优不够稳”仍指小幅验证改善不能稳定迁移到其他日期/区域，不是界面随机崩溃。本轮没有修改原评分、权重或变异策略，不能把新入口验收当成选优稳健性已经解决。变更仅限__main__.py、service.py、新增定向测试和本总报告；未自动推送GitHub。
+
+
+### 跨变量尺度对齐与日期—区域评价闭环（2026-11-22）
+
+本轮按用户授权修改公共对齐与评价机制，保留仅融合、仅转换、最少必要输入转换、全部旧协议和输出；没有下载数据、扩展算法库、训练新模型或重跑历史大型对照。适用AGENTS的旧合并任务限制与本轮明确授权冲突的部分，以本轮授权为准。当前源目录不是Git工作区，本轮尚未同步GitHub。
+
+**复用及来源。** 复用SemanticCrossScaleStackPlugin、GridRegridder、SemanticTimeResampler、Registry中已有scale.semantic_stack、公共platform_search、空间关系执行器、固定空间块及独立评价队列。查阅并沿用已安装的[xarray-regrid](https://github.com/xarray-contrib/xarray-regrid)关于连续量、保守平均、分类变量的不同处理；参考[blockCV](https://github.com/rvalavi/blockCV)和[scikit-learn GroupKFold](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupKFold.html)的数据依赖分组原则。没有复制新的优化器，也没有宣称地理分块本身就消除了相关性。
+
+|改进|公共修改及真实消费者|验收|
+|---|---|---|
+|跨变量尺度匹配|algorithms/cross_scale.align_variables与platform_search.process_cross_variable；desktop/discovery按DS已建议的align_space/align_time做实际契约核验，recommendations把真实可执行组合送DS，selected_processing/pair_processing和工具包调用同一公共函数|PASS：同网格保持、不一致网格重映射、不同单位保留、不允许跨物理量直接平均；页面处理函数/工具包产品一致|
+|目标网格|原pair_processing.grid_plan的几何实现移到spatial/regridding.common_pair_grid供公共层复用；明确目标优先，否则仅采用共同覆盖的较粗工程网格|PASS；不能自动推断精度最优分辨率；双轴粗细交叉、曲线网格或未声明垂向层仍须明确适配|
+|时间支持|复用原SemanticTimeResampler，各变量保留瞬时/平均/累计语义；只取实际共同时间，区间量校验time_bounds|PASS：不同变量不要求换成相同单位或物理量；UNKNOWN和不匹配区间拒绝，不猜时区或填造扫描|
+|多日期多区域选优|spatial_selection_protocol.blocked_validation由spatial_fusion_task.execute实际消费。新默认selection_policy=date_region_v1，按日历日期×地理块等权平均块RMSE作为真实objective；总体RMSE、MAE、Bias和覆盖率另报|PASS：不是按小时条数假装多日期；密集区域不自动占更高权重；失败预测不能丢弃难样本；保留区标签改变不影响适配/选型|
+|公平与兼容|硬质量门、目标网格、同一有限参考掩码、训练状态和预算保持；可显式selection_policy=pooled_rmse_v1恢复旧汇总目标|PASS：无多源奖励，无按复核结果反复调参；新默认目标会改变后续部分排名，旧结果不改写|
+|可见解释|service.fusion_evidence、result_summary、output_review显示实际选优指标与汇总RMSE的区别，传递逐日/区域结果及配对变化；DS公共工作规则说明不同变量可对齐、不可直接平均|PASS：共享显示函数已接入；本轮未做当前桌面完整人工点击验收，不能等同视觉验收|
+|压缩工程NetCDF读取|ProjectFiles.netcdf统一暂存当前选定成员，用现有netCDF4路径后端并在上下文结束清理；工程来源、端口、组件、task_dispatch和原生字段读取复用|PASS：修复WRF压缩成员上的HDF5反复seek卡顿；错误路径清理测试通过，非包名补丁|
+
+**协议与评价含义。** output/cross_variable_validation_20261122/protocol.json在数值运行前固定种子11、24次提议、150次搜索内核调用、230次总调用和60秒上限。新目标为 J = mean_{有实际参考的日期、区域}(RMSE_block)。不同来源数量不进入J；所有候选使用完全相同的参考掩码与块。仍以真实执行反馈选型，DS只能在已登记适用方法中推荐，不能提交误差或赢家。仅3个相邻日期不具备独立统计重复；报告块间变化，不将块标准差当置信区间，不承诺更稳就一定更准。没有新设“多源必须胜过单源”的门槛。原总体RMSE和原旧协议可复现语义保留，但新J与总体RMSE不是同一个数值。
+
+**真实降水链路。** 复用已规范化的NASA POWER和CMORPH全部3个共同日期2018-02-03至05、同一0.1度目标网格及坐标分组，参考为全部来源先降采样后的原细产品，不是独立雨量计真值。原先已暴露的数据仅作探索性开发验证。DS官网调用成功，推荐3条已有组合，三条均经真实契约及数值验证通过后进入推荐父代。共享随机图变异实际评价17图、24次提议，72次搜索内核调用、1次部署调用，失败调用0；不是官方GOLEM的新优越性实验，也不是全局最优证明。DS推荐耗时8.34秒，搜索服务账本约1.35秒（不含DS与输入准备）。原始输入不变；输出3×30×25格点，非负、有限并实际回读。
+
+|同一选型队列279个样本|日期×区域等权RMSE（实际J）|总体RMSE|MAE|覆盖率|
+|---|---:|---:|---:|---:|
+|最佳已执行单源|9.400280|13.008556|7.396436|100%|
+|最佳已执行多源|10.846348|16.751142|8.660685|100%|
+
+选中单源7d1e002146f28d3bb60b。冻结后的区域复核81样本：单源RMSE17.200079，多源24.065388；不反向用于选图。多源只在36个日期×区域块中的9个块降低误差，不能声称稳定融合增益。不同于历史固定0.75/0.25混合，本轮最佳已执行多源是另一条真实评估路线，不能把不同候选和不同目标的误差变化解释成单一机制因果优势。保留旧17%负结果及原报告。最终源码下另外只执行已冻结的2图检查（0提议），指标与本次搜索完全一致；后续新增配对展示仅重算保存的真实预测，不增加搜索或改选图。
+
+**真实跨变量案例。** 使用data/basin_ecology_2013_2017/prepared_v1/standardized.nc中既有真实地形协变量dem与slope，按行列顺序取第一个两者均有限的8×8窗口（只依据覆盖，不依据误差）。通过公共服务分别重网格至明确0.02度目标，各输出2×2，保留m和degree，保守平均保持各自物理变量。输入及输出SHA256、选窗规则、实际算子、单位和回读记录见real_cross_variable_acceptance.json。该数据为既有准备产品，不冒称新原始实测；该案例证明对齐和数据依赖，不证明跨变量融合改善精度，也不宣称这个目标尺度最优。
+
+**桌面WRF原包。** WRF4.8_Jan2000_12h_native_inputs.zip共3个成员：namelist.input、wrfinput_d01、wrfbdy_d01。初始尝试在压缩成员的h5netcdf维度读取中卡顿/异常，有限诊断发现多个公共消费者仍直接使用ZIP流；失败日志保留。公共ProjectFiles路径读取修复后，原包从同一桌面处理函数完成ENGINEERING_BOUND，并保留实际绑定及最终检查记录。不是融合或转换完成：该包未包含另一个独立来源及验证观测，本次没有数值融合、没有原生字段更新或WRF运行。当前输出为绑定报告包，不含原生工程副本，最终格式UNKNOWN、工程FAIL、模型NOT_RUN；该FAIL是交付包不能作为可运行工程验收，不能据此断言原始wrfinput/wrfbdy文件损坏。本轮不复制原文件来制造“已转换”。原ZIP SHA256前后相同。详见wrf_native_audit.json、wrf_probe_result_6.json及acceptance_final.json。
+
+**测试及保护。** tests05.xml（44项）、tests06.xml（58项）、tests07.xml（11项）去重103项全部通过；另先通过28项受影响空间关系回归，存在重叠，不相加宣传。覆盖跨变量约束、DS建议进入公共门槛但非法混合被拒绝、来源不变、时间支持、固定评价队列、外层隔离、实际父边、组件及既有转换入口。最初pytest默认临时目录权限错误、4项测试预期异常类型错误及WRF失败均保留，不屏蔽。source_before/source_after、source_fingerprints.json、artifact_manifest.json保存修改与产物证据；早期数值运行后的显示代码变化另由最后2图一致检查核实，不声称每次历史运行用了最终显示源码。
+
+复现定向测试：设置PYTHONPATH=src;integrations/existing_air;integrations/local_swat、OPENBLAS_NUM_THREADS=1、OMP_NUM_THREADS=1、QT_QPA_PLATFORM=offscreen，用.venv/Scripts/python.exe -m pytest tests/test_cross_variable_blocked_validation.py tests/test_fusion_evaluation_protocol.py，指定一个新的--basetemp目录。真实搜索请求、推荐、预算、图、逐图预测、产品和独立复核位于three_day_search；真实跨变量产品位于real_cross_variable；原始数据只读。重新运行客户端必须换输出目录，不覆盖本轮证据。
+
+**结论。** 跨变量语义对齐和日期—区域真实评分已进入公共路径；有限真实搜索与产品回读通过，融合没有获胜。不同物理变量的对齐不等于自动发现因果互补，更不等于有精度收益。当前只支持有明确契约的规则经纬网格与时间窗口，不强行将任意WRF曲线网格、多层变量或UNKNOWN语义套入同一算子。当前缺少独立观测及更多独立日期，不能给出普适融合精度或统计稳定性结论。WRF只完成绑定/问题显式返回，未完成融合与运行；不将这一项标为成功处理。未启动正式研究、未自动提交GitHub。
+
+
+### CAMx建议局部恢复与按需表头加速（2026-11-22）
+
+用户提供桌面问题清单的5条结果，并要求减少整轮退回。读取原清单、适用AGENTS、当前总报告及公共调用者后，本轮只修公共识别/绑定/任务准入与I/O；未改科学算法、评分或历史结果。允许“不适用建议局部跳过、其他已满足契约的步骤继续”，不等于允许DS编造单位、CRS、风矢量、观测或真实质量PASS。所有实际处理仍由原公共服务逐项验收；无法执行的操作保持未执行。
+
+|原问题|本轮处理|真实证据及范围|
+|---|---|---|
+|C1 t2↔TMP没有单位|轻量read_header原来手写空单位字段，绕过已有tabular/NOAA复合解码器。现复用tabular与noaa_global_hourly，公共discovery依据唯一、同物理量分量绑定TMP.air_temperature（degC）；可以消费正常DS协议明确的air_temperature声明，保留原字段与重绑定记录|原包重测C1 fusion与compare_station_grid均通过时空配对并进入station_grid候选；这是适用性核验，不是融合已执行或精度提高|
+|C2 u10↔WND|WND是方向/风速等复合编码，不能当数值列，更不能把风速直接当u10。无合法同物理量分量时自动跳过这条错误建议|原包实际检查标为SKIPPED_UNSUPPORTED_PROPOSAL，原始风资料保留；未新增风矢量转换内核|
+|C3臭氧Sample Measurement单位|已从真实表头/前缀明确找到Units of Measure列和Parts per million样本，提取unit_column/sample evidence，不再简单声称用户文件未给单位|该CSV实际2,086,401,212字节；本轮只取16KiB前缀。全评价队列的单位、站点/时区/空间契约尚未闭环，不把样本单位冒称全表一致，不宣称臭氧融合可执行|
+|C4经纬度配对、C5坐标X融合|在公共discovery标为不适用建议自动排除，坐标仍保留用于定位。issues与页面区分“已自动跳过”和“待核实”，不再把它们全算成待用户补填|原包C4排除；C5由相同坐标门与定向测试覆盖，未另提取巨大初始场作无意义重测|
+|整包被无关建议一起否决|页面已识别project/declared工程时，允许继续调用原公共工程核验服务；原服务仍决定每个实际操作的单位/状态/质量与写回条件。没有工程证据的空选择/未知任务仍拒绝|新增Qt处理函数测试证明可进入公共执行函数，不能据此声称产生产品；已有必要阻塞与空状态测试保留|
+
+扫描慢的可确认原因：原file_tools.selected会先完整解出待读CSV，才取前16KiB；每轮工具使用独立临时目录，重复解内层归档并重复扫描tar目录；DS多轮网络等待是另一项成本，不能从本地耗时推定其已消失。现在文本表头在ZIP/TAR中直接读取前缀，保留真实成员大小与原始引用；复用本轮内层归档、tar元数据索引和相同请求的表头结果。会话finally清理缓存，相关输入签名变化拒绝旧缓存。缓存不跨任务滥用；7z保留原读取支持，不虚称它也具备前缀随机读取。扫描器还修复了把不存在属性填为空串导致所有普通变量被误标为quality_flag的问题，仅传真实存在的属性。
+
+桌面原包02_CAMx_两日嵌套工程与站点观测 - 副本.zip实测：NOAA表头约2.11秒，重复表头约0.0007秒；嵌套EPA约2GB CSV表头约2.20秒；955MB气象tgz目录约8.36秒、目标气象NetCDF表头约22.04秒。当前版本一次选定NOAA/气象/EPA表头及C1/C2/C4公共核验总计约42.96秒，其中配对核验约8.90秒；没有DS在线重放、全包融合、搜索或模型运行。当前EPA单位列证据另一次真实读取约2.08秒。均记录会话临时目录已清理。上述是特定本地选定读取的计时，不能承诺完整DS流程恒定几十秒；公共审计另分local_tool_seconds、api_and_orchestration_seconds和cache_hits，避免把API思考算成表头I/O。
+
+定向测试去重55项全部通过（tests04—08.xml），覆盖前缀与真实成员大小、共享NOAA解码、重复请求缓存与类型一致性、内层容器/索引复用、签名变化、正常/异常清理、单位列样本不冒充全表单位、缺失flag属性不误标、未知条件仍阻塞对应操作、已绑定工程局部继续、页面提示区分跳过。初次测试发现缓存JSON往返改变Path类型，已改deepcopy并复测；失败记录保留。修改前后快照、原问题清单、当前行为与源码指纹见output/camx_continuation_scan_20261122。
+
+本轮结论：温度配对的识别/绑定问题已修复，错误风/坐标建议自动排除，已绑定工程不再因无关候选整体退回；表头路径已取得真实局部加速。EPA全队列单位及观测适配仍待完成，不得称5个项目全部完成融合。未运行本次全GUI+DS+融合+原生写回，所以不宣称原包整链已通过。未改原始数据、未覆盖历史结果、未同步GitHub；重新打开桌面平台后再扫描才使用新逻辑。目标是尽量不中断可完成的工作；无法恢复的关键科学条件不能靠默认值强行PASS。
+
+
+### CAMx原包温度实际运行与评价机制核验（2026-11-22）
+
+用户要求用桌面CAMx原包实际运行并检查评价体系。本轮读取适用AGENTS与最新报告，复用上轮真实表头/原始定位和公共discovery、recommendations、selected_processing、station_grid及输出打包器；没有重扫无关变量、展开2GB臭氧数据、增加科学算法、修改原始包或覆盖旧结果。原AGENTS禁止变动评分的旧合并边界，与本轮明确核验评价、必要修复的授权冲突处以最新请求为准。输出目录output/camx_evaluation_run_20261122，旧算法源码及真实旧运行均保留。
+
+**发现并修复的边界。** 当前站点路径原先前半时间拟合均值偏差，后半时间同时用来选择背景/订正和报告收益；该成绩是选型成绩，不是独立复核。本轮在查看新复核结果前冻结protocol.json：共同队列按真实时刻排序，前50%拟合、中间25%选型、最后剩余时刻只复核，至少9个真实时刻；分区边界和算法不依误差调整。完整科学实现仍是已有逐站常数均值残差，不新增算法或调参。另发现最近匹配容差将DatetimeIndex.asi8直接当纳秒，微秒存储会把一小时误作3.6秒；公共matching_tolerance显式as_unit('ns')后计算半步长，保留真实时间标签，不猜时区。
+
+精确匹配与最近匹配的原始队列不同，现由公共common_queue固定所有已登记合法匹配方法共同的station/grid_time与同一观测标签，再拟合与评价。最近匹配本例获得25个站点/网格时刻，精确匹配9个，主比较共同9个；最近匹配只保留36%的已配对时刻进入主比较，已单独记录，不能把共同9点的100%预测覆盖宣传为全文件100%覆盖。缺观测不当真值；背景缺失、未配对、同距聚合及原始匹配数在queue_audit中明列。本例无背景缺失。原同距同站点时刻均值聚合的科学口径保留并记录matched_observations，不把重复报文当独立重复。
+
+**真实执行与来源。** 原包02_CAMx_两日嵌套工程与站点观测 - 副本.zip中的12km t2与NOAA Pittsburgh站TMP.air_temperature，公共解码/质控、摄氏转K、原生坐标定位及实际时间配对后计算。当前选型使用2016-06-10起9个共同站点/网格时刻：4个拟合、2个选型、3个最终后段。DS官网推荐真实成功（6.91秒），仅接收已登记配对组合和元数据，不接收验证真值。为完整对照，公共执行器实际执行精确/最近两种合法配对及相同背景/订正方案，而非把DS建议当效果结论。此station_grid路线没有变异搜索，不称GOLEM或全局最优验收。
+
+旧协议先实际执行并保留old_summary.json、old_protocol_results.zip：后半5点背景RMSE0.776829、订正0.945657，按该后半数据选择背景；不再把这组数字当独立复核。修正协议的结果如下，温差K与摄氏温差数值相同：
+
+|阶段|实际样本|背景RMSE|订正RMSE|说明|
+|---|---:|---:|---:|---|
+|中段验证|2|0.480795|0.140083|只据此冻结选择订正|
+|最终后段|3|0.922856|1.215468|订正误差增加31.71%，未反向改选图|
+|次日冻结补核|6|1.474479|1.925894|订正误差增加30.62%，不重拟合、不重新选型|
+
+后段背景/订正MAE分别0.748110/0.895188，Bias为−0.194008/−0.814455，R²为−0.906710/−2.307526；次日MAE1.317492/1.549315，Bias−0.926771/−1.547218，R²0.836155/0.720475。共同有效队列上覆盖率100%、执行失败率0%，不等于总体匹配覆盖率100%。全部机器指标见metrics.csv，真实逐行产品为Parquet，压缩包与表格均回读。
+
+次日补核先冻结second_day_protocol.json，读取实际20160611气象文件，核验原生网格签名一致，仅应用已冻结约−0.620447 K的站点偏差和已选方案，剔除与首日复核重叠的午夜，得到6点；没有将次日标签用于再训练。该补核有一个导出索引断言错误：原DataFrame保留过滤前索引而index=False Parquet不保存它，真实数值计算及产品已完成；之后从保留产品回读，用公共apply_frozen_correction逐值重放确认，未重新配对/拟合获取有利结果。原失败日志保留，恢复结果只报告精确匹配路线，不伪称另一条路线也重新执行成功。
+
+**结论及评价解释。** 本次均值订正不稳定：拟合段推导向下校正约0.62 K，中段偏暖故表现改善；后段及次日背景已偏冷，继续减值反而增加偏差。这个数值分解支持“当前常数偏差不随时段适应”，不能证明数据完全无融合价值，更不能证明所有融合方法无效。只有1站、2个选型点、3个后段点和6个补核点，时间相关且历史已暴露，无统计显著性、空间泛化或全新盲测结论。新结果明确标NOT_CONFIRMED；页面按验证误差排名，展示后段误差但不按其重新排序，并说明选中不代表复核收益成立。
+
+**交付范围。** 实际完成公共任务的读取、DS推荐、站点配对、局部订正对照、三段评价、次日冻结补核、Parquet/ZIP导出与回读。选中的局部表格并不等于已更新整个CAMx工程：本轮没有原生网格写回、没有启动CAMx模型，也没有执行臭氧/风分量融合。已验证的是温度这条已通过配对的路线，不是全包全部变量均通过。最终可读产品包CAMx_temperature_evaluation_verified.zip含真实表格和核验记录；旧包与失败记录保留，不覆盖历史结果。
+
+定向测试去重25项通过，包含最终时段标签变化不改变拟合状态/选型、验证可拒绝无益订正、同队列标签一致性、失败预测不得丢弃、us/ns容差一致、页面按验证排序且公开复核未通过。源码修改仅desktop/station_grid.py与output_review.py，另加针对性测试。原运行约63.46秒，修正后公共任务执行约33.20秒，DS耗时另列；这些不是公平速度对照，存在读取缓存和路径差异。次日首次脚本在计时汇总前被索引断言中断，未伪填总耗时。原始包大小/mtime签名前后一致，操作只读，不称完整原包官方校验。未做当前GUI人工全流程或模型程序验收，未同步GitHub。
+
+## CAMx温度分支接回公共变异服务与页面验收（2026-11-23）
+
+本轮对应“温度为什么没走变异、是平台问题吗、把这些问题修正”。旧 `output/camx_evaluation_run_20261122` 的固定订正、失败记录、次日补核和结论全部保留，不把其改称变异结果。新协议、修改前后源码、实际产品和失败日志集中在 `output/station_mutation_integration_20261123/`。只完成有界工程修复，不启动历史全量实验，不恢复已移除的官方GOLEM，也不新增科学算法。
+
+**原因及修改。** 原 `desktop.station_grid.run` 直接循环预登记的时空配对＋均值偏差订正，未进入公共搜索；正常空间搜索确实要求至少三个监测位置，原包只有一个NOAA站。前者是编排缺口，后者是合理的空间留点条件，不能通过把时间当空间或放宽站数来绕过。本轮将原固定入口保留为显式 `run_fixed` 历史/诊断路径，生产fusion入口改为“真实配对 → 共同评价队列 → 公共 paired_station_calibration 适配 → 公共 field_mutation → 原 composition_optimizers.random_graph_search → NumericalDAGExecutor”。这是单位置时间校准，不是区域空间插值验收。新增 `algorithms/paired_station_search.py` 只承担数据、训练状态、端口和独立评价适配；未复制优化器、画像映射或科学内核。
+
+|已定位缺口|公共修改位置|验收及边界|
+|---|---|---|
+|站点温度融合绕过变异|desktop/station_grid.py；algorithms/platform_search.py、paired_station_search.py|原CAMx/NOAA温度路线实际进入公共搜索；空间至少3站要求保留。纯配对/转换不冒称误差搜索|
+|推荐只停留在固定流程，没有成为变异父图|algorithms/field_mutation.py、composition_optimizers.py|推荐先过Registry适用性、实际验证误差和质量门；合格图进入公共变异父队列。真实mutation_trace记录推荐父图→结构插入→执行反馈。多父推荐若无端口绑定明确拒绝，不编造依赖|
+|拟合状态不在真实DAG父边及缓存依赖中|algorithms/autonomous_decision.py|状态边界节点resource.state → 订正节点state端口；实际执行轨迹含状态指纹。修改状态会使缓存失效并改变真实输出；状态来源/训练截止仍由已有PriorSeriesCalibration核验|
+|只有初始化/缓存也可能被误认为变异完成|algorithms/field_mutation.py|另计mutation_actual_new_executions；本适配器要求至少一次真正新变异执行，否则返回MUTATION_NOT_EXECUTED，不以已有产品代替完成。初始化截断限额与种子洗牌写入记录，不声称覆盖全部图空间|
+|页面线程只接收str，公共数值服务发送dict事件|desktop/__main__.py Job|公共后台事件统一序列化后发给页面；批次反馈仍保留原对象协议。定向测试证明事件不再导致类型错误|
+|结果卡旧字段不适配公共数值结果、显示内容容易误导|desktop/output_review.py|实际样本分母denominator映射为展示count，避免渲染KeyError；展示新变异次数、验证误差、未参与选型的后段复核、未证实收益、未原生写回/未运行模型。已用真实结果渲染当前Qt控件并回读ZIP|
+
+**信息隔离及候选。** 沿用前轮同队列：精确配对和最近时间配对先取相同真实站点/时间标签；不以两条配对重复记录冒充独立样本。9个公共时刻分为前4点拟合、中2点验证、后3点仅复核。均值残差仍为约−0.620447 K，以既有 `bias.prior_series_affine` 的斜率1和训练截距状态表示；可识别时提供既有ratio状态，不捏造月系数。未来标签不进入预测源、源身份、拟合状态、特征或候选偏好；完整搜索测试将后段标签加10000后，选图指纹和验证指标不变，只有最终复核改变。无可靠模型软评分证据时本适配器明确soft_guidance=False，仍调用既有硬兼容、真实误差和随机图变异，不宣称实现了温度精度预测。
+
+DS建议复用上轮保存的真实线上响应 `camx_evaluation_run_20261122/ds_receipt.json`，来源明确记录为历史真实响应复用，本轮没有新增DS调用或token。时间配对/单位转换/坐标匹配为已实际完成的前置步骤；“station.bias.holdout”科学含义绑定既有先验订正内核，不把该名称另写为选择规则。推荐不能保证获胜，最终仍按真实验证误差与公共质量门选择。
+
+**原包真实有界结果。** 预先固定seed=11，预算objective_limit=80、total_call_limit=120、proposal_limit=256、wall_seconds=30；初始提议限64，为后续变异保留额度。最终当前数值版本记录位于 `final_acceptance/real_summary.json`、`real_public_client/group-1/mutation/station-1/search/`。实际4个候选评价、3次科学内核调用、1个真正新变异执行、256次筛选/生成尝试，按资源上限停止。两条推荐在共同队列上编译成相同订正图，第二次明确计为缓存复用。真实变异从推荐订正父图出发，将既有ratio候选接为missing_fallback另一父边；下游真实读入父输出，当前无缺失情况下输出等价、没有额外收益，该复杂图未替代更简单的订正图。没有宣称预算内找到全局最优。
+
+|真实指标|最终记录|
+|---|---:|
+|选中订正图验证RMSE，2点|0.140082534 K|
+|选中图后段复核RMSE，3点|1.215467684 K|
+|原背景同后段RMSE，3点|0.922856292 K|
+|选中图相对背景后段RMSE变化|+31.7071%（更差）|
+|后段收益验收|NOT_CONFIRMED|
+
+因此：编排缺口已修复，变异确实运行；该有限数据下变异没有提供精度增益，常数订正在后段仍变差。没有根据复核结果更换种子、权重、站点或重新选图。历史已暴露且样本极少，这不是盲测、显著性或空间泛化证据。
+
+**成本、产品及保护。** 最终公共客户端总耗时约43.47秒，搜索内部约9.41秒；训练状态拟合单列在paired_protocol.json，算法/缓存/失败/部署调用成本见total_cost.json，时间差包括输入读取、适配与导出，不能宣称为纯算法加速。前一次同协议运行和失败日志也保留（首次完整客户端约49.96秒），最终重验是初始化记录字段补齐后的受影响检查，不是增加种子筛选好成绩。产品为K单位、5个应用时刻、1×1真实站点位置的NetCDF（含验证和复核时刻预测），经xarray回读、有限性/单位检查及ZIP CRC；不等于完整CAMx网格产品。最终产品包 `final_acceptance/CAMx_station_mutation_products.zip`。原包size/mtime签名前后一致，只读访问；没有计算并冒称官方整包哈希。
+
+**定向测试与界面范围。** `tests02.xml` 52项、最终受影响 `tests06.xml` 10项、`tests08.xml` 3项，去重57项通过；包括公共推荐父图实际变异、真实状态父边/缓存失效、未来标签完整搜索隔离、共同队列、微秒/纳秒容差、旧站点融合契约、候选导出、Qt控件、预算及现有变异行为。最终结果卡文字变更另由tests09及真实产品回读渲染核对。保留tests04失败：新增检查误读不存在的selected_graph键，修正为公共结果best.key；保留tests07失败：旧进度测试把构造阶段已有“评价依据”也算成候选执行事件，现单独验证初始化消息并比较执行增量，缓存命中仍不得新增执行消息，未删除失败断言或屏蔽异常。初次pytest缓存目录权限警告和第三方弃用警告保留；后续显式关闭pytest自身缓存，不改变产品缓存/数值逻辑。
+
+当前Qt结果卡已使用真实最终产品渲染，截图为 `real_result_cards.png`，只称控件级验收；没有人工从桌面重新选包点击全流程，不冒称浏览器或模型运行验收。页面execute_selected、工具客户端selected_processing.run和适配器共享同一submit_search；Job事件类型与页面结果卡也有定向执行证据。原温度路线不再静默跳过搜索。
+
+**同类入口核查。** `route_audit.json` 明确分层：普通空间/独立参考/站点搜索已有公共调用；本轮只读核查其调用者，不冒称全部重跑。带已提供不确定度的固定加权融合、纯格式转换、统计和跨变量对齐属于明确固定操作，不因此自动获得“搜索完成”身份；无合法评价依据不能制造误差优化。仅一个站的空间泛化、臭氧完整队列、风分量科学转换、整网格写回及CAMx程序运行仍未在本轮完成；不把这些未验收内容改为PASS。后续若要验证区域融合价值，应提供足够空间观测和独立评价支持，不由本轮自动下载或训练补造。
+
+复现：设置PYTHONPATH为src与既有integrations后，运行 `python -m pytest tests/test_paired_station_mutation.py tests/test_station_grid_evaluation_isolation.py tests/test_desktop_process_progress.py`。真实客户端分别为run_real.py和run_real_final.py，输出目录不可覆盖，若需复现应显式提供新的目录。verify_delivery.py仅回读已完成产品、核验指纹和渲染，不重新搜索。当前集成未自动推送GitHub，未启动正式科研实验。
+
+## 分块初筛与冻结方案一次复检接入公共评价服务（2026-11-23）
+
+**范围与依据。** 本轮修复“少量时刻选型后，换时段失效仍被推荐”的评价与交付缺口。选择固定校准状态下的分块验证＋独立后段一次复检：借鉴 [scikit-learn内外层选型/评价隔离](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html) 和 [sktime分窗回测实现](https://github.com/sktime/sktime/blob/main/sktime/forecasting/model_evaluation/_functions.py)，复用平台已有 reliable_selection.aggregate、DatasetReference/SearchValidation、真实DAG执行与质量门，没有复制优化器，没有增加预测算法、学习模型或大型依赖。这里不是每折重新拟合的完整嵌套交叉验证，也不是对效果的事先保证。
+
+新协议和证据集中于 `output/blocked_confirmation_integration_20261123/`；修改前后源码、各次失败和真实运行全部保留。原CAMx包、上轮所有结果及原9点公共队列不变；没有增加随机种子或根据复检调参数。候选和评价逻辑均在公共模块，页面不维护独立评分规则。
+
+|改进|修改及实际消费者|核验|
+|---|---|---|
+|按时间块评价，不再只给单段分数|evaluation/blocked_confirmation.py；公共 BlockedSearchValidation、BlockedReference；field_mutation的实际终端评价入口|按真实经过时间分3个窗口，不按行号或目标数值划分；所有有限参考点必须预测，不能只算成功子集。各窗口RMSE等权平均反馈搜索，另列整体RMSE/MAE/Bias和分母；缺窗口时仅作探索诊断|
+|复用已有多折汇总|调用 reliable_selection.aggregate，RMSE权重1、物理单位尺度1，不借用NDVI专用校准阈值|受控功能输入证明：关闭分块时选择整体RMSE更小的B，启用分块后选择跨窗口平均RMSE更小的A；真实Executor计算，不是仅写日志。人工测试算法只存在于测试内，不加入平台算法库|
+|冻结后一次复检|field_mutation在读取外部复检前写selection_freeze.json；paired_station_search调用公共review|复检时刻必须与初筛不重叠且严格在后；变量、单位、队列和分母必须匹配。禁止用同一批标签既选型又声称独立复检。只评价一个冻结候选及其固定背景对照，不重新挑候选或重抽样|
+|推荐与执行成功分开|公共review及paired_station_search默认协议blocked_confirmation_v1|要求两阶段每个窗口至少2个真实有效时刻、整体分块损失严格改善、各块RMSE及MAE均不恶化、质量门通过。最少支持仅是预先固定的保守工程规则，不是统计置信门槛。复检无收益、证据不足、质量失败和搜索未完成分开记录|
+|不可靠增强不成为默认交付|推荐关卡不通过时保留已通过质量门的source基线，另存candidate_product与冻结候选图|不是把复检最好的另一候选重新选为赢家。没有安全合格背景时明确失败，不用未验收来源兜底。候选仍保留供探索查看，默认产品为背景，不改原始输入|
+|页面与下载一致|desktop/output_review.py、result_cards.py、station_grid.py|显示“背景保留、增强未推荐”及原因；默认保留不写成“本次最优”。下载包同时含明确分开的背景产品、探索候选、图、冻结与复检记录。实际Qt结果处理函数与导出处理函数用真实产物通过，不冒称人工全流程点击验收|
+
+**冻结规则。** 协议版本blocked_confirmation_v1，3个等实际时长窗口，每块最低2个不同有效时刻，独立后段同样核验；零损失附近不计算不稳定相对收益率，仅采用机器舍入容差比较，未手填经验收益分数。原数据仍前50%拟合、中25%选型、余下后段复检；固定拟合状态在验证各窗口间不更新，复检标签不进入状态、特征或候选生成。窗口离散程度明确不称置信区间，窗口也不当作独立重复样本。当前最少支持规则很保守，但通过也只表示在这些观测窗口内成立，不能保证未来季节、区域或模型效果。
+
+**原CAMx/NOAA真实验收。** 最终证据为 `real_verified/summary.json`、`public_client/group-1/mutation/station-1/` 与 `CAMx_blocked_review_products.zip`。使用原DS真实响应复用，不新增线上调用；seed11，原budget80次搜索内核/120总调用/256提议/30秒保持不变。本次仍实际评价4个候选、科学内核调用3次、新变异执行1次。算法没有被换成有利的新方法，冻结候选仍为先验均值偏差订正。
+
+|项目|结果|
+|---|---|
+|原公共观测队列|9个时刻，4拟合／2初筛／3后段复检|
+|初筛窗口有效时刻|1／0／1，达不到每窗口最低2时刻|
+|后段窗口有效时刻|1／1／1，同样不足；且2个窗口误差变大|
+|候选初筛整体RMSE|0.140082534 K（探索诊断，不是可靠收益证明）|
+|候选后段整体RMSE|1.215467684 K|
+|背景同后段整体RMSE|0.922856292 K|
+|增强推荐状态|EVIDENCE_INSUFFICIENT；后段stable_gain=false，改善未证实|
+|默认交付|BASELINE_RETAINED；背景后段RMSE仍为0.922856292 K|
+
+正确变化是拒绝不可靠的增强推荐，不是把融合本身改好了。候选相对背景变差31.7%的事实仍保留；不能把回退到背景称为新融合精度提升。新机制也不声称这份只有一个站、少量历史已暴露时刻的数据具备统计确认能力。初筛可在有限预算内继续作探索搜索，但不能凭产生了产品就自动获得推荐身份。
+
+**行为测试与兼容。** 去重45项通过：tests06.xml为25项，tests04.xml为15项，tests07.xml为5项；包含块评分真正改变执行器选型、同队列与失败预测、微秒/纳秒一致、重复/非递增/数值伪时间拒绝、不规则时间按实际时长划块、初筛与复检重叠拒绝、单块恶化不得被整体平均掩盖、证据不足不得通过、质量门、预算中止、冻结先于读取复检、改变后段标签不改变搜索选图、默认背景产品真实回读、状态父边和缓存、旧变异与候选导出/进度。另完成当前Qt Window.show_result与export_now真实函数验收、ZIP CRC及默认产品逐值对比背景；截图current_result_page.png。未进行人工从桌面选包点击验收，未运行CAMx模型、未原生整网格写回。
+
+保留最初tests01失败：测试构造的参考与输入共用数组，修改预测同时修改了后来创建的旧评价参考；修正测试夹具深拷贝后复测，不屏蔽断言。另有一次PowerShell生成客户端的引号错误，发生在真实执行前，未生成结果，已改用保存的Python客户端。最终验收脚本verify_delivery.py只回读已完成结果、验证默认导出、渲染与存档，不再搜索。旧接口SearchValidation和未传自定义评价器的GraphMutation保持原行为；站点历史复现可显式传evaluation_protocol=legacy_single_v1，其旧评分和交付行为有单独回归，不改写原历史报告。
+
+**支持边界与成本。** 新评价器是公共接口，可用于有合法时间参考的字段任务；默认推荐关卡本轮实际接入站点—网格时间校准公共适配器，页面/工具包调用同一submit_search。既有空间留站、无真值产品重建代理、纯转换等不被强行改成时间分块精度检验；没有参考观测时，不能伪造这套精度复检。本轮没有用一个CAMx样例冒称所有任务均已完成新关卡验收。
+
+最终客户端总耗时约12.38秒，搜索内部约2.27秒，拟合与调用明细另见paired_protocol.json及total_cost.json；读取缓存和环境状态不同，不用于宣称速度收益。三次有界真实运行分别保留于real_acceptance、real_final、real_verified：后两次用于时间标签/隔离校验及最终版本确认，不改种子、预算、窗口或收益要求，所有负结果保留。未修改第三方源码，未重跑历史大型对照或穷举，未自动同步GitHub。修改前后源码与SHA256、产品回读、当前GUI处理函数和下载证据统一见acceptance.json。
+
+复现定向测试：`python -m pytest tests/test_blocked_confirmation.py tests/test_paired_station_mutation.py tests/test_station_grid_evaluation_isolation.py tests/test_desktop_process_progress.py`，沿用项目src与integrations的PYTHONPATH。真实客户端run_real_verified.py使用不可覆盖的新目录；再次复现应显式指定另一个新目录，不覆盖已保存的本轮记录。
+
+
+## 通用融合入口的任务分块复检与安全交付验收（2026-11-23）
+
+**本轮范围与结果。** 修复上一节只将新推荐关卡默认接到站点时间校准的限制。复用原有时间、空间留站、日期×区域评分、任务匹配缺失模拟、真实图执行和质量门，不新增科学算法、不下载数据、不调参争取多源获胜。公共服务版本为 `unified_fusion_review_v1`，基础关卡规则仍为 `blocked_confirmation_v1`；历史文件与旧结果全部保留。证据集中于 `output/unified_fusion_review_20261123/`，机器验收入口 `acceptance.json`。
+
+|入口/任务|公共衔接及实际消费者|本轮证据|结论及边界|
 |---|---|---|---|
-|大包与身份／单位／时间／质量|已有|复用公共normalize、SHA、NOAA字段QA、UTC及K单位；不设案例大小阈值|PASS；资源不足仍会拒绝|
-|模板至真实执行|只有盘点|engineering/schedule.py连接现有Csh解析、f90nml和project_binding，声明前序状态依赖|PASS；有限语法，不是任意Shell执行器|
-|等价及冲突配置|多份MPI／noMPI模板|按实际科学参数判等，科学配置冲突明确拒绝|PASS；不凭文件名猜选|
-|多日／嵌套网格|唯一二维路径|逐运行段／端口处理，核对时间覆盖、网格倍率／父域、跨文件重复时刻一致性|PASS于当前二维气温契约；未声称所有变量通用|
-|缓冲格与有效网格|把NCOLS当存储长度|按NCOLS_BUF／NROWS_BUF／XORIG_BUF／YORIG_BUF和实际X/Y单位、维度验证；有效计算区外不更新|PASS；不裁剪或改工程尺寸凑形状|
-|稀疏观测|现有凸包法不适用单站|通用collocation定位同刻同量观测，以已有残差差分／相加内核作最邻近原生单格局部校正|PASS局部处理，不是全域重建|
-|多文件原生写回|已有单文件writer|依赖副本、逐文件写回、控制重定位、独立SciPy读回及完整ZIP验证|PASS；非原生模型求解|
-|3D耦合／动力平衡／求解|未证明|不伪造层间转换或重启产物，其他字段保留|未验收／未运行|
+|站点—网格时间校准|paired_station_search → platform_search.submit_search → 公共review；子任务交付状态向父任务汇总|原CAMx/NOAA真实队列重新有界运行，paired_CAMx|功能PASS；9时刻支持不足，背景保留，不推荐增强|
+|站点、站点+背景、协变量空间估计|SpatialTask已有留位置和日期×区域指标 → 冻结候选/单源对照 → review_spatial → 公共finalize|3个真实西澳站点的90日降水与ERA5；station_grid/auxiliary的定向行为测试|公共路径PASS；真实3站不足以留出可靠独立区域，EVIDENCE_INSUFFICIENT；不能宣称空间精度改善|
+|多格点产品、仅融合|既有面积降尺度重建协议与外层空间留块 → review_spatial；不是拿未变化原产品与自身比误差|原Saguling两份降水产品、3个现有共同日期；页面函数和JSON工具包真实执行|PASS；产品重建参考，不能替代独立雨量真值；冻结最优与单源对照相同，NO_STABLE_SELECTION_GAIN|
+|多源字段缺失恢复|task_validation.reserve_review整体封存外层日期/位置，遮挡别名及重算特征，重新生成内层任务匹配队列；field_mutation真实执行冻结图及对照|真实WA站点与ERA5的恢复任务；独立三季边界夹具实际执行外层图|PASS；真实短序列只形成两个合法任务匹配案例，不能强造第三个，明确证据不足；功能夹具不作环境精度证据|
+|合法外部验证与复检参考|SearchValidation在公共入口转为任务适用BlockedSearchValidation，冻结来源对照后一次后段复检；真值仅在评价侧|真实WA前30日可见、随后30日选型、最后30日复检，背景全90日|PASS；验证与复检均有3个合法时间块；未通过收益稳定性关卡，保留冻结背景|
+|固定不确定度加权融合|pair_processing直接融合后调用同一模块engineering_review；不编造搜索或真值|确定性覆盖/不确定度正负边界测试|工程检查PASS；没有独立真值时明确ENGINEERING_ONLY，不能称误差下降|
+|旧Profile/Autonomous等诊断/归档入口|统一finalize必须返回复检状态；显式legacy_v1保留旧数学与产品，状态LEGACY_NOT_REVIEWED|旧paired协议数学回归、公共入口路由测试|兼容PASS；缺合法隔离队列的旧模式仍是探索性，不能冒称新独立复检已完成|
+|页面、工具包与模型包装|search_page.process_search_upload及submit_file_request共用submit_search；local_search、模型native_meteorology/native_reference/engineering.search_bridge经既有公共链委托，不另立评价规则|真实页面函数/工具包同seed同请求的图、指标、关卡及产品逐值一致；当前Qt show_result/export_now|函数级PASS；未人工浏览器全程上传点击，未重跑五个模型原生模拟|
 
-成熟成果核对并复用现有依赖：[f90nml](https://github.com/marshallward/f90nml)负责Fortran读写；[CAMx官方NetCDF说明](https://www.camx.com/Files/CAMxUsersGuide_v7.20.pdf)明确缓冲维度／原点字段，[官方嵌套说明](https://www.camx.com/files/camxusersguide_v7.10.pdf)说明气象输入需要缓冲格。复核了[官方推荐PseudoNetCDF](https://www.camx.com/download/pseudonetcdf/)及[源码](https://github.com/barronh/pseudonetcdf)；本包实际为NetCDF3，继续用现有netCDF4无损副本写回、另用SciPy独立读取，不为复用之名改成另一格式，也没安装大型环境。来源及使用边界见sources.json。
+**实施及安全边界。** 公共实现位于 `evaluation/blocked_confirmation.py`；编排接入 `platform_search.py`，任务适配在 `spatial_fusion_task.py`、`field_mutation.py`、`task_validation.py`、`paired_station_search.py`。复用原图缓存与执行计账，新增外层审计走同一总调用额度。空间复检要求位置不重叠，时间复检要求严格后段，时空任务同时满足；不能随机拆同站同日像元当独立复检。完整共同评价队列必须全部预测成功，块数量、身份、参考指纹和分母必须一致。要求整体分块损失严格改善且每块RMSE/MAE不恶化；这是保守工程筛选规则，不是统计置信界。依据任务类型选择轴，未将小时控制节点限制推广为全平台时间限制。
 
-### 原包实际执行与独立验证
+多源恢复的外层参考在搜索前整体从输入、同值别名和特征上下文封存；仅在能够重建至少两个合法内层案例时保留外层。重新规划若失去任务支撑即返回证据不足，不降级成随机点验证。为防新公共入口初始化先耗尽全部提议，现代默认初始化最多使用min(64,提议额度/3)，保留同一种子洗牌，内层循环达到上限即停；显式归档协议保持原行为。不是扩预算或增加算法。字段应用契约另修复一处名称混淆：明确声明的physical_variable作为standard_name，字段别名不再被误当物理量；真实物理量冲突仍拒绝。
 
-使用桌面02_CAMx_两日嵌套工程与站点观测.zip，原始3,292,398,499字节。首次外层规范化历史收据保留；本轮先核对原包SHA及既有expanded_inputs.zip完整SHA，再把完全一致的规范化文件交同一prepare_uploads入口，没有再解包16GB或更换资料。未修改用户数据。两份等价官方job声明2日、2网格；实际47个BOUND引用、45份唯一依赖、2条GENERATED_DEPENDENCY。首日冷启动、次日重启顺序保留；2个生成依赖只登记为模型运行屏障，未伪造文件。f90nml重新读取派生控制，47条输入指向真实复制资源，除路径外科学参数不变。
+**真实结果与负结果。** 最终固定seed11、80次搜索科学调用上限、120次总调用、256次提议、30秒；3站空间案例提前声明为80/180/100/30秒。全部保持原数据、日期窗口和质量门，没有为了收益换种子或重抽参考。
 
-NOAA资料唯一站点1个，65行中63条通过原QA、2条拒绝；只使用原生UTC整点实际存在的观测。15个独立匹配时刻，两个域合计30个唯一网格－时刻。跨日00点在相邻文件均存在，因此四个文件更新数相加32，不冒充32个独立观测。偏离原生时刻的报告没有挪时、平均或借值。局部定义为 b(cell)＋[observation−b(station)]，b(station)由实际网格双线性采样；只将该点残差转移到有效支持内的最邻近原生单格，不把一个站扩散到全域，不宣称格内或域内独立精度。
+|案例|实际结果|默认交付|
+|---|---|---|
+|CAMx原9时刻队列|候选后段RMSE 1.215467684 K，背景0.922856292 K；仍变差31.7%，并且各时间块支持不足|BASELINE_RETAINED；不是融合精度改好了|
+|WA真实90日任务匹配恢复|只得到两个合法匹配案例，达不到“2内层+1外层”|证据不足；保留质量合格基线与探索候选|
+|WA真实外部时间留块|分块选型平均RMSE变化−0.065788408 mm，但前两个块变差；冻结方案复检平均块RMSE变化+1.092398871 mm，未稳定改善|NO_STABLE_SELECTION_GAIN；保留预先冻结的来源s1，不用复检重新选另一张图|
+|Saguling两产品3日空间重建|选图与冻结单源对照相同，选型及复检目标差均为0|NO_STABLE_SELECTION_GAIN；细网格产品保持目标范围，参考是产品而非独立实测|
+|西澳3站空间融合|真实执行69次搜索内核、5次部署、12次审计，总86次；只有3个位置，无法形成规定的独立外层位置支持|EVIDENCE_INSUFFICIENT；背景保留，增强另存|
 
-|原生文件|存储形状T×L×Y×X|更新数|最大绝对变化K|独立读取／质量门|
-|---|---|---:|---:|---|
-|36km，2016-06-10|25×1×91×158|9|1.517120|PASS|
-|12km，2016-06-10|25×1×149×152|9|1.824036|PASS|
-|36km，2016-06-11|25×1×91×158|7|2.846283|PASS|
-|12km，2016-06-11|25×1×149×152|7|2.255188|PASS|
+上述WA实例说明新关卡能拒绝“平均初筛略好、分块不稳定且后段更差”的推荐；不证明未知未来场景一定准确，也不证明任一融合算法优于单源。真实站点日降水使用已保存metadata的24h ending 09:00 Australia/Perth（01UTC）定义；空间端口原要求按区间起点标记，客户端将真实区间的端标签统一改记同一区间起点并提供86400秒及bounds，数值与覆盖时段未改，没有伪造UTC零时日界。第一次客户端未补bounds、第二次漏interval_seconds，均保留失败记录，未修改科学内核放宽门槛。
 
-12km有效计算区147×150与存储149×152的差异由原文件BUF字段及官方格式共同证实；没有修改控制尺寸。四文件均保持NETCDF3_CLASSIC、全部非t2数组与属性、原TFLAG、未处理位置和缓冲格。独立scipy.io.netcdf_file逐变量对照原副本，核对局部输出与真实残差计算吻合。观测／背景／残差／更新／质量节点的真实父边和指纹保存在四份processing_*.json；没有旁路替代上游。
+**页面、交付与成本。** 不可靠增强不成为默认产品，另存exploratory-candidate；共同基线必须满足原质量门和完整目标范围，不能最后插值扩大范围凑回退。`delivered_graph`、`delivered_best`与实际产品绑定，稳定性诊断也读取交付图；Qt候选卡片显示“默认保留”，不再把回退称为“本次最优”。完整摘要、冻结图、失败、指标、review_service及成本均写入结果下载；给DS的新增复检信息只传汇总，不将参考日期、坐标、真值或训练状态路径送入候选提示。
 
-真实公共处理（含依赖复制、压缩、CRC、输入哈希与读回，初始原包／规范化SHA预检查不计其中）耗时235.89秒。每个DAG节点的真实耗时、缓存命中单列delivery_receipt.json；工程I/O不伪装成算法运行成本。交付包3,312,825,859字节，45份绑定输入累计10,762,664,386字节；生产端CRC、逐依赖SHA和客户端再次CRC均通过。最终ZIP SHA256为1165da1e936719d15380dc3c1682f17fc1cf0edf9d8447e538d59371f00631c9。结论PROJECT_UPDATED、native_writeback_verified=true、native_model_executed=false、native_ready=false。该包是绑定依赖与更新原生输入，仍须合法运行CAMx才会生成后续重启状态，不是已完成模拟的结果。
+最终公共客户端墙钟分别约12.63秒（CAMx）、5.09秒（WA恢复）、2.70秒（WA显式留块）、6.41秒（Saguling）；受缓存、测试并行及文件读写影响，不宣称速度提升。`summary.review_cost`记录含数据准备/后端/最终关卡的公共服务墙钟，`total_cost`继续分列真实科学调用、拟合、部署、审计和缓存；来源边界节点本身可真实执行而没有科学内核调用，不能把该0计数伪称没执行，也不能计作新增算法运行。原完整包不重新下载、不改写，CAMx复用已有真实配对表及原NOAA坐标。
 
-站点经纬度按EPSG:4326作明确操作约定，原生投影复用CAMx球体LCC。站点测量高度／地形代表性与2米场的可比性没有独立核实；这是探索性局部校正，accuracy_improvement=NOT_ESTABLISHED。单站不满足既有全域凸包插值，也无独立留出气温真值，因此不计算或伪造融合精度提升。三维气温、风场、湿度、排放和臭氧均未改；臭氧观测未冒充额外气温站。没有认证3D物理平衡、任意投影、移动网格、任意脚本或五模型全功能通用。
+**测试与失败保留。** 最终去重110项定向测试通过，0项未解决失败。详见tests05/06/07/08.xml及acceptance.json，覆盖同队列、空间/时空隔离、未知与不完整参考、真实父边、别名遮挡及特征隔离、输出范围、预算、缓存、旧协议、候选导出及页面进度。tests05/06新功能夹具失败为180帧特征准备已耗尽20秒服务预算，科学执行尚未开始；固定该功能测试的60秒额度后tests07通过，未修改真实验收预算。另一次断言错误地要求来源边界图必须增加科学内核调用，改为严格检查真实执行trace、PASS及实测指标，不强迫复杂图。早期夹具季节支持不足、缺bounds/interval_seconds、客户端导出把嵌套路径送入只接收平面文件名的下载函数等失败均留档；客户端导出改为既有公共包协议的平面产物，不为单包放宽安全检查。第三方弃用、空梯度诊断及既有pytest缓存目录权限警告保留，没有屏蔽失败测试。
 
-### 测试、失败保护与交付路径
+当前Qt结果/下载函数用真实Saguling产物验收并回读ZIP，截图 `client_acceptance_final/current_qt_result.png`，导出 `desktop_export.zip`；只是函数级GUI验收，不冒称人工浏览器上传全流程。字体预览最初缺字，验收进程显式载入本机微软雅黑后重新渲染；未改平台布局。页面函数和工具包的两次真实搜索保留于client_acceptance/page和toolkit，后续纯显示修复仅回读这些结果，new_searches=0，不冒充新数值执行。
 
-55项新增及受影响定向测试通过，0失败、0错误、0跳过（tests_final.xml）；未跑无关全量回归或任何正式搜索实验。测试含真实父边消费、上游改变下游响应、局部有效域／缓冲掩码、无背景／域外／同格重复观测拒绝、不递增时间拒绝、重启依赖、等价／冲突控制、缓冲网格与原生限制写回，以及另一日期／名称／尺寸的纯namelist双网格公共入口合成工程。合成测试仅证明行为，不是环境精度证据。既有页面绑定测试也通过，但本轮没有浏览器提交这份3GB包，不把AppTest当浏览器验收。现有页面与工具包仍共同调用prepare_uploads，无新界面或用户配置。
-
-保留首次缓冲形状冲突、第二次新增编排中年份变量覆盖y坐标造成的异常、初次DAG外部Artifact类型错误，以及pytest旧临时目录无权限的失败；分别按BUF契约、消除变量遮蔽、已有Artifact协议和新的测试临时目录修复，没有隐藏异常或删除失败。独立验证脚本初次将JSON中的numpy整数序列号当索引失败，其后显式转整型再核验通过。普通namelist双网格的绑定结构差异另由最终新增测试修复；真实v3源快照保留，最终差异不影响已执行模板路径，未重做大包处理凑次数。
-
-源码修改：src/ecodata/models/camx_templates.py、project_binding.py、native_meteorology.py、algorithms/automatic_preparation.py；新增models/engineering/schedule.py、meteorology_schedule.py、collocation.py及algorithms/collocated.py；测试tests/test_generic_engineering_execution.py。此前archive_preflight的可选资源限制修正保持。历史协议、数据、结果和修改前快照未覆盖，不删除更多数据。
-
-证据总目录：D:/codex/EcoDataEngine/output/generic_engineering_execution_20261105，含before/、real_v3_source/、real_v3_input.json、real_v3_result.json、delivery_receipt.json、mechanism_audit.json、sources.json、independent_native_readback.json、tests_final.xml和全部失败日志。实际产品：real_v3/EcoData-updated-project.zip；真实原生副本：real_v3/native_project；逐图与产品：real_v3/meteorology_schedule。最终版本再保存final_source/及逐文件SHA。当前D盘可用约34.88GiB，清理量0。
-
-复核命令：.venv/Scripts/python.exe output/generic_engineering_execution_20261105/verify_native.py；定向回归命令及JUnit已在tests_final.txt/xml中固定。真实入口复现脚本run_real_v3.py使用经SHA验证的原始规范化文件，重新执行须另设新输出目录，不覆盖real_v3。运行目录及协作checkout同步本次代码；未推送GitHub，教师旧免安装ZIP未重打包，不将旧发布包当作已更新。
+**复现与未验收。** 使用项目.venv及src/integrations的PYTHONPATH；逐用例命令、输入哈希、预算见run_real.py、run_real_spatial_stations.py和protocol.json。真实客户端目录采用不可覆盖mkdir，复现须另设目录，避免覆盖本轮证据。最终源码与SHA256见source_after及source_fingerprints.json；原总报告快照另存source_before/docs。未运行模型模拟、未重跑原生写回、未进行新增科研优越性对照、未自动上传GitHub。当前完成的是生产公共融合路径的统一关卡与按任务复检；旧诊断模式、缺参考、短日期或稀少位置仍明确未具备精度推荐证据，不能把“可执行”升级成“已证实融合更好”。
 
 
-## 2026-11-05 页面执行状态文案修正
+## 不同数据上的复检正反对照与日累计契约补齐（2026-11-23）
 
-按实际manifest拆分融合、原生写回／回读及模型运行状态。workbench_page.py复用当前执行收据：只有tasks中真实LOCAL_RESIDUAL_EXECUTED且processed_observations>0时显示局部观测融合；部分成功单列，不因PROJECT_UPDATED或CONVERTED就宣称融合。原生写回校验依据native_writeback_verified；模型运行依据native_model_executed，缺字段显示未确认。已完成写回不再显示“格式转化接入口已预留”；未转化／失败显示本次状态，不再宣称队友模块不存在。保持布局、控件、算法、数据与历史结果不变。
+**目的与固定范围。** 依据“选方便、效果直观的数据，只用平台能力完善检验机制”的要求，选择本机现有三个西澳站点实测降水/ERA5、NCEP温度场，以及两处LGHAP AOD小区域。先固定2018年前180日、NCEP 2013年首6个00UTC时次、AOD前三个已有日期及区域；seed11，80次搜索科学调用、120次总调用、256次提议、40秒。未更换种子、挑选好时段或修改评分门槛。此前样本及结果保持不变。本轮为已暴露数据上的有界工程验收，不是新盲测。
 
-新增tests/test_workbench_execution_messages.py，覆盖无处理证据不冒充融合、部分处理、单源、局部融合、仅写回、未知模型状态、待转化和失败文案；结合既有原生写回页面与工程绑定页面，实际8项通过，0失败／错误／跳过。页面测试通过AppTest完成，不冒称浏览器验收；未重跑CAMx大包、搜索或数值实验。测试及修改前快照保存在output/page_status_20261105。运行目录和协作checkout同步页面、测试和报告；未推送GitHub，教师免安装ZIP未更新。现有服务健康HTTP200，未强制重启以保护当前页面会话。
+所有科学候选、状态拟合、图执行、质量门及评价均调用公共 `platform_search.submit_search`、Registry和既有算法；客户端仅整理文件/坐标/真实参考、传入协议、保存输出。没有实验专用算法匹配或评分规则，没有新算法、训练大型模型、额外下载或DS调用。
+
+**真实数值结果。** 先用公共缺失恢复入口测试可见站点序列＋背景，随后因发现累计量契约缺口，补测已有偏差订正公共入口。两个任务的候选域/拟合方式不同，不能混成同一算法的重复实验。
+
+|数据及任务|结果|关卡及默认交付|
+|---|---|---|
+|Broome降水＋ERA5，后段缺失恢复|初筛平均块损失改善，但复检候选与背景相同，RMSE均0.029814 mm|CONFIRMATION_FAILED；没有严格后段增益，背景保留|
+|Perth降水＋ERA5，后段缺失恢复|初筛总体改善但有块退化；后段背景4.241776 mm、候选9.287842 mm|NO_STABLE_SELECTION_GAIN；拒绝候选，背景保留|
+|Kalgoorlie降水＋ERA5，后段缺失恢复|候选与背景后段RMSE均0.444665 mm|NO_STABLE_SELECTION_GAIN；没有收益不强荐|
+|NCEP sigma0.995温度场，单产品空间重建|选型整体RMSE2.492011 K；空间留块复检2.608086 K，冻结图和单源对照相同|NO_STABLE_SELECTION_GAIN；这是重建产品的代理误差，不是地面实测精度|
+|Broome日累计降水，已有偏差订正|基线及候选后段RMSE均0.029814 mm；固定预算内无新增有效变异|SEARCH_INCOMPLETE / MUTATION_NOT_EXECUTED；保留基线，机制执行不冒充全部通过|
+|Perth日累计降水，已有偏差订正|冻结比例订正后段RMSE5.413682 mm，背景4.241776 mm，变差约27.6%|CONFIRMATION_FAILED；最终交付背景4.241776 mm|
+|Kalgoorlie日累计降水，已有偏差订正|QA筛除后配对队列与前一任务略不同，基线及候选后段均0.434891 mm；无新增有效变异|SEARCH_INCOMPLETE；按固定协议保留基线，不加预算凑成功|
+|LGHAP BTH及Yangtze，各12×12、3日期|CF尺度0.01和65535缺测由xarray解码一次；日产品的真实时间合成窗口未证实|公共入口明确拒绝UNKNOWN，未进行数值评价；没有伪装成瞬时观测硬跑|
+
+ERA5列为已有站点查询位置预测，保留原metadata中的原生格点位置和“24h ending 09:00 Australia/Perth = 01UTC”定义，不把模型值说成实测。NCEP明确为sigma0.995再分析层，不冒充独立地面测温。原始下载的gauge.dly/era5_hourly.json SHA256与既有metadata逐项一致；派生CSV的实际哈希单列，不用原始下载哈希冒充CSV哈希；输入和源码哈希见acceptance.json。雨量评价只用真实且QA合格的标签，未知自然缺失不作真值。日累计适配器按QA合法配对后做半段拟合、四分之一验证、余下复检，精确队列另存paired_protocol；因此与首次按日历90/45/45遮挡的任务不强行合并统计。
+
+**正反功能对照。** 为验证机制不是“全部拒绝”，使用真实NCEP前96个温度值作为参考，按提前固定的规则人为给输入加入+2 K偏差；反例仅在最后四分之一把偏差改为−2 K。二者通过同一公共入口、同预算、同种子，无预置完整图或手工指定赢家，使用已有训练均值偏差订正和变异。稳定偏差：基线RMSE2 K→冻结候选0 K，通过RECOMMENDED_WITHIN_OBSERVED_WINDOWS，交付0 K；后段偏差反转：候选4 K、基线2 K，CONFIRMATION_FAILED并交付基线2 K。正例因构造而可订正，只是机制敏感性证据，不是现实融合精度提升、更不是统计泛化证明。
+
+**实际修复（公共模块）。**
+
+|发现的缺口|修改|行为证据|
+|---|---|---|
+|paired入口默认瞬时量，不能合法接日累计|`paired_station_search.prepare`只接受明确instantaneous/mean/accumulation；区间量必须提供start/end、等长正区间、无重叠且一致标起点或终点；逐字段保留time_bounds，状态身份包含区间语义；不从单位/文件名猜|微秒/纳秒等价、未知/缺区间/重叠/语义冲突拒绝；日累计真实三站执行及合成正例公共数值验收。未知窗口的AOD仍拒绝，不为运行放宽|
+|通过推荐时delivered_graph只有key，回放缺图；回退缺delivered_best，可能展示错分数|同一适配器保存实际完整图、实际交付评分及合法应用输入；拟合状态单独保存，预测输入不含后段真值|真实温度序列正反对照的交付图均经公共execute_frozen_graph回放，逐值等于原交付产品；真实父边读取同一合法state，不重新选图或传入参考|
+|字段/外部参考的推荐路径可能只看好误差而忽略搜索未完成|`blocked_confirmation.review_field/finalize`将运行状态纳入最终验收；未完成明确SEARCH_INCOMPLETE，不能仅靠低误差推荐|定向反例：候选误差0但MUTATION_NOT_EXECUTED，仍拒绝并保存合格基线及探索候选；不调门槛|
+|UNKNOWN时间错误提示被笼统写成区间平均问题|`spatial_fusion_task`明确回传当前实际语义及支持范围|两个AOD实际文件都返回UNKNOWN及所缺时间支持，不伪装数据错误已解决|
+
+保留历史API默认瞬时量及旧数学行为；用户显式提供的累计/平均区间才走新核验。非负要求继续由公共质量门执行，不能让负降水订正因误差低而入选。未添加“下雨选某算法”等偏好，也未改变各块都不恶化、整体严格改善等原验收要求。
+
+**图、测试与成本。** `confirmation_metrics_all.csv`保留8个案例×3种产品的24行真实计算指标（不同任务及单位分列，受控例明确标注），`review_comparison_v2.png/pdf/svg`展示原方案、冻结候选及交付差别，右图显著标明人为偏差功能对照。图像已回读，文字边界检查通过；仅描述固定案例，无显著性或置信区间。逐例记录、全部负结果和成本分别见runs_verified、interval_calibration、controls_final、delivered_graph_replays.json。两处AOD属于条件未满足，未完成数值验收；两个日累计站点属于新增变异未完成，不能改称PASS。
+
+去重31项新增/受影响定向测试通过，0失败，详见tests01/02.xml。包含原温度链兼容、真实误差反馈、后段改变不影响选图、低预算、旧协议、推荐图记录、回退实际评分、区间语义及无状态串用。原始数据不写回；本轮没有模型模拟、原生格式写回或人工GUI全流程验收。首轮NCEP序列化出现继承整数编码警告，客户端清除历史存储编码并用解码数值回读核对，不改变参考值；随后一轮客户端变量名遮盖文件名导致格式识别失败，已修正，失败保留于runs_final，不伪称算法失败。首次回读比对整份指标字典包含参考载体元数据差异，改为逐项严格核对物理指标、分母和块损失；没有修改平台评分。另在归档校验时发现metadata的gauge_sha256/era5_sha256对应原始dly/hourly.json，并非派生CSV；核对既有采集源码后按正确文件逐项匹配通过，未修改数据或metadata。旧目录和图v1均保留。
+
+**验收结论。** 机制在这些有界案例中能认可构造条件明确的改善，也能阻止后段变差方案成为默认交付；实际降水本轮未证明稳定融合收益。三站/单年份/单产品不提供普适可靠性或检出率估计。仍偏保守，可能漏掉总体改善但局部轻微退化的方案；不能根据这轮结果放松阈值。作为第一版工程验证的证据比上轮完整，但没有变成“自动保证精度”的机制，也没有证明多源必胜。复现客户端run_cases.py、run_interval_calibration.py仅传数据和协议，所有科学操作仍在平台；不可覆盖mkdir要求复现另设目录。源码前后快照与成本均集中保存，不自动同步GitHub或追加大规模实验。
 
 
-## 2026-11-05 教师包最新更新合入与1GB内发布
+## 合法同期站点驱动的逐时段状态更新与原数据复测（2026-11-23）
 
-用户要求合入当前平台更新并将发送ZIP压到1GB内，保留无需安装Python、双击一个入口启动。运行目录与协作目录src/integrations/tools初核无差异；基于0f5f5d9及本地未提交更新，将24个新增/变更文件同步到原教师运行目录，后续合入最后一处workbench_page.py状态说明更新。最终以382个源码/配置文件SHA固定快照，并对最终自动释放出的文件逐项核对一致。主要更新为通用工程调度/多日多网格原生输入处理、单站局部校正、实际资源接收与页面执行状态说明；本次仅打包，不改这些科学逻辑或另调评分、随机变异。
+**任务与结论。** 接通已有同期站点观测、更新订正状态至公共融合/真实执行机制，不为三个站点写判断分支。不增加科学算法ID；本轮完成的是既有残差IDW、比例订正的状态契约及数据父边接线。正式搜索仍有未完成项：原三站均在固定预算内没有新增独立变异，保留MUTATION_NOT_EXECUTED/SEARCH_INCOMPLETE，不伪造完整搜索成功。更新后的真实候选没有稳定精度收益，全部保留原背景交付。
 
-保留原教师包主要运行组件，使用7-Zip官方26.05 Extra的独立7za.exe，将约4.419GB运行文件作整体LZMA2压缩，外层仍是标准ZIP；根目录只有打开平台.bat、使用说明.txt和_bundle程序目录。老师首次双击由随包7za自动校验并释放运行文件，随后用随包Python3.12.14启动原平台；后续同版本启动复用已准备运行目录。不需要安装Python、7-Zip、管理员权限或联网下载运行环境。首次释放可能需数分钟，压缩变小不代表解压或运算占用同样变小。版本化运行目录避免新旧源码混装；最后页面更新作为受SHA核验的发布覆盖文件，在首次准备完成前写入，随后才启动Python。没有把用户密钥、WRFDA虚拟机或额外独立深度学习环境塞进包。
+**复用与最小扩展。** 原SpatialSearch已经按时段用保留站点做残差IDW及比例/仿射估计；之前单站时间入口只有第一阶段拟合后冻结的标量状态。本轮从spatial_fusion_task原公式原样提取fit_ratio_frames到quality_aware并让两条路径共用，等价性测试保留；复用fusion.point_weights的米制距离IDW及weighted_values、fusion.residual的差值核。新增fusion.observation_state只是公共状态适配器，不是新选择器、效果预测模型或新优化器；未重写科学内核、改变算法偏好或扩候选池。
 
-官方下载页https://www.7-zip.org/download.html，原工具包https://github.com/ip7z/7zip/releases/download/26.05/7z2605-extra.7z；许可/readme与来源SHA随包保留。最初urllib遇证书链问题，改用Windows受信任TLS下载；py7zr不支持工具原包BCJ2，使用官方7zr解出独立工具，未关闭证书验证。首次启动发现目标PowerShell缺Get-FileHash，改用.NET内置SHA256并从真正批处理入口复验；失败记录保留。
+公共make_context消费既有observations角色及明确parameters.observation_state_update；配对适配器接受目标paired_observations与独立observations资源，将权限传给同一服务。研究/工具包/页面处理函数共用submit_search和同一Executor，不导入实验脚本。既有空间网格路径保留；新增动态状态适配器仅支持明确的单点序列，不把一个像元平均值偷偷当站点，也不宣称所有原生模型已重新运行。
 
-最终ZIP为C:/Users/LX/Desktop/EcoDataEngine_教师免安装更新版_20261105_1GB内.zip，959365019字节（十进制约959.37MB，严格小于1000000000字节），SHA256 4bf5f3a15022520445f6ee429ed5331474ad9d8793c0edbcebf34f5e8878d337；桌面副本SHA再次核验相同，.zip.sha256同目录。内层7z完整测试PASS，外层ZIP CRC PASS。桌面位置用于避免D盘不足1GB的空间压力，未删除用户原数据或历史成果。旧1.70GB包保留为历史版本，不当作已更新。
+**实际数据流与约束。** prior训练状态、原背景和合法其他站点分别形成真实端口，经resource.observation_state_update输出time索引状态，再进入原bias.prior_series_affine/ratio。原静态标量状态保持兼容；同一时段合法观测的残差经既有IDW更新截距，满足原配对数/正分母条件时经原比例公式更新系数。无可用残差或比例不可识别时回退原先验，不填造观测、不借相邻或未来时段。monthly_ratio没有这套动态契约，明确不适用，未假装消费了新观测。
 
-实际验收：更新源码的29项相关定向测试通过；包内Python对18项工程/资源机制测试通过；最终页面文案与流式身份14项测试通过。首次真实ZIP解包、双击批处理自动释放、健康检查和后续直接启动均通过；最终页面无异常或错误，模块来源均在独立释放目录，382项源文件SHA一致。CALPUFF随包示例由独立包内Python实际点击app.py页面，CONVERTED且无页面错误；之后仅追加页面状态文案，未重复数值搜索，最终状态文案另经页面测试和源码核对。不能把本次打包验收称为所有模型原生求解或独立精度验证。README保留默认无固定10GiB累计展开门槛但受真实资源约束、模型/产品支持边界、WRFDA后端未包含及原生模拟未普遍运行等说明。
+必须具备同变量/同单位、同背景产品、明确坐标、区间及质量标记；目标ID与同位置别名拒绝，batch资源不得包含任何被评价目标。背景在其他站点的配对值必须由合法配对资源提供，不拿目标格点值冒当其他位置背景。历史拟合不得跨入应用区间；输入mean/accumulation严格核验同一实际窗口，微秒/纳秒表示一致。非负门继续使用原实现。动态系数必须通过真实状态生产者父边进入下游，不能通过另一分支或伪造的原始向量状态借能力。
 
-证据目录C:/Users/LX/.codex/visualizations/2026/11/05/EcoData_teacher_small_20261105，含来源、source_snapshot.json、packaged_tests.xml、final_page_tests.xml、真实final_page_acceptance.json、latest_release_acceptance.json、final_delivery.json及压缩收据。独立首次准备验收目录C:/Users/LX/EcoDataTeacher_959MB_Check。未推送GitHub。
+状态更新读取的只是当前试验中明确允许的其他站点；被预测站的验证/复检值完全不进入更新。调用模式是contemporaneous_analysis，即事后同期分析，未证实传感器发布延迟，不称真实预报或生产实时采集。新资源进入下一次请求会按观测与策略指纹重算，不是后台自动联网拉取、持续训练大型模型。历史拟合状态保持只读，新状态按时段重建并记录系数、所用站点、支持数量、回退及距离。
+
+**信息条件。** 本轮逐站留一，每次只封存当前目标站的中后段，另两个站在该次请求显式声明为可用同期输入。当前目标的CSV、QA排除、训练/验证/复检时间和共同分母与上一轮逐项一致；所有旧结果保留。新增合法输入信息意味着这不是与旧单站实验同信息条件的纯算法优越性比较。如果三站中后段都属于同一个全局封存测试集，则不能把其中任何站重新作为可用观测；batch权限校验会拒绝这种借用。本轮数据均已暴露，不宣称全新盲测。
+
+**原始三站重测。** 同seed11、80次搜索调用/120总调用/256提议/40秒，IDW沿用既有默认power2，未按后段效果调参；三等时长块、原固定损失与所有验收规则不变。原第一阶段拟合仍仅用目标站前半数据。下表为真实后段整体RMSE（mm），不同站的自然缺失后有效队列各自固定，不把它们当独立重复研究。
+
+|目标站|背景|旧冻结订正候选|同期状态候选|实际交付|同期比例可更新时段/应用总时段|
+|---|---:|---:|---:|---:|---|
+|Broome|0.029814|0.029814|0.029814|0.029814|31/90|
+|Perth|4.241776|5.413682|6.045197|4.241776|12/90|
+|Kalgoorlie|0.434891|0.434891|0.758896|0.434891|28/90|
+
+新增候选确实消费其他站点并按时段更新，不是仍在套固定系数。三站残差更新各90期；比例更新分别31、12、28期，其余因原比例核的分母/有效配对条件不满足而回退先验，不能把“收到了两个站点”说成“每期都识别到了有效比例”。按现有EPSG:4326工作坐标约定计算，站间距离约536—1672km；空间代表性和共享偏差均未证实，不能把遥远站点干湿变化当作本地雨量规律。这里的负结果不证明多源数据普遍无价值，也不能靠添加算法或手调权重保证翻盘。
+
+此外三次搜索均保留SEARCH_INCOMPLETE：真实更新节点和候选已数值执行，但预算内新独立变异数为0。原规则要求新变异的标志没有关闭；没有为了凑PASS制造等价图、扩算法池或增加好种子。窗口比较和后段指标仍保留，增强未获推荐；默认产品逐值等于质量合格背景。不能把控制节点执行计作新科学算法或图变异，也不能因未生成新图就否认状态确已更新。
+
+**行为与端到端验收。** 去重53项定向测试通过，0项未解决测试失败：原空间方法回归、旧静态状态/旧协议、区间与单位、来源/别名/全batch目标隔离、错误CRS和未知预报模式、后段参考改变不影响选图、真状态父边、无可用观测回退、后期观测改变不影响早期系数、输入改变时更新缓存且原背景合法复用等。合成功能例专门让同期偏差在后段反向，状态能随合法其他站点改变而更新；这不是实际环境增益证据，也不读取目标后段真值生成状态。最初两次新测试失败为状态适配函数局部变量漏绑定，以及把约2.5e-15的浮点误差硬断言成0；分别修复局部变量和采用1e-12的测试舍入容差，未修改实际评分或质量门。
+
+同一Perth真实请求经页面处理函数和JSON工具包产生相同图、指标、复检与状态报告；冻结候选通过公共execute_frozen_graph无参考、无再选型回放，产品逐值一致。原背景、先验、观测的真实父边及更新系数可见，实际新执行、缓存、失败、拟合及状态更新成本分账。未人工点击GUI/浏览器全流程，未运行原生模型或重新格式写回，不把API处理函数验收冒充以上验收。
+
+**源码、产物和成本。** 证据集中output/observation_state_integration_20261123/。release为最终三站有界重测，run_real.py只传原文件和结构化权限；其protocol保存执行源码SHA256，原目标CSV指纹未变。delivered_client与对应日志保存页面/工具包及回放证据，comparison.csv及acceptance.json提供逐例数字、支持范围和全部限制。拟合时间在paired_protocol，真实状态变换和科学节点在total_cost，公共服务墙钟在review_cost，未据此声称效率优势。各轮修复后的有界复核均保留不同目录，不当作独立样本或用来挑选最好的结果。原始数据、旧协议、旧输出和本轮负结果均保留；不自动同步GitHub。
+
+**算法库是否需要再改。** 当前不需要再加一批算法。原平台注册构造函数经AST比较未变，没有新增算法ID；实际补的是原算法的状态形状/有效期契约、观测资源父边、权限校验和缓存。优先验证合法的附近站点在目标时段是否提供信息，再决定有无必要引入新方法；本轮不因结果差就追加算法。功能集成已有证据，精度收益未证明，完整新变异搜索未通过，这三项必须分别表述。
+
+## 五模型及仅融合、仅转换的分步补救与继续执行（2026-11-23）
+
+**处置原则与实现。** 本轮将既有安全补全、来源准入、工程端口处理、组件转换和最终检查连接到公共 `core/continuation.py`。明确输出 AUTO_COMPLETED、FALLBACK、SKIP_STEP、CONTINUE_WITH_WARNING、BLOCK_STEP；BLOCK_STEP只表示记录所指步骤/来源/变量未满足条件，不再自动等于整项工作失败。原始文件不写回；产品写到新目录或工程副本。没有修改科学算法、评分、变异或验证集规则，没有增加算法ID。
+
+|原缺口|修改位置|实际行为与验收|状态|
+|---|---|---|---|
+|一个来源/变量缺项牵连所有来源|`models/engineering/preparation.py`|逐来源、逐变量准入；缺单位/时间语义的变量隔离，合法变量保留；来源到端口的单位/时间不兼容只排除该映射|PASS，合成功能测试|
+|一个端口搜索条件不足就放弃全部端口|同上及`models/project_inventory.py`|逐端口记录失败后继续；温度分支真实数值搜索、写回并回读，压力分支单位冲突停止，原压力及辅助输入字节保留；无产品时输出具体缺项诊断而非伪成功|PASS，真实计算/合成边界输入|
+|组件已生成却被工程绑定问题丢弃|`models/component_service.py`|保留已通过写出器及回读的组件；工程绑定失败单列，绝不冒称工程已更新。复用原最小配置补全，不猜经纬度、单位和观测值|PASS，四模型故障注入及真实组件验收|
+|WRF组件入口落入开发机固定配置|同上CATALOG及TASK_MODES|仅补既有`wps_sst.export_sst`的公共组件绑定；显式当前科学配置可从NetCDF生成WPS中间文件，不需要另一台机器的配置或完整WRF工程|PASS，真实OISST子集。未宣称所有旧WRF入口已迁移|
+|一条建议未通过就阻止其他已核验操作|`desktop/discovery.py`、`__main__.py`|第二步保留具体拒绝原因；至少一条已核验操作时允许其执行，未核验建议不能获得执行权限；最终后端仍独立验契约|PASS，Qt处理函数定向测试|
+|后续研究/附加步骤异常掩盖已有产品|`desktop/selected_processing.py`、`models/task_dispatch.py`|独立任务分别记录；保留成功产品及失败列表；全部关键条件不足时可下载诊断包，明确无数据产品|PASS，故障注入、打包回读及原数据任务回归|
+|转换、工程齐备、运行模型混为同一结果|`conversion_bridge.py`、`final_check.py`、`desktop/issues.py`、`output_review.py`|转换器失败仍保留已准备产品；组件检查不要求完整工程；最终格式、工程、模型运行分别显示。PASS限定到明确的组件哈希/序列化或原生天气检查范围，不代表完整模型兼容|PASS，受影响定向测试|
+
+**自动补全与DS边界。** 复用原有SWAT+最小配置补全：非物理输出标签、从实际坐标和时间覆盖取得的站点元数据/日期、由实际输出生成的索引。既有写出器允许的默认值保持其契约范围，不新增气象值或虚构工程。DS可以沿既有审核入口判断用途、提出跳过非必要建议；公共处置器只在该建议已被判定为可选时消费SKIP_STEP。必需条件即使DS建议跳过仍BLOCK_STEP。证据不足的单位、CRS、区间、变量物理定义、合法训练状态和原生运行关键依赖不能由DS编造补齐。未新增第二套API后端，本轮未做线上DS自动补救调用验收。
+
+**有界实际执行。** 证据集中 `output/unified_continuation_20261123/`，本轮未下载、未覆盖历史数据或结果，没有运行大型研究或五个原生模型求解。`real_v2/cases.json`、各目录result/manifest及下载包保存实际结果：
+
+|入口/模型|已有输入及真实性|实际结果|范围与限制|
+|---|---|---|---|
+|仅转换/SWAT+|官方土壤有效子集CSV|COMPONENT_EXPORTED，格式/回读记录存在|不要求file.cio，不等于完整流域工程|
+|仅转换/CAMx|已标注合成的经纬网排放CSV|COMPONENT_EXPORTED，NetCDF组件|格式功能测试，不作环境精度证据|
+|仅转换/CMAQ|真实EDGAR CO巴黎子集NetCDF|COMPONENT_EXPORTED，原有排放写出器执行|完整CCTM工程与模型求解未请求|
+|仅转换/CALPUFF|真实NOAA USCRN降水CSV|COMPONENT_EXPORTED，原有降水写出器执行|不要求CALMET/CALPUFF可执行程序，未运行模型|
+|仅转换/WRF|真实NOAA OISST三日子集NetCDF及已有明确配置|COMPONENT_EXPORTED，3个`.wps`中间文件及格式报告|这是WPS中间输入，非wrfinput；没有运行geogrid/metgrid/real/wrf|
+|仅融合|原Perth站2018年前180日观测＋同期ERA5，固定90/45/45时段|公共`submit_search` PASS，产品回读；NO_STABLE_SELECTION_GAIN、BASELINE_RETAINED|没有稳定增益就保留质量合格基线；未强加多源奖励或改规则|
+
+五个转换案例分别约0.66、0.97、1.09、0.34、0.81秒；仅融合客户端约14.52秒，公共服务记录约14.24秒，实际科学调用6次，原始budget及分项成本见protocol和fusion_result。没有据此宣称速度或精度优势。仅融合请求的前90日观测为合法可用输入，中45日仅选型、后45日仅冻结复核；未把自然缺失当真值，全部年份均已暴露，仍是工程/探索性复核。
+
+**测试与失败保留。** 去重140项新增及受影响定向测试通过，包含五模型公共端口/页面处理函数、科学拒绝、真实父边、状态与既有质量门回归、字段级隔离、温度处理/压力保留、仅组件导出、缺程序不抵消已完成转换、无可执行任务诊断导出、DS不能豁免必要条件及下载包回读。结果分散运行于tests_run3.xml、tests_new.xml、tests_final.xml、tests_bridge2.xml、tests_fields.xml，不重复计数；未执行无关全量回归。
+
+早期测试的三项setup error来自项目旧`.pytest_tmp`权限，随后使用本轮独立basetemp，未删除旧目录。首次功能运行暴露诊断包未集中登记端口缺项和测试误把纯格式说明卡当数据成果，已补齐缺项汇总并检查卡片没有选中、数值指标或已执行标记，失败留存。真实验收real_v1保留WRF旧开发机配置缺失、客户端遗漏显式search_validation标签两项失败；修复公共WRF绑定并明确标注合法验证标签后使用real_v2，不更换数据或评价规则。最后一次字段隔离补充仅影响错误变量分支，35项定向测试另存tests_fields；真实组件与仅融合案例不进入这些变化分支。
+
+另尝试收集旧`test_workbench_execution_messages.py`时失败：它从未修改的旧workbench_page导入当前不存在的fusion_state。该历史页面测试未通过、未删除、未屏蔽，也不计入140项通过；本轮没有恢复已经迁移掉的旧页面API。当前桌面处理函数及公共组件页相关测试已通过。没有人工GUI/浏览器点击全流程或线上DS验收，不拿AppTest/Qt函数测试冒称以上验收。
+
+**完成边界。** 对现有已支持的科学任务，非必要建议、缺完整工程、缺模型程序不再当然阻止独立融合或组件转换；关键缺失在对应来源/变量/端口/转换步骤明确停下，其他可执行工作继续。仍不能承诺任意损坏文件、未知物理含义或缺少必要参考/状态都能产出可信产品；这种情况下保留诊断，不捏造完成。裸WRF输入若没有当前可验收转换契约，尚可能进入旧未迁移路线；本轮验收的是明确本次科学配置的公共组件路径，不能称任意WRF输入均自动支持。不在此轮扩展新格式或自动建立完整模型工程。
+
+修改前快照before、源码差异changes.diff、最终执行源码executed_source、source_fingerprints.json、acceptance.json及输入指纹集中保留。复现真实小案例使用accept_real.py并更换OUT为新的未存在目录，避免覆盖；定向测试使用项目`.venv/Scripts/python.exe -m pytest`与独立basetemp，PYTHONPATH包含src及原existing_air/local_swat集成目录。后续没有自动启动科研实验或同步GitHub。
+
+## 自动补救、估计值标注及五模型公共入口验收（2026-11-24）
+
+**目标及结论。** 上轮实现“某步骤失败不牵连其他步骤”，本轮补上“失败前先寻找可验证的补救依据”。新增公共`core/recovery.py`作为数据准备环节，复用原只读资料访问、DeepSeek传输、时间恢复内核、GridGapRecovery、模型组件写出器和continuation处置记录。当前五模型公共组件路径、仅融合及仅转换均可进入该环节；没有按数据包、站点或年份写判断分支。原始文件只读，补救只作用于内存副本和新产品。不承诺任意格式、任意工程或所有缺失模式均能恢复。
+
+**公共链路及最小接线。**
+
+|位置|本轮补齐的行为|验收证据|
+|---|---|---|
+|`core/recovery.py`|同文件元数据、已读配套说明及明确的源单位声明形成作用于具体变量的事实；DS引用显式编号，公共检查拒绝越界编号、冲突及无依据新值|新增测试及release两项线上元数据补全|
+|`algorithms/automatic_preparation.py`、`models/component_service.py`|五模型共用补救会话；选定输入后才读取和修复，之后仍执行原写出器、质量门、最终检查|offline_release五模型真实数值/格式执行|
+|`models/engineering/preparation.py`|工程来源先补元数据；数值补救在角色明确后进入公共搜索，不提前填补可能成为验证基准的主来源|五模型端口回归、真值隔离测试|
+|`desktop/discovery.py`、`pair_processing.py`|第二步单位缺项先复用同一补救函数；前置核验与真实处理不再各用一套元数据|前置核验→实际读取的行为测试|
+|`desktop/file_agent.py`、`service.py`、`selected_processing.py`、`__main__.py`|沿用现有页面和连接凭据，公共会话跨相应操作复用；不新增页面、算法选择器或客户端补救规则|原按需工具/Qt函数/公共组件页回归|
+|`algorithms/platform_search.py`|背景/辅助输入可按合法支持补缺，primary不自动填值；已带补值掩码的primary位置不成为验证真值；参考和观测角色不自动估计|信息隔离、原有统一复检回归及真实仅融合执行|
+|`desktop/issues.py`、`output_review.py`|展示来源、字段、补全或工作假设、估计数量与剩余问题；下载包带说明和位置掩码|结果打包回读测试、实际组件ZIP|
+
+科学算法、变异、排序、评价规则及第三方源码未修改，没有新增算法ID或训练模型。空间补缺调用既有`reconstruction.grid_gap_linear`的真实契约与内核；时间补缺调用既有temporal_kernels。没有把平滑滤波器冒充缺失恢复，也没有用预测收益替代真实评价。
+
+**可自动补救的范围。**
+
+1. 元数据缺在字段层、但同文件属性或有作用对象的说明中存在时，可补回单位、时间语义、空间支持、CRS等允许字段。只使用明确的源单位，不把模型期望的目标单位当作原始单位。多来源目录的无归属说明不能向另一来源“捐赠”单位。
+2. DS负责审核和解释证据，不能生成观测、流域拓扑、训练状态、单位或坐标的无依据新值。每个补救会话最多一次DS请求、不自动重试，流式响应预算30秒；连接及底层网络超时另受既有传输约束。原按需扫描有其独立预算，不能把这理解为整个操作只调用一次DS。
+3. DS失败或未选中某项不等于自动否定文件中的明确、无冲突声明；平台可以按直接证据继续。明确的WORKING_ASSUMPTION_ONLY可作为工作约定使用，页面标注“未证实原始定义”。科学冲突、非法CRS、缺少证据仍不能靠DS意见豁免。
+4. 默认时间补救范围固定为每条实体序列缺失比例不超过20%、连续缺口不超过3条；区分记录数与实际时间。瞬时量复用线性恢复；平均/累计量还须明确等长度区间及时间基准，估计的是缺失窗口的值，不拆分累计量。单侧支持仅允许一个已有端点记录的最近邻估计，明确标注外推，不新增时间标签。
+5. 默认空间补救只处理支持明确的连续、直角网格，单平面缺失比例不超过20%、连续缺口不超过3格，至少四个原始有效格点。时间记录数和空间格点数分别登记；不是普适科学阈值。分类、方向、未知QA/不确定性等不强行套标量插值；持续全缺测位置不被空间恢复涂成有效域。
+6. 原有效数值不覆盖，估计位置以`__recovered`掩码、压缩位置索引及CSV原行号记录；模型原生格式不能增加随意列时，标注保存在配套文件。最终单位、范围、非负、状态依赖及原生格式检查继续有效。
+
+超过上述补救范围不是整项工作退出，而是保留缺失并由原契约决定对应步骤能否交付，其他独立步骤继续。不能确认必要物理含义、缺完整关键变量、依赖或有效支持时仍可能停止该步骤；本轮没有把“任何数据都不退回”作为虚假承诺。
+
+**真实与受控案例。** 证据集中`output/automatic_recovery_20261124/`。使用现有文件，没有下载或改写原包。为验证补救，预先固定删除一个字段单位或遮挡一个值，均明确属于基于真实数据的缺项对照，不能说原始数据本来就有这些缺失。
+
+|入口|数据及缺项|实际结果|结论边界|
+|---|---|---|---|
+|CMAQ仅转换|已有EDGAR CO巴黎子集，移除变量单位|按同文件/配套证据补回单位，排放组件转换及回读通过|不是完整CCTM运行|
+|WRF仅转换|已有NOAA OISST三日子集，移除SST单位|补回Celsius及当前配置明确的CRS，生成WPS中间文件|不是wrfinput生成或WRF求解|
+|CALPUFF仅转换|已有NOAA USCRN小时降水，遮挡第6条记录（0起始索引5）|估计1个值并标注，原降水写出器及回读通过|估计不是实测，不声称改善误差|
+|SWAT+仅转换|已有Perth日降水前30日，遮挡第6条记录（0起始索引5）|估计1个值，复用最小配置补全，生成pcp/cli|不要求完整流域工程，未运行SWAT+|
+|CAMx仅转换|原有明确标注的合成排放格式样例，无需修补|原路径转换通过，无缺项不强行修改|不是环境精度证据|
+|CAMx补缺补充|上述合成格式扩展为20小时，固定一个单元一个缺值|真实公共入口按实体分组补1值，原生排放写出及回读通过|仅为功能边界测试，见tests_camx2.xml|
+|仅融合|Perth观测＋ERA5，原90/45/45时间划分；背景0起始索引15（第16条记录）遮挡1值|补背景1值，公共搜索、独立复检及产品回读通过；保留基线|不修改评价规则，不强推多源，不证明融合增益|
+|空间补缺补充|EDGAR原3×3网格遮挡中心1格；显式地理/WGS84及单元均值工作支持|调用既有空间恢复后原生排放写出通过|工作支持未独立核实原始坐标基准，见release_spatial_v2|
+
+线上矩阵`release`中CMAQ、WRF各一次DeepSeek请求，均COMPLETED，返回usage分别605、538 Tokens；这只是该矩阵，不是整个调试期的总用量。最终代码另在`offline_release`完成五模型及仅融合复核，证明无API时明确文件证据仍可继续，未冒称该轮调用了线上DS。运行源码SHA256随矩阵保存并核对；原文件SHA256、组件文件、掩码和ZIP CRC均复核。没有因为结果负面换区域、换种子或调阈值；这些不是正式算法优越性实验。
+
+**评价隔离与成本。** 自动估计不能增加“已观测真值”的分母。primary/观测/参考/测试资源不被预先补成评价标签；带估计掩码的primary会排除对应位置。工程来源在确定角色之前只补元数据，避免将估计值当作内部留出基准。背景补救发生在合法预测输入侧，原验证、冻结复检和质量规则保持。公共补救耗时、其中DS耗时、说明读取IO及整个作用域墙钟分别记录；搜索和科学调用仍用原计数。补值掩码、记录写包成本属于整体墙钟，不据此宣称效率优势。最早一次非法DS编号的响应未完整保留usage，历史总Token统计不完整，明确保留该缺口。
+
+**测试、失败与版本。** 去重166项新增及受影响定向测试通过，未运行无关全量回归。最终补救专项34项见tests_release.xml；其他通过记录包括tests5/7/final/final_core/isolation/verified/last及CAMx补充。覆盖声明冲突、来源归属、DS越界引用/不可用/预算、未知不伪装为零、微秒/纳秒、区间边界、原始有效值不变、局部与大块缺失、端点估计、分类/方向/QA排除、持续NoData、主来源真值隔离、前置核验与执行共享消费者、位置掩码下载及组件回读。
+
+早期失败全部保留：实际时间差曾按纳秒解释导致us输入不补，已改用Timedelta实际秒数；证据文件名曾包含计时导致页面/工具包不一致，已改科学内容指纹；DS证据列表起初未显式编号，CMAQ越界引用被拒绝后按文件证据完成，已补显式ID及枚举；客户端对pandas只读数组赋值失败，改为副本；合成CAMx时钟漏了原UTC偏移，修复测试构造，未修改科学时区规则；时间边界测试误要求重复units属性，现同时核对实际时间、边界及原始编码值。另保留release_spatial中DS未选明确工作声明后未能完成的记录，经“DS建议/明确声明/硬约束”分离修复后release_spatial_v2完成。不是通过降低原模型检查或增加好种子获得通过。
+
+**仍未验收或不支持。** 未人工点击GUI/浏览器完成本轮全流程，不把Qt/AppTest或公共处理函数称为人工浏览器验收；没有运行五个完整原生模拟程序，也没有补造工程拓扑。自由文本不能形成明确、作用来源可查证的事实时，仍保留UNKNOWN；当前补救不等于理解任意说明书。曲线网格、结构性无效域、未知QA、完全缺少的关键变量或训练状态，需要其已有合法适配或资源，不能凭空补全。源数据、旧协议、原报告和旧负结果保留；本轮不自动同步GitHub或启动正式研究。
+
+修改前快照before、最终源码final_source、source_fingerprints.json、changes.diff、acceptance.json及各版本真实结果集中保存。复现客户端`run_real.py <新目录名>`只提供数据和固定缺项；科学补救、DS、转换、搜索及评价都在平台公共模块，目录存在即停止而非覆盖。使用项目.venv及原src/existing_air/local_swat路径；API密钥继续走现有环境/页面凭据，不写进文件。
 
 
-## 2026-11-06 磁盘占用盘点与待手动永久清理
+## 队友抽样更新同步、自动补救保留与变异后独立验收（2026-11-24，桌面20261124-r2）
 
-用户要求清理无用新产物及RLV，仅保留后续EcoData研究有用的内容。盘点EcoDataEngine约312.39GiB，其中output约267.35GiB、data约37.74GiB；D:/codex/数据约48.19GiB。主要占用来自重复解压、工作副本、旧打包和工程原生副本，不能归因于几MB源码。原始数据、平台及Git源码/环境/算法权重、WRFDA后端、总报告与关键实验指标/负结果日志均保留。
+**范围与版本。** 实际运行目录为D:\codex\EcoDataEngine，并非仅更新EcoDataEngine-GitHub协作副本。冻结队友ui-redesign提交964778a（完整SHA见本轮plan.json），以共同祖先dae836f三方整合72项变动，保留本地新增功能及全部历史结果。冲突按实际职责合并，没有将旧main直接覆盖运行目录。新增分格式采样、holdout_plan、sampling_risk、recipe_trials、release_gate、独立补证和桌面展示共用队友公共模块；未复制第三方算法或新增数学内核。自动补救core/recovery.py与上一轮交付逐字节相同，保留五模型、仅融合、仅转换各公共调用及估计标注、原始参考隔离。安装队友已声明而本机缺失的ruptures 1.1.10；未更换评分权重、样本或增加搜索预算追求收益。
 
-工具自动审批对直接批量删除、单独RLV删除、隔离区永久删除均拒绝，提示blocked by policy。没有换用其他删除机制绕过。先前采用可恢复隔离移动：RLV、旧教师包/解压验收副本/旧平台更新副本，以及27个大型archive_intake接收中间目录共约107.76GiB移入C盘清理隔离区。此举释放D盘但增加C盘负担，未等同永久删除；用户指出C盘空间问题后停止转移，并承认仅搬移未完成清理目标。D盘当前可用约119GB，C盘约43GB。
+凭据只更新Windows用户环境DEEPSEEK_API_KEY，未写入源码、请求文件或报告。此前HTTP402属于本机旧凭据，不能作为用户新凭据无余额的证据。替换后真实线上分类、按需工具、资料判断、算法推荐及桌面最终复核完成，SIMULATED不能代替这些记录。账户余额期间变化，不能用余额差推算本轮费用；较早客户端序列化失败前的一次推荐未保存完整usage，不声称历史Token/费用统计完整。
 
-已生成固定白名单永久清理计划，包含C盘隔离区、两轮教师运行验收副本、重复压缩包与发布运行副本、pip下载缓存，以及D盘旧handoff/dist和剩余小型接收中间目录；C盘待清约121.75GiB，D盘待清约7.24GiB。新教师包已由用户改名为桌面EcoDataEngine.zip，SHA256与4bf5f3a15022520445f6ee429ed5331474ad9d8793c0edbcebf34f5e8878d337相符；脚本会确认仍有该完整副本，否则跳过可能成为最后发布副本的目标。保留C盘Python基础运行时以免破坏D盘.venv。
+### 公共连接及安全边界
 
-用户手动入口C:/Users/LX/Desktop/清理已确认无用副本.bat；调用C:/Users/LX/.codex/visualizations/2026/11/06/EcoData_disk_cleanup/purge_verified_junk.ps1。脚本按绝对路径逐项验证，仅对白名单目标使用Remove-Item，不跟随目标目录链接，不允许父目录覆盖受保护资源；无需再确认，执行后生成permanent_delete_results.json并报告两盘剩余空间。本轮只做语法检查与-Preview只读检查，134个目标预览PASS；受自动审批限制，没有代为执行永久删除，不得称为已经全部删除。未新增平台自动清理逻辑或改科学/模型设置。
+|环节|本轮落实|证据/边界|
+|---|---|---|
+|识别到推荐|队友轻量类型判断→按需文件工具→按格式隔离样本→公共recommendations推荐和本地recipe_trials|saguling_live_v2/inspection.json为真实线上记录；源包SHA核对，未全包发送给DS|
+|推荐验收到变异|保留with_recommendations、Registry契约、真实Objective；不把DS解释当误差|perth_live/recommendation.json、search/station-1/search/recommendation_validation.json，真实推荐编译PASS并进入已有数值路径|
+|提前划开两次验收|holdout_plan在推荐回检前从尚未暴露的时间保留区分出recipe_review_units和mutation_confirmation_times|tests/test_mutation_final_acceptance.py行为测试，原locked_holdout保留用于外发重叠检查；单个留出单位明确INSUFFICIENT|
+|搜索消费保留区|两个网格适配器将公共预留计划传入spatial_fusion_task；指定确认日期排除出search_times，禁止与推荐回检日期重叠|真实数值测试检查实际执行trace；不是只记录字段。减尺度代理路径也在冻结后重新执行确认日期，不能沿用搜索期缓存预测冒充新日期|
+|最终交付|blocked_confirmation统一复用原评分和质量结论，新增冻结图指纹/最终图身份回执；paired_station在自身最终回检后刷新回执，桌面展示交付图而非未确认赢家|post_mutation_acceptance.json；缺冻结证据不标确认，未通过增强则保留原关卡允许的基线或已验收产品，另保留探索候选|
+|补救|保留作用来源可核实的元数据补齐、小缺口估计及掩码，参考/测试标签不补造|real_components五模型＋仅融合矩阵；自动补救34项专项已包含在本轮定向去重记录|
+|实际页面|快捷方式指向本运行目录；窗口标题明确20261124-r2；保留仅转换和仅数据处理|desktop_launch.json、desktop_acceptance.json；通过Windows真实界面操作，不把Qt单元测试称为手工验收|
 
-盘点、隔离映射、清理计划和摘要集中C:/Users/LX/.codex/visualizations/2026/11/06/EcoData_disk_cleanup，保留在待删除隔离区之外。实际是否完成以permanent_delete_results.json和文件是否仍存在为准。
+固定方案的超几何抽检仍使用队友sampling_risk与既有公共质量分数。默认零缺陷样本方案针对当前**留出抽样总体的单位**；大总体5%检出概率95%约需59单位，不能转述为95%概率保证全域像元正确。变异后的最终复核沿用blocked_confirmation分块误差门，**不是**把推荐前抽检结论直接继承给新图，也没有声称该分块门具备相同的95%概率保证。不具备可分割时间保留区的路线保留其既有任务型独立参考协议或明确证据不足，不伪造新保留集。全量材料用于推荐后不能再充当同次独立确认材料。
+
+### 真实执行及负结果
+
+1. **Perth站点＋ERA5：链路PASS，增强效果FAIL。** 使用既有ASN00009021资料中2018年固定180个真实日累计，沿用其24h截止当地09:00（UTC01:00）的既有定义，前90拟合、中45选图、后45仅复核。DS仅获拟合期6组真实可见配对和必要科学信息，不获后段标签。通过公共recommendations调用线上DS，推荐的既有station.bias.holdout经真实契约编译为prior-series订正，并被公共paired_station/field_mutation实际评价和变异。固定seed11、80/120/256及30秒原有预算；原数据哈希保留。最终候选后45日RMSE 5.4136818456 mm，原背景4.2417763575 mm；原分块复核CONFIRMATION_FAILED，交付BASELINE_RETAINED。selected graph和原背景产物均保存，不用后45日重选图或调参数。独立性仅指本次声明的时间/用途隔离；年份和资料此前已暴露，仍属探索性工程验收。该条是站点约束背景订正，不冒称验证了任意多源加权融合精度。
+2. **Saguling原613,367,712字节包：线上识别/推荐PASS，融合交付未通过。** 新凭据完成真实分类、按需读取、资料判断和推荐。初次客户端在保存含tuple键的gated字典时失败（不是科学算法失败），保留失败日志；随后按已保存真实工具调用重建本地读取，复用本次真实inspection，不重花整轮识别API。新推荐仅再请求一次，未换数据/阈值/好种子。融合方案recipe_numeric_rejected，0项放行，**NO_PRODUCT**；源包SHA仍为d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f。该包共同日期少、预留不足两个单位，不能同时证明推荐验收与变异最终验收。saguling_resume_v3保留被拒指标、理由与无产品回执；其ZIP只有记录不能冒称成功融合。未因功能目标强行放行或为本包写补丁。
+3. **保留五模型组件路径：PASS（不等于五模型运行）。** 复用上一轮run_real.py公共客户端，在本轮real_components目录重新执行CMAQ EDGAR、WRF NOAA SST、CALPUFF NOAA小时降水、SWAT+ Perth降水和CAMx已有格式样例；前四基于真实资料，CAMx明确为既有合成功能fixture。原控制缺项仍能补救、标注并经过原生写出/回读；仅融合背景一处缺失补救、数值搜索、复核和产品回读PASS，默认保留基线。没有启动五个完整模拟程序。
+4. **最终r2真实桌面：PASS。** 从桌面模拟技术引擎快捷方式启动，保留仅转换开关。先测试原WRF daily目录：因没有ecodata.model-task.v1且公共自动识别未证明唯一组件任务而明确拒绝；不能把已有普通config.json自动当完整任务声明。随后将同一真实NetCDF原字节复制到wrf_gui_input，并用已有科学config生成受支持的model-task.v1（指定目标组件，不指定算法赢家），未改原数据或为包增加解析分支。通过真实界面读取→确认→公共转换→最终DS复核→下载，生成3个WPS intermediate v5 SST文件；NetCDF→WPS格式、原生格式PASS、工程NOT_REQUESTED、模型试读NOT_RUN分开显示。自动补救按源配置把sst.crs补为EPSG:4326且在结果标注，下载包包含补救回执。最终wrf-desktop-export-r2.zip CRC通过，逐文件SHA和格式映射核对。初版组件格式说明只读工程changes而未读output_inventory，导致已产出WPS却显示格式未知；已在公共output_review补齐单组件来源、经过验证的输出清单及哈希消费，未以ZIP后缀猜数据格式。
+
+### 测试、成本、历史保护与复现
+
+定向用例按文件/class/name去重**242项PASS**，以每个用例最后一次受影响执行为准（directed_test_summary.json），不是全仓库一次全量测试，也不把重复轮次累计为独立证据。涵盖抽样总体/隔离、声明冲突、资料外发、冻结图不能继承父图验收、未知资源、减尺度最终日期真实执行、分支状态、估计值不成为真值、产品格式和GUI交互。保留全部早期失败：默认.pytest_tmp权限错误改为本轮新basetemp；缺ruptures按原依赖安装；Windows默认GBK读取UTF-8测试结果改为显式UTF-8；日志动画和抽屉布局并发导致差1像素，改为最新范围直接跟随；自写新测试误把execute无返回值当结果，改读取真实rows而非更改执行器。未删除失败测试、屏蔽异常或放宽数值门。
+
+证据目录output/teammate_sampling_integration_20261124_214021包括before、plan/merged_files、final_source、source_fingerprints、各轮JUnit和日志、real_components、saguling_live_v2（完整真实线上识别）、saguling_resume_v3（负结果）、perth_live（真实DS→变异→冻结复检）、两个版本桌面下载包、desktop_acceptance及desktop_launch。原包/原文件未修改；旧协议与旧结论不覆盖。前期旧凭据HTTP402及客户端失败完整保留，不解释成新凭据不可用。执行成本见各API receipt、progress日志、total_cost、paired_protocol及预算；无完整历史usage的轮次单列，不伪称总费用优势。
+
+复现环境为本项目.venv、src及integrations/existing_air与local_swat。定向测试使用独立--basetemp，避免复用被锁旧pytest目录；客户端脚本在证据目录，仅提供真实输入、固定配置和公共函数调用，不维护实验专用算法匹配或打分。run_paired_live.py对应线上推荐和固定180日验证；resume_live.py明确复用本次inspection，不能称重新做了线上识别；run_real.py来自前轮公共验收客户端。运行需使用新的输出目录，保留本轮不可变记录。启动仍用桌面快捷方式或launch_platform.ps1，密钥从Windows用户环境加载，不要求用户再次粘贴。当前窗口最终版本20261124-r2。
+
+**结论。** 队友更新已落到实际运行平台；自动补救、仅融合/仅转换及变异后冻结数值复核保留且有真实执行证据。当前可交付的是工程链路和安全拒绝/基线保留，不是所有数据包必能融合或精度必提高。Saguling融合本轮未通过；完整五模型模拟、全任务通用统计置信保证和创新优越性实验未执行。本轮不自动推送GitHub、不启动正式大规模研究。
 
 
-## 2026-11-06 用户进一步授权仅保留平台：清理范围扩展（待手动执行）
+## 推荐评分失败后继续合法候选变异：公共衔接修复与原包验收（2026-11-25）
 
-用户再次明确D:/codex仅留平台。此指令取代前一轮保留独立原始实验数据与旧文档的较保守范围：新的计划保留EcoDataEngine、EcoDataEngine-GitHub、.ecodata-wrfda、.github-tools；D:/codex其他独立项目、数据目录、旧图表/文档/临时脚本与安装包均列入固定白名单。平台内部data、external、runtime、各运行环境、src/docs及必要示例仍保留，避免删除权重/依赖而破坏功能。
+**问题与改动。** 原DS方案的“科学适用性”与“数值收益”不是同一判断。原Saguling推荐的保守重网格→缺失回退→等权融合已通过字段/单位/时间契约，但推荐抽检代理参考上RMSE23.6957798151、单源基线9.89906141367，按原标准拒绝正确；此前把这一次方案拒绝等同整项任务停止，没有继续公共变异。该分数只证明此方案在此产品重建代理上不合格，不证明所有融合无价值，也不是独立雨量站精度。
 
-对src进行AST常量路径核查，保留output中的algorithm_library_expansion、capability_models、plan_ranking_models、reliable_selection_calibrations、score_calibrations、three_task_routing_20261020与配置引用的taiwan_2017_preparation_20261019。其余历史输出、交付副本、临时缓存列入清理；不改算法或挪动模型路径。WRFDA配置未引用平台output，独立后端整目录保留。目录链接只删除链接本身，使用非递归链接移除，绝不递归进入链接目标。
+recommendations.review_holdouts现调用公共continue_rejected_search：只有明确recipe_numeric_rejected、所有失败项均recipe_score_below_single_source且有评分的情况，才另列SEARCH_ONLY选项。原失败推荐、指标、外发记录不改；契约/覆盖失败、UNKNOWN、缺参考不冒充可搜索。release_gate.allowed仍严格表示原方案放行；selectable表示可提交搜索，require默认仍严格，仅搜索入口显式allow_search=True。页面使用同一权限，并明确显示“原推荐未通过，继续合法候选变异（待最终复核）”，不会默认勾选或标成DS已通过。selected_processing和independent_alignment共用既有platform_search/local_search，失败推荐不再作为initial_algorithms或recommended_recipes的种子/偏好。搜索失败不可降级执行原拒绝方案；最终质量门、分块复核、基线保留规则和固定预算不变，未新增科学算法或包名分支。
 
-清理前已将167684份实验摘要/配置/指标/日志/负结果/小型图表与源快照归入docs/实验记录_清理前保留_20261106.zip，1552287067字节，完整CRC通过，SHA256 14dcf8df0eef094c8e7d7b0583a69c1b2ae2653d55322979ed88dd264853ece4。压缩包不保存全部大数组、原始数据或大型原生工程产品，不能声称清理后仍可完全复现实验；它保留的是记录与证据摘要。手动清理脚本必须先校验该记录包，否则停止。
+**支持边界。** 本次搜索衔接覆盖已有independent_grid_search公共双源日累计网格路径，不依赖Saguling名称/日期/网格。其他适配器尚未证明能够跳过失败配方直接变异，因此保持原关卡；特别是不将indexed_table_recipe等直接组合路径冒称已完成同样衔接。非数值收益失败仍需其具体契约/资源，不通过降低评分放行。
 
-上次用户手动清理日志仅记录完成第一个隔离区，其余133项PENDING；当前未发现清理进程。C盘已恢复约149GiB空闲，说明隔离区确实由用户运行脚本删除；不能把其余尚未完成项写成已删除。原日志和旧计划均备份在C盘清理审计目录。
+**原包真实结果。** output/rejected_recipe_search_20261125/real_original为新证据目录，保留旧NO_PRODUCT及所有历史结果。原613367712字节ZIP SHA256仍为d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f。复用上一轮真实线上inspection及DS推荐（明确记录来源），重新读取原包、重新抽检拒绝、通过新公共搜索选项执行，没有新增API请求或伪造推荐。本轮37.00148秒，实际评价18图（其中11图为mutation阶段），100次提议后预算停止；真实科学节点search76次、deploy1次、失败调用0次。缓存/提议/执行分别见counts、transitions和total_cost；当前平台使用composition_optimizers.random_graph_search公共变异后端，不将其称为新官方GOLEM优越性实验。
 
-更新后的桌面清理已确认无用副本.bat仍调用同一明确白名单脚本，新计划686个目标，预计C盘再清约13.99GiB、D盘约222.97GiB。新增逐项目进度提示与请勿提前关闭提示，大目录可能需数分钟。语法与Windows PowerShell -Preview通过，链接处理、平台/权重保护以及记录包校验均检查通过；Preview没有删除文件。直接永久删除此前被工具自动审批blocked by policy拒绝，本代理未改用其他执行方式绕过，仍需用户双击脚本实际运行。不得把“脚本准备完毕/预览通过”写成“全部清理完成”。
+预算内最佳及交付仍为NASA_POWER单源，验证代理RMSE6.1953983729 mm、MAE4.3627947048、Bias0.3719997934，78个共同评价样本，覆盖1.0、失败率0。该78样本多日期/区域重建队列与原推荐8点评分队列不同，禁止直接用两组数字宣称修复提升。最终post_mutation_acceptance=BASELINE_RETAINED，recommended=false，numerical_review=EVIDENCE_INSUFFICIENT；只有一个未暴露日期单位，不能同时用于推荐和变异最终独立确认，frozen_graph_verified=false，不改称通过。结果证明流程不再在推荐失败处终止，并真实搜索和生成产品；不证明多源收益或全局最优。
 
-清理映射、旧日志、新白名单与结果准备记录：C:/Users/LX/.codex/visualizations/2026/11/06/EcoData_disk_cleanup。后续以permanent_delete_results.json和实际磁盘空间为准。当前平台源码与运行文件未更改。
+产品NetCDF回读：precipitation，mm，time3×lat7×lon5及bounds2；desktop-results.zip CRC PASS，包含实际产品和评价记录。原始数据不动，未运行SWAT+完整模拟器或额外模型写回；本轮验收走仅数据处理公共入口。未再次进行人工桌面点击全流程，页面控件通过真实Qt组件定向测试，不冒称人工浏览器/桌面验收。
+
+**定向验证。** tests1.xml/tests2.xml/tests3.xml按classname/name去重54项PASS，包含8项新增案例：数值拒绝可搜索而不可直接执行、原失败记录不变、幂等、未评分/覆盖/待确认/未支持路线拒绝、已有合法方案无需额外选项、伪造不完整admission拒绝，以及实际Qt失败卡不可选/搜索卡可选且不默认勾选。受影响release、candidate_choice、recommendation_search和mutation_final_acceptance回归通过；未跑无关全量回归。旧pytest_cache权限warning保留，后续本轮使用-p no:cacheprovider及独立basetemp；第三方弃用warning未屏蔽。acceptance.json记录真实断言、产品回读、原包指纹、计数和限制；before保存修改前源码/报告，final_source及source_fingerprints.json保存交付源码。复现命令为项目.venv运行output/rejected_recipe_search_20261125/run_original.py（须另设新目录避免覆盖）；客户端只提供原包、已记录真实推荐和公共调用，不含打分或匹配规则。
+
+**验收结论。** 推荐失败→其他合法候选变异→真实评价→产品：PASS；评分标准及原失败记录保护：PASS；Qt搜索选项与直接执行权限隔离：PASS；融合改善及独立确认：证据不足/未获增强推荐；其他尚无失败后变异契约的适配器：未接入本次继续机制。未自动推送GitHub、未重跑大型历史实验。
+
+
+## 推荐拒绝后的融合入口统一衔接与跨入口验证（2026-11-25，all-fusion-rejected-search-v2）
+
+**为何上一轮只有日降水。** 当时只有independent_grid_search证明了可不执行被拒配方、直接运行其他合法图；站点路径仍携带失败推荐，windowed路径可能退回失败模板，indexed表格路径则只有固定配方。上一章的范围确有限制，本轮扩展公共适配与执行，不把旧单例当成已完成泛化。
+
+**公共实现。** recipe_trials.SEARCH_CONTINUATION_ROUTES/continuation_steps登记四个有真实搜索路径的适配器；recommendations.continue_rejected_search复用同一数值拒绝判据，按既有配方保留合法准备操作、删除被拒融合/偏差订正种子。release_gate.selectable和require(allow_search=True)仍区分“可提交搜索”与“配方可执行”，allowed默认门不变。selected_processing统一分派，各客户端不另写算法排序/权重/循环。station_grid与indexed_table_recipe共用local_search.run_paired→platform_search→paired_station_search→既有field_mutation；普通网格复用local_search.submit→platform_search→spatial_fusion_task。保留原随机变异预算/科学内核/最终质量和分块标准，没有调权重使融合赢。
+
+|入口|本轮改动|实际证据|结论/限制|
+|---|---|---|---|
+|日累计双源网格 independent_grid_search|共享原继续机制和统一权限，不重跑无关旧搜索|上一轮rejected_recipe_search_20261125/acceptance.json；本轮公共权限和质量回归|保留PASS，未声称新重复实验|
+|站点＋网格 station_grid|失败配方不再作为推荐种子；共用paired搜索和导出；缺独立预留禁止增强推荐|station_v4/CAMx_NOAA_station，原CAMx原生气象与NOAA站点|失败配方→真实新变异1次→NetCDF/回读，PASS；最终BASELINE_RETAINED|
+|双源表格/一维时间 indexed_table_recipe|补齐已有成对订正内核的公共图绑定，与站点共用run_paired；没有坐标则使用真实time一维轴，不填造经纬度|real_v3/CAMx_NOAA_table，两份真实配对温度表，来自同一CAMx/NOAA实际读取|真实新变异6次、产品及ZIP回读PASS；不是新独立数据集，最终BASELINE_RETAINED|
+|普通时空网格 windowed_grid_recipe|合法准备后直接搜索；取消失败时退回原失败模板；消费公共关卡交付的基线；保留源物理定义，单元均值/通量强制已有保守对齐契约|grid_v5/NCEP_grid_derived_control，真实NCEP原场及其明确粗化表示|11图/100提议，其中4张新变异；产品/回读PASS。两表示同源，属于工程受控验证，不是独立多源收益证据|
+
+原生工程、确定性配对、不确定性加权等未产生recipe_numeric_rejected的路线，不在缺参考/不支持时伪造数值放行；直接调用platform_search的入口本来已在公共搜索后执行最终复核，无需复制一个“失败继续”循环。普通窗口变异仍依赖已声明瞬时量、EPSG:4326和至少三个真实完整共同时间；静态/其他投影/其他统计语义无匹配数值适配时只标对应步骤条件不足，不能把失败配方偷偷交付。累计量继续走已有日累计适配，不把所有时序强行解释为瞬时量。单位、物理定义、覆盖、状态或UNKNOWN失败仍拒绝，不是“所有失败都允许继续”。
+
+**推荐为何会过不了评分。** DS推荐来自登记配方和有限可见资料，能说明适用性，尚不具备可靠的收益预测。Saguling既有配方的等权融合不等于已估计双方误差；站点均值偏差也不保证适用另一个变化时段。真实CAMx/NOAA配方抽检RMSE0.9456565238 K，背景0.7768292245 K（5个样本），因此实际数值不合格；不能以“能运行”替代不劣于基线。表格抽检的补缺RMSE1.4096457514 K，基线0.3369319045 K；该组融合RMSE1.0781015225、基线1.1126764824，说明不同操作有不同结果，不能把整套失败全归因于融合。没有调参救这几个数字，也不将这些小样本视为正式精度结论。
+
+此外确实发现平台接口缺口：站点分组试跑的原始表未经过正式读取已有的NOAA复合字段解码；表内无关重复列/相同REPORT_TYPE重复列又使试跑失败；窗口图绑定遗漏原始physical_definition。这些不是数据价值不足。现在复用生产noaa_global_hourly.add_variables解码；只取关键输入列，完全相同重复列核对后去重并记matching_audit，冲突关键列明确拒绝，不平均冲突值；windowed.Grid保留实际源定义，定义缺失/冲突不捏造。变异候选仍可能真实执行失败，日志和计数保留，不筛选掉失败种子。
+
+**最终验收不因继续搜索放松。** paired公共服务接收推荐隔离状态，缺独立保留区明确EVIDENCE_INSUFFICIENT并保留质量基线。表格优先排除推荐用过的分组；确实只有同一组时允许作为开发资料继续探索，明确记录recommendation_groups_reused_for_development，不将其重新命名为独立测试，最终不能据此增强推荐。新图仍训练前段、选择中段、复核后段；已暴露历史资料不算新盲测。即使某个数值候选更好，回执不满足也不确认。run_paired和windowed均要求继续任务的交付要么经过最终验收，要么是关卡保留的质量基线；没有这两者则明确失败，绝不退回被拒配方。没有新独立雨量站/精细真值就不宣称降尺度精度或融合提高。
+
+**页面与成本。** 页面的搜索选项沿用同一search_admission，无额外匹配策略。已有可执行继续选项时，send_next_automatic_fallback不再自动重复向DS发全量扰动资料；问题清单准确提示可选择同任务合法候选变异，原推荐失败仍保留。当前有Qt控件行为测试，未人工再点完整桌面/浏览器。此次新增验证没有API请求，不声称重新生成了线上推荐；站点配方来自既有冻结任务，表格/网格使用注册的固定功能验收配方。各实际搜索成本、缓存、失败、停止见各summary/total_cost和mutation_trace；本轮未计时完整历史整理全过程，不声称总成本优势。预算保持原公共默认：站点/表格80/120/256/30秒，窗口130/180/100/45秒，不增加好种子。模型完整运行及原生工程写回未验收，本轮交付为融合处理产品。
+
+**测试、失败与保护。** 82项新增及受影响用例按classname/name、最后受影响执行去重PASS（test_summary.json），不是全仓库全量回归。覆盖四入口同一权限、必需准备与失败种子分离、UNKNOWN/无评分/覆盖失败不放行、关闭冗余自动推荐、无坐标序列不造坐标、后段真值不能改变拟合状态、真实新变异、独立性不足不得因低误差晋级、真实父边、最终回读、冲突重复字段拒绝及失败模板不回退。保留早期失败：real_v1控制网格裁剪后仅7行不能2×精确粗化，按实际维度修正12行；real_v2漏源定义、real_v3双线性不属于单元均值的合法候选域，最终grid_v5使用已有保守契约并显式拒绝不合法组合；站点codec及相同重复列修复见station_v4。tests4新增fixture漏bytes元数据，修正fixture后tests5/7通过；未删失败测试、未改数值门。shell创建v3客户端的一次引号语法错误未启动科学计算，后改用here-string执行。
+
+证据目录output/fusion_continuation_all_20261125包含before、protocol、全部中间失败/负结果、station_v4/real_v3/grid_v5实际产品、acceptance.json、route_matrix.json、JUnit、最终源码与指纹及changes.diff。原CAMx ZIP的路径/大小/mtime清单与旧冻结签名一致，原NCEP只读；新表和粗化控制文件仅写在本轮输出目录，未覆盖原数据、旧实验或报告历史。后续仅更新protocol/source说明的元数据不改变已验证数值路径，定向回归通过；executed source版本与交付diff留存。没有自动推送GitHub、下载新数据或启动大型研究。
+
+**结论。** 本轮不再限于Saguling：四个产生完整配方数值评分的融合适配器共用拒绝后合法搜索机制，三个新增入口有真实数值执行及产品证据。精度增益未得到独立确认，三个新增验收案例最终均保留基线。推荐是待验证候选而非效果承诺；数值拒绝保留并继续寻找，而不是把拒绝当成功或把整项任务停止。
+
+
+**最终源码统一复跑补记。** 所有上述代码冻结后，使用run_final.py对同三个小案例做最后一次受影响端到端回归，最终记录统一为real_final/CAMx_NOAA_station、real_final/CAMx_NOAA_table、real_final/NCEP_grid_derived_control，均PASS；前三轮中间路径仍保留为排错证据。实际新变异分别1、6、4次，网格总评价11图/100提议；全部最终保留基线。acceptance.json已指向该统一最终运行及NetCDF/ZIP回读断言；input_integrity.json核对原包冻结签名。交付守卫和未定位序列说明均已包含在此次执行源码中。executed_source_fingerprints.json与最终源码对应，不以中间样例替代最终版本验收。未改预算、种子、指标或通过门槛。
+
+
+## 融合验收V2：总体收益、局部风险与证据充分性分离（2026-11-25）
+
+**范围。** 依据用户授权修改公共ecodata.evaluation.blocked_confirmation，替换“任一块RMSE或MAE退化即拒绝”的默认验收。数据解析、算法数学内核、候选池、搜索目标、原固定预算、数据遮挡和原始文件不改；所有旧输出保留。本轮是评价工程改进和有界行为验证，不是证明新融合算法更优。请求中既有blocked_confirmation_v1名称继续兼容原时间划分协议；实际验收receipt.version明确为blocked_confirmation_v2_aggregate_risk。原严格判据保留review_legacy及policy_version=blocked_confirmation_v1，用于明确回放；不会将历史JSON改成新结论。
+
+**公共规则。** 候选与基线必须仍是同一参考、同一队列、同一分母，保留原时间/空间隔离检查，质量失败不放行。总体口径仍为原等权分块RMSE，不另加多源奖励。总体初筛不改善、最终总体退化或已声明局部风险超限，仍保留基线。总体两阶段改善但不确定性、局部容忍依据或独立预留不足，返回TRIAL_AVAILABLE（可试用、收益/风险未确认），而非把证据不足写成效果失败。仅证据和风险满足时返回当前窗口内推荐，不保证未来效果。
+
+compare记录aggregate_gain、配对分块不确定性、退化块比例、最差RMSE/MAE退化和明确阈值违例。采用已有SciPy bootstrap(paired=True)，对固定分组的损失差和对应计数共同重采样，保持原等权目标；4999次、seed20261125、95% percentile区间在protocol.json中提前固定。空间评价把同一区域不同日期归为同一重采样单位；时空评价将同日各区域共同重采样；时间评价使用时间窗口，不能把像元或同日多个区域冒充独立重复。记录留一组范围用于诊断，并明确区间依赖分块假设，不是经校准的未来覆盖保证。区域/日期之间可能相关、小组数有限，故不宣称统计独立或普适显著性。
+
+**阈值依据与边界。** 没有填“允许10%退化”之类默认数字。局部严重损失的review_risk_limits须有匹配物理单位、非负限值和可审计basis；来源是明确任务约束或冻结开发协议，不能由最终误差反向挑选。未声明容忍依据且确有局部退化时保持UNASSESSED_TOLERANCE，只可试用，不声称安全。若所有观察块都改善，则记录NO_OBSERVED_DEGRADATION，也不推断未见区域安全。测试中的0.2 K是明确标注的合成任务边界，不是现实模型默认阈值。原64×机器精度仅防浮点误差，原3块/每块2个时间的条件仅为工程最低支持；95%区间不等于允许5%数据不合格。未建立仪器/模型层面的通用容忍标定，未声称已做到。依据见SciPy官方文档 https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.bootstrap.html 及OTexts训练/测试时序评估 https://otexts.com/fpp3/toolbox.html#time-series-cross-validation；这些资料支撑实现和隔离方式，不替平台证明环境效果。
+
+**各入口实际消费者。** review_spatial（站点空间、多网格、日累计网格等）、review_field（多源/辅助/缺失处理）、finalize显式参考和paired_station_search均调用同一review；风险要求从公共request转发，不在客户端另写分数。desktop的local_search、independent_alignment、windowed_grid_recipe转发同一review_risk_limits。原始观测仍不进入预测/提议；bootstrap使用已有独立评价结果，不反向进入搜索。apply_recommendation_isolation只影响证据等级，不再把真实“后段变差”覆盖成笼统“样本不足”。没有真值的工程指标仍为ENGINEERING_ONLY，缺评价资源仍未评价，不用结构分数冒充精度。
+
+默认交付仍可保留质量基线，候选另存且标明可试用；paired/table沿用候选下载，两个网格适配器在TRIAL_AVAILABLE时将真实trial-candidate.nc加入结果包。页面输出已增加可试用/局部风险超限说明，公共解释只含汇总，不外发参考块ID。质量、原生格式、完整模型运行和环境精度依然分开，不因可下载就称推荐完成。
+
+### 现有案例：只重算验收，不重跑旧搜索
+
+|案例|旧默认判断|新判断|理由|
+|---|---|---|---|
+|CAMx/NOAA站点|EVIDENCE_INSUFFICIENT|CONFIRMATION_FAILED，同时证据不足|选型RMSE0.481→0.140 K，后段0.923→1.215 K；真正退化仍拒绝，不被模糊证据状态掩盖|
+|同批数据的表格入口|EVIDENCE_INSUFFICIENT|CONFIRMATION_FAILED，同时证据不足|同一批实际值的不同入口，不当成独立数据集；后段退化不因改规则通过|
+|NCEP同源粗化控制|NO_STABLE_SELECTION_GAIN|TRIAL_AVAILABLE|总体初筛/复核改善，但7个区域组的初筛条件区间跨零；最终12块中1块局部退化且无现实容忍阈值，不再一票写成无效，也不强行确认|
+
+saved_comparison/comparison.json保存旧/新同一数值结果的回放。对NCEP当前版本又通过selected_processing做一次有界真实端到端：11图、100提议、4张新变异，输出仍默认基线，但products.zip同时包含真正trial-candidate.nc，NetCDF及ZIP CRC通过（existing_entry/receipt.json）。此案例来自同一真实NCEP场的不同表示，仍仅作功能控制，不是独立多源增益证据。
+
+### 冻结后资料验证：西澳2022年三个站点＋ERA5
+
+protocol.json及source_freeze.json在读取这些年内观测数值前固定。使用现有ASN00003003、ASN00009021、ASN00012038的2022全年真实逐日资料，沿用原metadata中前24小时截至当地09:00＝UTC01:00的定义，保留明确时间边界，不解释成瞬时量。只排除原始QA无效或双源无有效值的记录，不能补造评价真值。相同公共paired入口，前半拟合、中四分之一选型、末段仅冻结后一次复核；每站seed11，80/120/256/30秒原预算，不因失败补种子、扩预算或调整规则。资料与以往集合相同、年份公开且项目可能历史读取过，不称全新盲测；本轮2022值未参与规则制定，源码前后指纹一致。
+
+|站点|真实有效日对|冻结后候选/背景RMSE（mm）|本轮结果|
+|---|---:|---|---|
+|ASN00003003|365|3.4999844720 / 3.4999844720|SEARCH_INCOMPLETE；188次尝试但0张真正新变异，资源预算停止，保留源；不冒称搜索完成或融合无效|
+|ASN00009021|365|1.9570190032 / 1.9300540655|CONFIRMATION_FAILED；后段差约1.40%，保留基线|
+|ASN00012038|361（4日QA/配对排除）|1.5730435879 / 1.7509181265|当前窗口推荐；后段改善约10.16%，原严格规则对此候选也通过，不能将收益归因于改了评分|
+
+前一个搜索确实完成过初始候选执行，但未完成真正新变异，因此按原完成标准标PARTIAL_OR_BLOCKED，未为使表格好看重试。最后两站有真实变异和真实独立评价侧调用。三站共用气象/区域背景可能相关，不当成三次独立科研重复；95%条件区间不是这三站之外的未来成功概率。此批结果说明新规则没有全部放行，不能证明算法库或融合对所有数据有效。
+
+**验证记录与成本。** 最终tests7.xml一次运行76项新增/受影响定向测试全PASS，不跑无关全量。包括总体优但局部轻微退化可在明确风险限内通过、无风险依据可试用、总体差拒绝、超限拒绝、单位/依据错误拒绝、分组重复不虚增样本、旧规则回放、原始/预测/独立参考隔离、真实父边、质量门、缓存/预算、Qt页面/工具包及产品回读。保留早期失败：旧断言仍期待一票否决/不足一律失败，按新需求更新并增加旧版本回放；新增合成fixture缺预测units，补齐测试输入，不放松生产检查；np.bool_不能直接JSON序列化，修正为原生bool；相关通过记录见tests3/6/7，失败XML留存。只有最初测试失败前的日志不能代表最终源码。
+
+证据集中于output/fusion_review_v2_20261125：before、protocol及SHA、frozen_source/source_freeze、method_sources、saved_comparison、existing_entry、unseen_2022/results、全部搜索轨迹/冻结图/真实产品、source_freeze_verified、acceptance及JUnit。没有新数据下载、API调用、算法扩库、重复北京全量或949图实验；原始资料指纹回核未变，旧结果不覆盖。每站成本及停止/失败记在各search/summary和total_cost，results.json记录含准备和评价的客户端墙钟时间；配对重采样成本包含在流程时间内，但未单独测量其占比，不声称总成本降低。人工浏览器/桌面整轮点击、完整原生模型运行未验收；Qt控件和真实公共处理入口不是人工浏览器验收。
+
+**交付结论。** 判断规则已由逐块零退化转为总体收益＋局部风险＋证据分层；可以产生“推荐、可试用未确认、保留基线”三类结论，新增类别已能下载真实候选。并非自动更换算法使精度提高；实际退化仍不推荐、缺局部容忍依据不编造阈值、搜索未完成如实保留。若后续制定现实局部容忍阈值，应先由任务/开发资料确定并在新资料前冻结，不能拿本轮2022复核反复调阈值。
+
+
+## Saguling原包当前版本逻辑一致性检查（2026-11-25）
+
+使用613367712字节原ZIP，复用同一SHA绑定的历史真实DS识别/推荐，不声称新做线上识别；公共selected_processing实际重跑数值，不改阈值、种子、算法或原始数据。新目录output/saguling_consistency_20261125，未覆盖旧结果。
+
+数值链PASS：原推荐仍recipe_numeric_rejected，另有SEARCH_ONLY合法搜索选项，18张实际评价图/100提议，真实搜索节点调用76次；最终及交付均SINGLE_SOURCE、BASELINE_RETAINED，代理RMSE6.1953983729 mm，78个共同样本，独立复检EVIDENCE_INSUFFICIENT、recommended=false。产品为2018-02-03至05三日、7×5网格、mm，非负/有限值、NetCDF回读及结果ZIP CRC通过。此入口实际是NetCDF→NetCDF的对齐/日累计处理，不是已转换为SWAT+输入。页面结果对象显示单源和未确认提升；未进行本轮人工界面点击。数值客户端总耗时74.1487秒，非纯搜索耗时。
+
+但不能判整个平台完全自洽。底层independent_alignment.original_report仍用fusion_executed=task_id in searches，把运行过融合搜索误记成实际融合；真实交付单源却写fusion_executed=true。该标记不是本次数值选型依据，不能据此声称已融合。见numerical/result.json和acceptance.json。本轮检查未修改源码或掩盖旧状态。
+
+另通过service.run_original_workbench对同一原包测试SWAT+工程入口。公共机制自动复用同SHA历史UTC日界工作假设，明确原模型日界未证实，未将假设写成事实。该工程入口实际预算objective/total1800、proposal400000、wall3600秒，不是页面小规模130/180/100/45秒。解包后确实进入实际搜索；为遵守有界检查而停止长任务，记录STOPPED_NOT_ACCEPTED。原生写回、最终格式关卡和模型实际读入均未验收，不沿用旧UTC联调结果冒充当前成功。两个入口任务支持/预算不同，分数不能混比，不能说前一入口选图自动写回后一入口。保存部分搜索请求/轨迹及停止记录，不称完整工程产品。
+
+完整工程展开临时文件约5.25GB，并产生约885MB重打包副本。尝试仅删除本轮archive_intake/expanded_inputs.zip，先确认绝对路径且限定在本轮输出目录，但自动审批两次拒绝，仅返回blocked by policy、无更具体原因；未进一步换工具删除，全部暂存，释放0字节，具体大小见cleanup.json。未将此情况写成自动清理成功。原ZIP最终SHA仍d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f，源码和旧结果保留。
+
+结论：推荐→评分拒绝→继续变异→保留基线的数值逻辑可复现；融合状态标记和工程入口预算仍有缺口，总体PARTIAL_CONSISTENCY_NOT_FULL_PASS。没有把无提升说成融合成功、未完成写回或模型运行标PASS。本轮无源码修改、无无关全量测试；后续修复应落在公共状态和预算机制。
+
+
+## 平台临时副本自动清理与DS推荐原因核查（2026-11-25）
+
+**本轮实际范围。** 用户明确要求清理前次测试副本，并将任务后清理变成平台能力。原6,132,575,206字节archive_intake/expanded_inputs.zip再次以已核实的绝对路径提交删除，但自动审批仍拒绝，仅返回blocked by policy，没有更具体原因；删除未执行，原副本暂存，未伪报空间释放。未换工具或让新清理器认领这批未登记历史目录来绕过拒绝。该外部阻塞不等于Windows或平台文件系统已损坏。
+
+**公共清理实现。** models.archive_inputs新增normalized_archive_scope，复用原normalize_archives数学/格式读取器，记录本次进入前已存在的路径及原始输入。只清理此调用新建的archive_intake和expanded_inputs.zip，保护原始输入、既有文件、符号链接和被结果引用的路径；不扫描历史output，不删除最终产品、日志、manifest、拟合状态或必要的复现预测。try/finally覆盖正常完成、异常和能够传播BaseException的协作取消。删除失败单列PARTIAL/具体原因，不掩盖原处理异常；保留temporary_cleanup.json与ZIP内回执。
+
+automatic_preparation._prepare_with_context将输入归一化、处理及封包纳入该生命周期，在最终原生检查前释放中间副本；desktop.service仅转换分支也使用同一scope。五模型正常准备、仅融合/仅转换走已有公共调度，是否创建解包副本由实际输入决定，不按包名特判。底层normalize_archives仍保留原API、由低层独立调用者管理生命周期；页面按需文件工具原先已有TemporaryDirectory，不重写。用户下载产品仍保留，不能把需要下载的成品当垃圾清掉。
+
+**限制。** 强制杀进程或断电时Python finally无法保证执行；本轮不宣称已具备崩溃后历史目录安全回收。前次副本正来自被强制停止的工程测试，不属于新调用所有权。桌面原有关闭/新任务清理整项TemporaryDirectory的机制保留，没有新增取消按钮或重写调度器，也不保证回收所有NumPy进程内存；本轮解决的是磁盘临时解包副本。用户需要重启运行中的桌面进程以加载新源码。
+
+**实际验证。** 48项新增及受影响定向测试PASS，tests1/2/3.xml按classname/name去重；涵盖成功、异常、协作取消、归一化半途失败、预存在目录和原始输入保护、结果引用保护、清理权限失败不替换原异常、嵌套容器及五模型公共契约回归。小型合成压缩包只作功能边界；没有使用它们证明环境精度。另将既有真实NOAA SST的原字节及已有合法WPS任务配置封装为嵌套容器，通过prepare_uploads真实执行：输出3个WPS intermediate v5文件，格式PASS、工程NOT_REQUESTED、模型试读NOT_RUN；平台自动删除两个本次中间副本、释放11,308字节，ZIP CRC通过，原始文件指纹不变（real_wrf/receipt.json）。此例验证生命周期和真实导出，不冒称5GB压力测试或完整WRF模拟。
+
+**DS为何反复“推荐失败”。** 只读核对真实记录发现：最近Saguling数值重测复用了同一份2026-11-24线上推荐，不是每次重新调用DS后都失败；客户端均记录reused_inspection/REUSED_REAL_ONLINE_RECOMMENDATION。该请求C1:fusion被标engineering_requires_fusion=true，mandatory过滤后allowed_recipes只有R1：保守对齐→缺失回退→spatial.blend；每源仅4个扰动样本。于是DS在这例几乎没有算法选择自由，只能解释唯一配方，不能将此包装成充分智能选优。实际trial_recipe的融合权重为既有固定0.5，未由DS或独立误差估计出来。
+
+本地配方评分参考为aligned[primary]，primary取较粗网格；降采样后重建该产品，并与同队列最佳单源作比较。它能验证产品重建，不能充当独立雨量观测、证明哪一源真实降水最准；对参考产品有天然偏向。只有3个共同日期、1个预留日期，又不足以证明推荐前抽检与变异后复检均独立。因此配方被拒并不等于DS没有任何作用，更不证明真实多源无价值。DS仍适合识别、语义核对、解释和提出候选；收益必须由任务匹配的真实执行/参考验证。菜单只有一种时应承认只有一种待验方案；无独立降水真值时应仅报代理结果。本轮整理诊断，未扩算法、改权重、修改评分阈值或重新调参凑提升，未声称已经修复完整推荐选型设计。
+
+证据集中output/automatic_scratch_cleanup_20261125，包含before、scope、全部JUnit、recommendation_audit.json、真实WPS回执、acceptance和最终源码/指纹；唯一总报告追加，旧结果保留。原6.13GB人工删除仍外部阻塞，今后正常公共流程的本次自有副本自动清理已实现并验证，二者不得混称全部完成。
+
+## 推荐初筛、新评价与补充推荐调用衔接筛查修复（2026-11-25）
+
+本轮直接检查实际运行目录，不以旧报告或函数名代替调用核查。新证据目录为 output/recommendation_chain_repair_20261125；保留修改前源码、两次阶段性数值重测、失败测试、当前源码和指纹。未同步GitHub，未改原始资料、科学内核、融合权重、收益阈值、固定预算或历史结论。
+
+### 查实的问题与修复
+
+|问题|实际修改|行为或真实证据|结论|
+|---|---|---|---|
+|有合法继续搜索选项时，页面跳过队友的补充材料重新推荐|__main__.send_next_automatic_fallback移除has_search_continuation短路；保留原eligible、字段授权、API条件和automatic_fallback_started单次标记|test_ready_continuation_does_not_skip_supplementary_recommendation；原有页面补充发送测试|PASS（行为测试，不是重新在线发送全量资料）|
+|旧网格初筛先对齐到粗网格，再以粗主源为代理；与现有搜索的原生细产品重建协议不一致|fusion_protocol.fixed_recipe_cohort复用现有prepare，网格初筛经公共算子执行；independent_alignment将真实原生两源传入，不先损失细源网格|原生细/粗网格与输入交换测试、实际trial_recipe测试；public_protocol_numerical/recommendations.json|PASS：共享观察算子、参考定义和目标范围规则；初筛与搜索的时段仍按隔离协议不同，不声称评价队列相同|
+|外发后清空旧验收，新候选替换列表导致失败依据不易追溯|independent_review.invalidate/start保留previous_recommendation_review；页面在invalidate前保存原推荐快照|原失败不变、快照深拷贝、未知新证据不能继承PASS、一次补充不无限循环测试|PASS|
+|运行过融合搜索就写fusion_executed=true，实际交付可能单源|independent_alignment按实际delivered_best.source_family记录；另列fusion_search_executed；缺来源身份返回UNKNOWN而非伪造融合|真实原包18图记录：搜索true、交付SINGLE_SOURCE、fusion_executed=false|PASS|
+|初筛count是输出有效像元数，不是评分分母|评分count改为真实指标分母之和，output_valid_count单列；缺评分时保留unavailable_evaluation_protocols|acceptance.json：评分126，输出有效像元35，两者不混用|PASS|
+|只有一个配方仍可能被理解为充分智能选型；代理初筛与最终复核含义混淆|公共explanation_text明确唯一待验方案、代理范围及不能代替冻结后独立复核|页面共用说明函数行为测试|PASS（说明消费者测试；未做本轮手工桌面点击）|
+
+公共链路实际为 recommendations.review_holdouts → recipe_trials.review → 对应真实适配器；数值拒绝后保留原拒绝并提供独立SEARCH_ONLY权限。页面的补充推荐不再被该权限短路；全量材料外发仍会使已暴露的评价失去独立资格，新DS答复必须等待新的合法验收，不能凭投票继承旧结果。补充响应不足时不伪造候选。真实变异后仍走既有blocked_confirmation及冻结图mutation_acceptance，推荐前抽样结论不能直接继承给新图。
+
+### 原包真实结果与证据边界
+
+原613,367,712字节Saguling包SHA仍为d316a261665f5322e8b12a5e7a90e178c81ccd164a0497df72f76837bad35c6f。public_protocol_numerical复用2026-11-24线上DS记录，当前公共入口重新执行真实数值，39.8776秒客户端墙钟，18图/100提议/76真实节点调用；非新一次线上推荐，更不是整轮全量补充DS验收。
+
+新初筛使用fusion_evidence_v2_target_domain，几何选出的参考为原生较细NOAA_CMORPH，而非旧粗NASA_POWER代理；仅在共同目标范围内评价，所有预测输入先经既有面积算子降尺度，隐藏细参考不传给配方。新初筛固定等权配方RMSE15.4215618291 mm、单源基线7.1448631461 mm，126个代理评价点，仍按原门槛拒绝。旧记录23.6957798151/9.89906141367、8点原样保留；参考、算子与分母已变，禁止用两批数值比作精度提升。统一算子不能消除产品上游相关性和尺度迁移假设，也不能凭代理结果证明真实降水融合有无价值。
+
+搜索与最终默认交付仍为SINGLE_SOURCE，RMSE6.1953983729 mm、MAE4.362795，78个搜索期代理样本；这与初筛的126点/不同日期不是同一指标队列，不混比。最终EVIDENCE_INSUFFICIENT、BASELINE_RETAINED；仅3个共同日期及不足的独立预留仍无法支持稳定增益声明。真实产品NetCDF回读、有限/非负、ZIP CRC通过。verify_current.py又以真实适配产物并复用实际搜索输入中已接受的CRS绑定，单独复核最后count字段修复；不从坐标数值另猜坐标基准。
+
+### 继续筛查的其他入口与未完成范围
+
+- station_grid初筛用真实留出站点观测，变异用公共paired服务与分块确认；不能因为配置名仍含blocked_confirmation_v1便断言运行旧判断，实际导入的是当前公共review。
+- indexed_table_recipe初筛包含掩码本地值及主序列重建代理；变异用同一paired服务，复用推荐组只作开发并明确隔离不足。区间累计/平均不在该插值入口的支持范围，不把它们自动解释为瞬时量。
+- windowed_grid_recipe保留基于实际Affine/CRS的Rasterio窗口重建代理；真实变异目前要求明确瞬时量、EPSG:4326和至少3个完整共同时间。该投影/点支持路径不能机械套用只接受地理cell_mean的公共面积协议，本轮未声称所有栅格和投影入口已统一其观察算子。其参考仍是产品代理，不是环境实测真值。
+- 这些适配器仍须各自合法参考和支持契约；没有实测时不能把一致性或产品重建改名成真实精度。没有新的未暴露复核资料时，只能保留基线/探索性结果，不可强制PASS。
+- 本轮没有重新线上发送完整扰动副本、没有手工桌面/浏览器整轮验收、没有工程原生写回或模型运行；不能将原包数值路径通过替代上述事项。初筛共享算子只修复实际查实的网格断点，不声称全平台所有适配器和所有客户端均已完成最新版本端到端验证。
+
+定向测试tests7.xml为84项PASS，随后tests10.xml为8项PASS，按class/name取最后一次结果去重85项PASS；不累加重复执行，不跑无关全量。保留tests3的原生网格变量绑定NameError（已修正）、tests5/8/9新fixture缺CRS/连续量/物理语义字段的失败记录（补齐真实测试契约，未放宽生产检查），以及验证脚本读取归一化前产物缺CRS的失败（改为复用实际执行输入已接受的绑定）。源码快照、changes.diff、chain_audit.json、source_fingerprints.json、acceptance.json、真实产品和所有失败均保留。当前是上述具体修复及有界数值验收完成，不是“平台所有评价均无问题”或融合精度优势已证明。
+
+## Saguling原包整轮线上DS与实际桌面窗口验收（2026-11-25）
+
+### 本轮完成范围和真实调用
+
+使用同一613,367,712字节Saguling原ZIP，从实际Window开始按钮发起文件结构读取、线上分类、按需检查、资料判断、算法推荐、本地初筛、补充推荐、合法候选变异、冻结复核、线上输出核对及页面下载。最终live_qt_v3未复用历史DS回复，14个去重线上响应，prompt 222,493、completion 17,115、total 239,608 Tokens；这是最终一轮，不包含此前失败验收轮次费用或Tokens，不以当前价格推算人民币。API回执和实际建议保留，密钥不写入报告或结果。
+
+本轮实际显示Windows Qt桌面窗口，由Qt验收客户端操作原控件并驱动普通Window处理函数/QThread；不替换DS、不模拟数值误差、不手写最终图。外部computer-use工具初始化报failed to write kernel assets / 系统找不到指定的路径，重试仍失败，因此**外部鼠标键盘人工式验收未完成**，不能把Qt自动操作称为该项通过。当前桌面快捷方式实际指向D:\codex\EcoDataEngine\launch_platform.ps1，与此次Window和公共模块同目录，详见desktop_shortcut.json。
+
+|阶段|实际证据|结论|
+|---|---|---|
+|初始线上DS识别和推荐|live_qt_v3/desktop_records/file-inspection.json、algorithm-recommendation.json、逐阶段events|已执行；没有用旧线上结果代替|
+|推荐方案真实初筛|R1保守重网格→缺失回退→等权混合，公共fusion_evidence_v2_target_domain，126个代理评价点|数值FAIL：RMSE15.4215618291 mm，基线7.1448631461 mm；MAE12.4261029106对4.6027544985 mm|
+|补充材料和新线上回复|仅在已获准任务共同空间范围及原生一格邻域内发送749条扰动记录，2分片均真实收到响应|已执行，但未形成可放行新配方；不是“新推荐通过”|
+|拒绝后继续搜索|页面勾选legal_candidate_search，使用公共selected_processing→local_search→platform_search|PASS：12图/100提议/52真实节点调用；缓存与新执行按已有记录区分，不称全局最优|
+|变异后冻结复核|当前blocked_confirmation_v2_aggregate_risk与冻结图回执|关卡已运行，EVIDENCE_INSUFFICIENT、BASELINE_RETAINED；未证明融合增益|
+|线上输出核对|output_review.json含实际线上回执|已执行，verdict=needs_inputs；其意见不是模型实际试读|
+|页面展示与下载|final.png显示选中来源、代理范围、格式和未完成模型事项；原export_now保存81,048字节ZIP|PASS（实际Qt窗口自动验收）；ZIP CRC、NetCDF回读、有限/非负通过|
+|完整原生SWAT+模型输入及模拟|本路径实际NetCDF→NetCDF，7×5×3日，mm|未执行；不能冒称已产生pcp或模型读入成功|
+
+### 发现并实际修复的衔接问题
+
+1. 补充推荐此前遍历整个获准全球变量。fallback_evidence.task_scoped_fields复用已准入网格任务的坐标关系，按共同空间范围及重网格所需一格邻域生成证据索引；numerical_rows只读对应窗口并保留原始索引。数据规模没有人为接入上限，未按数值选“好样本”，只是限定任务相关空间范围；原文件未改。该限定当前消费于已有independent_grid_search任务，其他格式仍走其原有审核路径，不声称任意投影或格式的全量范围均已重写。
+2. 新范围字段在内存使用tuple而JSON回读成为list，导致补充发送前的清单严格比较误拒。改为明确JSON列表，增加真实生成ZIP→清单回读→发送协议的定向测试；未关闭摘要或清单一致性检查。第一次真实验收的具体错误“待发清单与获准副本不一致”保存在live_qt，不能归咎于Saguling。
+3. 补充资料外发会正确撤销旧验收资格，但原页面随后丢失继续搜索入口。recommendations.supplementary_search_continuation复用原continue_rejected_search：仅对确定数值拒绝的已有合法任务重新提供SEARCH_ONLY；被拒配方仍不作为种子，新DS回复也不继承PASS。同时把已暴露资料的mutation_reservation明确改为INSUFFICIENT，不拿外发过的参考再声明独立提升。页面回调消费此公共函数，无包名、日期或本包算法偏好分支。
+
+### 推荐为何仍未通过：具体原因而非笼统失败
+
+- 本任务推荐菜单只有R1一条完整配方，DS自己也说明“唯一允许的配方”。这次线上推荐证明的是适用性解释，不是从多个方案中预知最优效果。
+- R1实际使用原有固定0.5权重；本轮未拟合或调权重。它能执行，但在新的细产品重建代理上比同队列单源差约115.84%，因此按既有评分被拒。代理参考不等于独立雨量站真值，不能据此宣称真实降水多源永远无价值。
+- 补充回复没有产生可放行的新方案。F1把recipe写成包含id的嵌套对象，而现有投票协议只接受目录ID字符串，未被当作合法选票；F2明确recipe=null，理由是单源分片缺少另一来源/共同权重依据。完整原文保存在receipts.jsonl。没有把无法解析的建议改写成成功推荐；这也暴露了补充响应格式兼容及成对上下文表达仍有改进空间，本轮未宣称解决这些效果选型能力缺口。
+- 即使没有形成新DS配方，公共合法候选搜索已继续实际运行。相同78点搜索队列上，SINGLE_SOURCE RMSE6.1953983729、MAE4.3627947048 mm；实际涉及两个来源的MULTISOURCE最佳已执行路线RMSE8.9122301959、MAE6.6507010872 mm。看似含多个节点但来源身份相同的图不冒称多源增益。没有使用初筛126点与搜索78点直接比较改善幅度。
+- 只有3个共同日期，且补充资料已用于推荐，当前没有新的独立确认队列。冻结后复核如实返回不足、默认保留NASA_POWER来源场；既不是跳过变异，也不是已经证实真实降水精度下降。最终候选输出及警告不冒称融合成功。
+- 最后DS提到SWAT+所需字段，是对当前NetCDF产品与模型画像的核对。此分支没有完整工程成员绑定及模型程序试读记录，其列表不能直接当作原ZIP确实缺土壤/工程文件的证据。模型原生转换、工程完整性和模型运行与本次数据处理完成分开。
+
+### 全部验收轮次、输出和保留
+
+live_qt第一次真实运行到补充发送前，发现上述清单错误；修复后保留失败。live_qt_v2完成补充、变异和线上最终核对，但验收客户端用同一个周期定时器进入静态保存对话框，无法再入，未完成下载；这是测试客户端缺陷，已停止明确属于该客户端的两个Python进程并保留所有已有结果。修正为独立singleShot操作保存对话框后，以相同原包重新线上从头运行live_qt_v3，不通过换种子、换数据或扩大预算得到成功。
+
+v3导出实际成功，保存对话框保留默认文件名“模拟技术引擎-结果.zip”，验收脚本因只查desktop-result.zip先误记EXPORT_FAILED。未改写原acceptance.json；export_location.json登记真实下载文件位置与SHA，复制完全相同字节作为desktop-result.zip便于核验。verify_live.py独立检查实际ZIP、NetCDF、14次新响应、补充发送、真实搜索反馈、复核、输出线上响应及原包SHA，verified_acceptance.json中9项功能检查PASS。其PASS只指这条Qt数据处理/下载链路，不能替代推荐效果、独立验证、模型原生输出或外部鼠标键盘验收。
+
+最终产品为2018-02-03至05三日、lat7×lon5、precipitation单位mm；输入和输出都是NetCDF，内容做了时间区间处理和目标网格对齐。模型未运行。最终一轮约227.375秒客户端墙钟，不能把多次失败及开发测试的时间隐藏成一次总成本优势。
+
+53项新增与受影响测试按class/name取最后一次PASS（tests3/4/5.xml），无无关全量回归。测试覆盖任务范围索引、ZIP清单往返、保持原始索引、完整发送授权、失效后不继承验收、失败后继续合法变异、字段/状态隔离和最终复核。源代码执行前后指纹核对一致；executed_source、executed_source_fingerprints.json、failure_reasons.json、所有失败、源码前快照、API回执和实际桌面图均集中保存，不覆盖旧实验。
+
+正常完成的v3桌面临时目录在退出后自动清理已核实；v2因停止客户端留下9,796,110字节测试目录。仅对本轮自建、已核实所有权的目录提出一次删除，自动审批仍以blocked by policy拒绝，未换工具绕过，未伪报清理成功。此残留与历史6.13GB目录不是同一项，分别保留边界；failed_client_cleanup.json记录本轮情况。所有原始文件、旧协议和历史产品保持。
+
+
+## 第二步界面收敛与Saguling整轮验收（2026-11-26追加）
+
+本轮仅修改src/ecodata/desktop/__main__.py的桌面流程与展示，复用公共放行、自动补充推荐、合法候选搜索和最终复核机制；没有降低评分阈值、修改算法或覆盖历史实验。
+
+第二步后台自动完成检查及必要补充推荐，处理中禁用继续操作。主区只显示共享放行机制允许继续的方案；单个方案默认选中，提供明确“继续处理”按钮。失败、待核验和建议项收进“查看检查详情”，保留原始依据、此前数值失败与当前独立性限制。没有可执行方案时显示具体阻塞原因并禁用继续；工程核验与融合放行仍分别处理。允许合法候选搜索不等于原推荐通过，更不保证融合胜出；隐藏失败选项即使被程序勾选也不能绕过公共门禁。
+
+定向测试按tests4.xml、tests5.xml、tests6.xml中class/name最后一次结果去重：{'PASS': 47, 'FAIL': 0, 'SKIP': 0}。覆盖后台忙状态、默认选中、失败隐藏但保留、明确阻塞、共享最终门禁、工程独立核验、仅转换兼容及历史失败依据。此前失败测试记录保留，不运行无关全量回归。
+
+原Saguling包通过可见Qt桌面窗口和实际控件处理函数完成新一轮线上DS检查、补充推荐、合法候选变异、冻结复核、输出核对及保存对话框下载。12条线上响应；实际搜索12张图、100次提议、52次数值节点调用。下载live/desktop-result.zip为80,428字节；ZIP CRC、NetCDF回读、单位mm、非负/有限值、原包SHA不变均通过。输出为三日7×5网格NetCDF，输入也是NetCDF；不是SWAT+原生pcp写回，未运行模型。最终BASELINE_RETAINED，独立效果证据仍不足，不声称融合改善。正常退出的桌面临时目录自动清理已核实。
+
+完整线上链的执行源码保存在executed_source；其后仅调整详情背景、状态换行与历史失败说明显示，最终源码保存在final_source，两版本差异见executed_to_final.diff。最终展示使用本轮真实记录回放并截图检查，不重复API或数值计算。step2_ready.png、step2_details.png、step2_default_size.png为最终展示；visual_check.json明确为展示回放。外部计算机控制工具初始化失败，未完成独立人工鼠标键盘验收；不能将Qt自动化称为人工验收。
+
+全部证据集中output/step2_clear_flow_20261125：before快照、两类源码差异、delivery_summary.json、verified_acceptance.json、测试XML、live实际调用/搜索/产品记录及最终界面截图。旧结果保留，本轮未向GitHub推送。
+
+
+### 第二步改动后定向自检（2026-11-26）
+
+本次只读审查UI状态、行与勾选映射、自动补充回调、公共放行与实际提交关系；未重新运行线上DS或整轮实验，未修改生产代码。重新执行31项第二步/续行门禁/拒绝推荐后合法搜索定向测试，全部通过，记录output/step2_selfcheck_20261126.xml。首次默认pytest临时目录因Windows拒绝访问导致3项setup错误；未删除旧目录，改用本轮独立basetemp复测通过。现存体验限制：详情仍有技术用语，接口异常后不保证自动续完；无选择时继续按钮仍可能可点、由提交校验提示勾选。无证据证明这些有限测试覆盖全部任务。Saguling效果与模型运行结论保持原记录，不因UI自检升级。
+
+
+## 桌面受管临时目录自动回收（2026-11-26）
+
+复用现有TemporaryDirectory生命周期和normalized_archive_scope归档清理，仅增加core/temporary.py公共受管目录：默认位于LOCALAPPDATA/EcoDataEngine/temporary-v1，保存独立token、schema、目录名、PID及进程创建时间。桌面窗口启动调用sweep_abandoned；只回收标记有效且原进程已退出的目录，PID复用不阻止旧目录回收。活跃进程、进程状态无法核实、无标记、标记冲突、符号链接/目录联接和越界路径保留。文件被占用则记录失败，下次进程退出再启动重试，不绕过系统权限。没有按名称清扫旧历史目录。
+
+桌面扫描、按需文件工具、独立复核、降水分片、临时重网格、候选回放等原TemporaryDirectory调用改用同一公共生命周期；显式dir参数仍按原有作用域使用，通常位于受管任务内。归档标准化副本原清理机制保持不变，科学算法、门禁和选优没有修改。保存取消/失败保留待下载产品；默认结果保存成功后清理本轮run/task工作目录、主要结果与准备状态引用，执行gc并关闭该轮再次导出/候选回放，保留结果页面摘要及用户保存的ZIP；下一轮重新识别执行。输出若被保存到内部工作目录，不删除该目录并明确提示另存。正常关闭清理，清理失败不阻止关窗，留下标记供后续启动重试。
+
+本轮49项去重定向测试全部通过（tests1/2/3.xml）；涵盖真实子进程os._exit强制退出后回收、活跃进程不删、PID复用、占用重试、无标记/链接保护、启动实际调用、成功/失败/内部路径保存、原有按需工具和归档清理及第二步回归。未运行大型搜索或付费API。
+
+使用上一轮Saguling真实结果包，经当前Qt导出处理函数、真实公共ZIP导出和新清理回调验证：输出ZIP CRC通过，NetCDF回读lat7/lon5/time3，原包SHA不变，工作副本删除，已保存结果保留；记录export_acceptance_final.json。此为现有产品保存/清理验收，不是重新运行融合，也不是外部人工鼠标验收。首次验收客户端遗漏scan.path导致KeyError，补用真实inventory后通过，未绕过assert_current。
+
+限制：历史无归属标记的副本、用户主动保存的结果、开发output证据不会自动删除；已有显式外部dir或导出同目录原子写入的临时文件仍依赖原finally清理，强制断电残留不按未知路径自动回收。内存仅释放平台主要引用和回收对象，Python/Qt/数值库保留的缓存不保证RSS立即恢复；本轮不声称进程零内存占用或任意历史垃圾全部清除。全部源码前快照、执行源码指纹、测试与实际产品回读在output/automatic_cleanup_20261126，历史实验保持，未推送GitHub。
+
+
+## CAMx桌面流程、密钥记忆与自动补充预算修复（2026-11-26，20261126-r5）
+
+本轮以桌面原包02_CAMx_两日嵌套工程与站点观测 - 副本.zip和实际问题记录核查。Windows快捷方式指向D:/codex/EcoDataEngine/launch_platform.ps1；初始窗口为旧进程20261124-r2。保存其检查记录后关闭，重新启动并通过外部Windows控制工具确认最终窗口20261126-r5、原包路径及“已记住DeepSeek密钥”。最终版本未重新跑完整付费链；不得将前阶段r4线上过程冒称r5逐字相同源码的完整验收。
+
+| 原问题 | 公共修复位置 | 真实行为证据 | 状态与边界 |
+| --- | --- | --- | --- |
+| API只在会话内记住 | core/credentials.py、desktop/__main__.py | 官网/models验证成功后写Windows凭据管理器；去掉进程环境变量、创建新窗口仍恢复 | PASS；不明文写项目，不以保存成功代替每次网络可用 |
+| 第一页只有泛化提示 | desktop/file_agent.py、__main__.py | 实际列目录、读指定表头/依赖、缓存复用及耗时发到主页面最近12项时间线 | PASS；不伪造百分比和阶段完成 |
+| 无关上下文仍哈希大包 | models/input_context.py | 不存在同模型上下文时不读完整原包；同模型仍核对SHA | PASS；不是跳过输入变更检查 |
+| 描述JSON被当成原科学文件已检查 | file_agent.uninspected_described_sources及现有工具循环 | 有变量描述但没实际表头时，在原12轮/48工具预算内最多一次补查请求；r4真正读到NOAA与met原生NetCDF | PASS；不能定位仍UNKNOWN，不凭描述伪造原文件 |
+| NOAA复合编码被当浮点数导致假失败 | sample_values.field_values、sampling_plan、sampling_risk | 复用io.noaa_global_hourly.decode的尺度、质量码、缺失编码；同原CSV原留出从tabular_unit_incomplete变checked，16个有效样本 | PASS；不填造观测，不修改阈值 |
+| 比较任务走逐字段通用抽检 | recipe_trials、station_grid、recommendations | 真实站点/原生网格联合试跑；没有BIAS节点不拟合订正。r4精确9条、最近24条验收released；另实际运行输出9条Parquet并回读 | PASS；仅比较与适用性，不是融合增益 |
+| 个别检查失败挡住独立合法任务 | __main__.continue_automatically及共享放行机制 | 有真实可继续方案/工程时不被无关失败全局否决；原因留详情；没条件仍不能假通过 | PASS定向行为；r4线上无关失败分支未触发最终修正，最终函数另有定向测试 |
+| 自动全量补充出现362联网分片 | fallback_evidence.automatic_budget/transmit、__main__自动补充 | 真实362分片清单在最终公共预算被拒绝且不发请求；UI行为测试确认失败保留、合法方案继续、busy清除 | PASS；每输入自动最多4分片并预留汇总，总5逻辑请求，网络有限重试另计。人工明确批准的全量发送不改为默认自动 |
+| 风速标量与u/v分量混用 | station_grid.task_for | 有依据的不相容操作退出，原背景及其他任务保留 | PASS；没有合成/方向契约不擅自构造风速 |
+
+### 本轮真实过程与成本边界
+
+旧记录按需检查约222.232秒，其中本地87.772秒、API及编排134.460秒。r3线上检查100.525秒，但只读到两个观测表，不能作为与旧流程相同科学范围的加速证明；该轮暴露未读模型科学文件的缺口。补查修复后r4按需检查172.062秒，其中本地48.991秒、API及编排123.071秒，实际读到NOAA与原生met/camx.2d.12km.20160610.nc。日期、来源和读取范围不同，不声称稳定提速比例；复杂嵌套归档读取与DS思考仍需时间。
+
+r4线上推荐与本地核验已完成，两个温度配对方案released；另一个订正方案真实评分失败后允许合法候选搜索。随后现有自动全量补充生成362分片，发现后主动停止属于本次验收的PID25608/17000，保留已收到的51条分片回执、批准清单和7MB证据副本。该轮不是完整成功。最终增加联网预算后，用同一实际清单验证不允许发送，并测试跳过补充不会暂停合法方案；不通过再发362批证明预算。实际已消耗回执Tokens见actual_budget_fix.json，未核实货币费用，不写为零。
+
+当前最终版的NOAA公共抽检与预算通过定向及真实记录检查，最终桌面已重新启动、密钥恢复和输入路径经外部工具核实。另一次当前公共站点试跑真实从原包读取并输出station-grid-1.parquet（9条），19.355秒、原包文件签名未变。这个局部产品证明读取与配对真实执行；本轮没有重新完成CAMx整包融合、原生模型写回或CAMx模拟，不宣称已证明融合提高。
+
+### 测试、保留与未解决项
+
+去重测试结果：{'PASS': 143, 'FAIL': 6}。保留tests1至tests10.xml全部记录；6项station_grid_fusion旧测试失败，代表random用修改前源码覆写导入同样复现17/731合成缺失位置的数值不一致。问题与既有自动补值提前填入主源有关；剩余5项未逐一做before复验，不把它们隐藏为PASS，本轮未改算法内核或降低断言。新增密钥、主进度、真实读入失败不可放行、比较不拟合订正、无关失败不否决、复合质量码、自动补充预算等测试均通过。
+
+源码前快照、final_source及指纹、原问题、线上记录、部分失败回执、真实产品、采样修复与预算检查均保存output/camx_desktop_flow_20261126，详delivery.json。sample_values.py前版本与此前归档逐字匹配后复制，其余已修改生产模块执行前直接快照。测试中的Windows凭据使用独立临时目标并删除，不替换用户真实凭据；真实验证只用本机已配置密钥，未写入源码或报告。原始数据及历史结果保持，自动临时清理机制保留，未推送GitHub。
+
+
+### 原CAMx整包公共流程实际试跑（2026-11-26）
+
+按用户“试一遍、只用平台自身能力”，调用与页面相同的desktop.service.run_original_workbench，复用已有原包检查记录，未重新请求DS推荐，未手工替换输入或拼接输出。原包02_CAMx_两日嵌套工程与站点观测 - 副本.zip为3,292,398,499字节，SHA256为40b48781983fe52611dba3ff709259f66c2ce1ab3bd1128493462aa7556fa85f。
+
+真实结果FAIL：automatic_preparation -> normalized_archive_scope -> archive_inputs._Reader.copy在嵌套展开阶段触发“压缩资料展开超过10 GiB接收上限”。该公共模块仍从interface.engineering_upload导入10 GiB MAX_TOTAL_BYTES，累计展开量受固定上限约束。这次是平台残留接收限制，不是本轮检出了缺文件或科学定义错误；不能据此保证越过限制后所有后续步骤都会通过。本轮用户要求试跑，未擅自解除全平台资源保护或编写外部数据处理绕过。
+
+总耗时约51.60秒，受监测进程合计RSS峰值203,087,872字节（约193.7 MiB）。平台finally清理回执COMPLETED，释放10,580,619,702字节解包工作副本；本轮受管临时目录不存在已核实，原包前后SHA256完全一致。融合、原生写回、原生产品回读及CAMx程序执行均未运行，不能标记整包跑通。
+
+本轮没有修改生产源码，没有重复全量测试或启动研究实验。调用客户端、真实进度、完整异常栈、资源记录、公共源码指纹与逐阶段acceptance.json保存在output/camx_full_platform_20261126。此前温度配对9/24条通过的有限结论保留，不升级为整包完成。
+
+
+## 公共按需归档读取、分块写回与CAMx原包验收（2026-11-26，selective-intake-v1）
+
+本轮复用现有ProjectFiles、工程绑定、C-shell静态解释器、meteorology_schedule、Pipeline局部残差处理、原生NetCDF块切分、最终检查及受管临时目录。未修改科学算法、评分阈值、GOLEM源码或原始输入；未运行研究对照或重新请求DS。此前失败结果保留。本轮是桌面公共处理函数run_original_workbench和原下载函数验收，不是再次手工操作完整GUI，不宣称浏览器验收。
+
+| 原缺口 | 本轮修改 | 实际证据与结论 |
+| --- | --- | --- |
+| 嵌套资料先全部展开再重打包，触发10GiB限制 | models/selective_resources.py提供作用域内的虚拟资源索引；archive_inputs与ProjectFiles共享。顶层ZIP原地读取，嵌套压缩容器为可寻址访问暂存；TAR顺序扫描头部，叶数据按需复制。复制块1MiB，最终头部缓存最多8MiB | 原包84个唯一叶资源，75个因工程依赖、观测或同路径重复校验而实际暂存；年度EPA观测叶文件未暂存。不再生成expanded_inputs.zip。TAR仍需顺序解码才能索引，不宣称只读ZIP目录就能定位所有TAR叶文件 |
+| 现成多运行段模块没有公共入口、缺少实际导入 | automatic_preparation接入已有绑定计划；project_binding复用已有模板绑定；native_meteorology连接prepare_schedule；修正不存在的_open_native导入，直接用已安装netCDF4.Dataset | 原两天、两网格均实际走到处理和写回；另一个名称/年份/网格的小型合成工程通过公共入口，不以该合成例证明环境精度 |
+| 缓冲区坐标与内部网格未统一核验 | native_axes依据原生X/Y单位、NCOLS/NROWS及BUF元数据核验中心坐标；geometry复用现有投影实现 | 原真实网格及缓冲区通过；声明冲突拒绝。通过容差核验后使用元数据中心，避免float32公里存储转换后的微小舍入影响精确格点坐标 |
+| 原生回读整变量进入内存 | 局部更新按格点写入，回读复用existing_air_converters.native_netcdf_update._chunks，以不超过4MiB的数值数据块逐块遍历全部变量 | 大于单块的NetCDF定向测试及真实4个更新文件逐变量比较通过；未更改其他变量、时间标记、缓冲区或未处理支持域 |
+| 多日导出控制被视为多个冲突工程 | 从camx_templates提取既有绑定逻辑给真实namelist复用；schedule校验同目录、明确时序和实际前序产物依赖；独立工程不合并 | 仅重跑受影响的公共最终关卡后，41份NetCDF格式PASS、工程实际依赖绑定PASS；运行时重启产物仍标为待模型生成，没有伪造缺失产物 |
+| 临时索引和成员副本清理 | 复用core.temporary所有权标记和finally释放，失败清理记PARTIAL并保留原因，旧输入和产品受保护；接收回执在退出作用域后写入 | 原包完整流程临时根目录已不存在；按需资源清理回执COMPLETED，释放14,055,908,283字节。完整任务的其他工作副本也随外层受管目录自动清理，不由人工删原始输入 |
+
+原输入为桌面02_CAMx_两日嵌套工程与站点观测 - 副本.zip，3,292,398,499字节，前后SHA256均为40b48781983fe52611dba3ff709259f66c2ce1ab3bd1128493462aa7556fa85f。完整公共流程及首次导出用时436.83秒，实测进程合计RSS峰值292,024,320字节，约278.5MiB。实际暂存压缩容器3,292,325,155字节、叶资源10,763,583,128字节；这些是工程依赖/冲突核验的磁盘工作副本，不是同等内存驻留。完整原生输出仍需包含控制文件引用的较大依赖，因此产品约3.31GB；不能把必要产品或所有工程依赖承诺为零磁盘占用。
+
+实际处理范围：NOAA有效且恰逢原生时刻的温度观测，与CAMx二维t2场进行已有局部残差订正。四份文件分别更新9、9、7、7个格点时刻值，共32处，均为NETCDF3_CLASSIC，原生回读PASS；同一观测在不同网格使用，不能当作32个独立实测样本。不向全域外推，不改风场和三维动力字段。本次是已有格式内数值写回：观测CSV经公共NOAA解码、摄氏度转K后进入订正，输出仍为CAMx原生NetCDF3；不是把原生NetCDF改称另一种新格式。本轮没有独立精度改善实验，没有重跑算法优越性研究，也没有证明订正优于背景场。
+
+最终关卡：格式PASS、工程依赖绑定PASS、CAMx程序试读NOT_RUN。本机未安装已登记并锁定指纹的D:\EcoDataEngine\work\camx740\src.v7.40\CAMx.v7.40.noMPI.NCF4.gfortran。原生文件回读通过不等于CAMx已经实际积分，第二天重启依赖仍需第一天模型运行生成。完整模型可运行性与环境精度未验收。
+
+测试：最终tests9.xml为42项通过、0失败；之后对运行计划独立性收紧的6项受影响测试再次通过，不能相加当成48个独立测试。覆盖按需头部读取、选中成员、原输入不变、不安全路径、正常/异常/取消清理、清理失败保留原异常、真实父依赖、模板与真实控制回读、坐标缓冲区、稀疏写回和有界块比较。早期失败记录tests1至tests8、attempt1/attempt2均保留：同路径重复资源先严格失败，后复用相同内容合并原则修复；另发现现存多网格模块导入缺失并修复。测试中强制锁定清理的用例会产生tempfile终结器告警，清理失败未标成功；NumPy写入弃用警告不被屏蔽。没有执行无关全量回归，历史站点融合6项不一致不因本轮定向测试通过而宣称已解决。
+
+证据统一位于output/selective_intake_20261126：before、final_source、diff、tests*.xml、execution.json、progress.jsonl、resources.json、records/native_validation.json、final_recheck、delivery.json及CAMx-platform-result.zip。完整运行先完成，随后仅对受影响最终输出关卡复检，87.02秒；末尾的头部缓存上界、平面多网格入口和退出后回执位置做定向复测，没有重新执行整轮数值融合。最终下载追加复检版记录，保留较早失败关卡回执以便追溯，不把旧回执改写成PASS。
+
+当前边界：此次公共按需索引支持ZIP及常规ZIP/TAR嵌套，深度最多5、叶成员最多100000，真实可用磁盘不足时明确停止所需暂存，不取消资源安全。TAR链接/特殊成员在新按需路径明确拒绝；7z仍走原有路径，尚未迁移为按需读取。没有声称五种模型所有归档格式全部验收。没有推送GitHub；已写入D:\codex\EcoDataEngine实际项目，已启动的桌面进程需重新打开才能导入新代码。
+
+交付后复核：当前源码与final_source全部指纹一致，最终ZIP成员名无重复，已追加desktop_issues.2.json等最新导出记录，处理原包的临时根目录已不存在。尝试清理本轮pytest夹具时，自动审批以“blocked by policy”拒绝删除命令，未执行；约55,594,363字节测试夹具因此保留在本验收目录test_tmp*，不能将其写为已清理。该拦截不影响此前平台finally实际完成的约14GB按需资源回收与外层工作目录释放。

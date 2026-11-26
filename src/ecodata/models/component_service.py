@@ -14,7 +14,6 @@ import pandas as pd
 import xarray as xr
 
 from ecodata.models.project_binding import ProjectFiles, safe_name
-from ecodata.io.netcdf import load_dataset
 
 
 # (model, task) -> existing implementation and its documented data interface.
@@ -43,12 +42,13 @@ CATALOG = {
     ('calpuff','point_sources'): ('calpuff_point_sources','export_points','bytes'),
     ('camx','update_field'): ('native_netcdf_update','update_variable','native_update'),
     ('cmaq','update_field'): ('native_netcdf_update','update_variable','native_update'),
+    ('wrf','sst'): ('wps_sst','export_sst','bytes'),
     ('wrf','update_project'): ('native_netcdf_update','update_variable','native_update'),
     ('camx','update_project'): ('native_netcdf_update','update_variable','native_update'),
     ('cmaq','update_project'): ('native_netcdf_update','update_variable','native_update'),
 }
 
-TASK_MODES = {'weather':None,'landuse':'landuse_database','surface_meteorology':None,
+TASK_MODES = {'weather':None,'sst':None,'landuse':'landuse_database','surface_meteorology':None,
               'emissions':'gridded_emissions','initial_conditions':'initial_concentrations',
               'boundary_conditions':'boundary_concentrations','point_sources':'constant_points'}
 
@@ -85,7 +85,9 @@ def _auto_weather(files):
     needed={'precipitation','air_temperature_max','air_temperature_min'}
     for name in sorted(files.files):
         if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
-        with files.files[name][0]() as stream, xr.open_dataset(stream) as ds:
+        with files.netcdf(name) as opened:
+            from ecodata.core.recovery import recover,documents
+            ds,_=recover(opened,name,docs=documents(files,name),fill=False)
             if 'precipitation' not in ds:continue
             if ds.attrs.get('crs')!='EPSG:4326':raise ValueError('SWAT+天气必须明确站点坐标基准')
             coordinates={}
@@ -140,17 +142,7 @@ execute scripts or access a host pathname. Algorithms stay in the public service
             if model_id in {'wrf','camx','cmaq'}:
                 for name in sorted(files.files):
                     if not files.prefix(name,8).startswith((b'CDF',b'\x89HDF')):continue
-                    prefix=files.prefix(name,1024*1024)
-                    if prefix.startswith(b'CDF'):
-                        from ecodata.models.source_catalog import header
-                        try:facts=header(prefix)
-                        except (OSError,RuntimeError,ValueError):facts=None
-                        if facts is not None:
-                            attrs=facts['attributes']
-                            if attrs.get('engineering_role')=='processed_product' and attrs.get('native_reference_sha256'):
-                                products.append(name)
-                            continue
-                    with files.files[name][0]() as stream, xr.open_dataset(stream,decode_times=False) as ds:
+                    with files.netcdf(name,decode_times=False) as ds:
                         if ds.attrs.get('engineering_role')=='processed_product' and ds.attrs.get('native_reference_sha256'):
                             products.append(name)
             if len(products)>1:raise ValueError('多个工程处理产品，须明确本次目标资源；不猜选')
@@ -170,11 +162,30 @@ execute scripts or access a host pathname. Algorithms stay in the public service
             raise ValueError('原生任务输入指纹不一致')
         with files.files[source_name][0]() as stream:raw=stream.read()
         module,function,kind=CATALOG[key]
+        recovery_report=None
         configuration=request.get('configuration')
         if not isinstance(configuration,dict):raise ValueError('缺少本次任务的单位、时间、网格等科学配置')
         # External process dependencies are not accepted as arbitrary task data.
         if {'python','command','executable','legacy_source','legacy_python'} & set(configuration):
             raise ValueError('原生任务配置不能启动外部程序')
+        if kind!='native_update' and raw.startswith((b'CDF',b'\x89HDF')):
+            from ecodata.core.recovery import recover,documents,configuration_document,serialize
+            with xr.open_dataset(io.BytesIO(raw)) as opened:
+                repaired,recovery_report=recover(opened.load(),source_name,
+                    docs=[*documents(files,source_name),configuration_document(configuration,opened)])
+            if recovery_report.get('repairs') or any(r.get('action')=='AUTO_COMPLETED' for r in recovery_report.get('metadata',[])):
+                raw=serialize(repaired)
+        if kind=='table' and source_name.lower().endswith('.csv'):
+            import csv
+            encoding=configuration.get('encoding','utf-8-sig')
+            header=next(csv.reader(io.StringIO(raw.decode(encoding))))
+            if len(header)==len(set(header)):
+                from ecodata.core.recovery import recover_table,documents
+                frame=pd.read_csv(io.BytesIO(raw),encoding=encoding,float_precision='round_trip',
+                    na_values=configuration.get('missing_values',[]))
+                frame,table_recovery=recover_table(frame,configuration,source_name,docs=documents(files,source_name))
+                if table_recovery:
+                    raw=frame.to_csv(index=False).encode(encoding);recovery_report=table_recovery
         from ecodata.models.minimum_inputs import complete_configuration
         configuration,completion=complete_configuration(model_id,operation,raw,configuration)
         if progress:
@@ -215,15 +226,26 @@ execute scripts or access a host pathname. Algorithms stay in the public service
             if path.read_bytes()!=payload:raise ValueError('写出产品回读不一致')
             inventory.append(dict(path=path.relative_to(folder).as_posix(),bytes=len(payload),sha256=hashlib.sha256(payload).hexdigest()))
         from ecodata.models.engineering.native import finish_project
-        validation=dict(validation,source_resource=source_identity,auto_completion=completion)
+        validation=dict(validation,source_resource=source_identity,auto_completion=completion,automatic_recovery=recovery_report)
         if progress:progress('核对工程引用并生成经过校验的工程副本')
-        attached=finish_project(uploads,model_id,folder,operation,generated,configuration,validation,context=context)
+        from ecodata.core.continuation import decision,receipt
+        events=[decision('configuration',entry['field'],entry['basis'],required=False,
+            recovery=dict(action='AUTO_COMPLETED',verified=True),evidence=[entry]) for entry in completion]
+        try:
+            attached=finish_project(uploads,model_id,folder,operation,generated,configuration,validation,context=context)
+        except ValueError as exc:
+            # The writer and component readback already succeeded. Do not claim
+            # project writeback, but do not discard these independent products.
+            events.append(decision('project_attachment','project_writeback',str(exc)))
+            if progress:progress('组件已生成；仅工程绑定步骤未通过，保留组件及具体原因：'+str(exc))
+            attached=None
         if attached is not None:return attached
         manifest=dict(protocol='ecodata.converter.v1',model_id=model_id,status='COMPONENT_EXPORTED',native_ready=False,
             component_format_generated=True,native_model_executed=False,complete_model_input=False,
             preparation=dict(route='model_component_service_v1',tasks=[dict(operation=operation,backend=module+'.'+function,
                 source=source_identity,configuration=configuration,validation=validation)]),
-            output_inventory=inventory,note='真实模型组件文件；不等于全部工程齐备或原生模型已读取运行')
+            output_inventory=inventory,continuation=receipt(events,['component_conversion','component_readback']),
+            note='真实模型组件文件；不等于全部工程齐备或原生模型已读取运行')
         path=folder/'handoff.json';path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2,default=str),encoding='utf8')
         archive=folder/'EcoData-native-components.zip'
         with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
@@ -237,8 +259,9 @@ execute scripts or access a host pathname. Algorithms stay in the public service
 def _update_field(files, declaration_name, raw, configuration, destination):
     """Existing lossless native patcher, bound to THIS uploaded target fingerprint."""
     import numpy as np
+    from netCDF4 import Dataset
     from ecodata.engines.units import UnitEngine
-    from existing_air_converters.native_netcdf_update import update_variable,_open_native
+    from existing_air_converters.native_netcdf_update import update_variable
     required={'target','target_sha256','variable'}
     if not required <= set(configuration):raise ValueError('字段写回缺目标资源、内容指纹或变量')
     target_name,_=files.resolve(declaration_name or 'request.json',configuration['target'])
@@ -257,7 +280,7 @@ def _update_field(files, declaration_name, raw, configuration, destination):
     with files.files[target_name][0]() as stream,template.open('wb') as dest:
         import shutil
         shutil.copyfileobj(stream,dest,8*1024**2)
-    with _open_native(template,'r') as native:
+    with Dataset(template) as native:
         if variable not in native.variables or source_variable not in source:raise ValueError('指定目标字段不存在')
         v=native[variable]
         if source[source_variable].dims!=v.dimensions or source[source_variable].shape!=v.shape:
@@ -282,7 +305,7 @@ def _update_field(files, declaration_name, raw, configuration, destination):
     output=destination/'native_updated.nc'
     report=update_variable(template,output,variable,converted,allowed_mask=mask)
     if report['template_sha256']!=target['sha256']:raise ValueError('读取过程中原生目标已变化，拒绝交付')
-    with load_dataset(output,decode_times=False,mask_and_scale=False) as actual:
+    with xr.open_dataset(output,decode_times=False,mask_and_scale=False) as actual:
         expected=np.where(mask,converted,original) if mask is not None else converted
         # Patcher independently verifies all non-target fields and unchanged mask.
         np.testing.assert_allclose(actual[variable].values,expected,rtol=1e-6,atol=1e-6,equal_nan=True)

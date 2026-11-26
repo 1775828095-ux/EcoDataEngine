@@ -21,8 +21,10 @@ def test_fresh_numeric_candidate_emits_real_metrics_and_cached_call_does_not(tmp
     def receive(message):
         events.append(message);window.show_progress(message)
     engine=SpatialSearch(SpatialTask.build(parsed,q,audit),tmp_path,BUDGET,11,progress=receive)
+    assert any("评价依据" in message for message in events)
+    initial = len(events)
     engine.execute(engine.leaves[0])
-    assert len(events)==1 and engine.rows[0]['status']=='PASS'
-    assert f"RMSE {engine.rows[0]['metrics']['RMSE']:.5g}" in events[0]
+    assert len(events)==initial+1 and engine.rows[0]['status']=='PASS'
+    assert f"RMSE {engine.rows[0]['metrics']['RMSE']:.5g}" in events[-1]
     assert 'spatial.source' in window.result_cards.progress_log.toPlainText()
-    engine.execute(engine.leaves[0]);assert len(events)==1
+    engine.execute(engine.leaves[0]);assert len(events)==initial+1

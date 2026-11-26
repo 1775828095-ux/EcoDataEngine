@@ -4,6 +4,44 @@ import json
 from .output_review import collect_steps
 
 
+def seed_usage(folder, search):
+    """Separate locally scored recommendations from actual mutations of them."""
+    receipts=search.get('recommendation_validation',[])
+    if not receipts:
+        return None
+    passed=[row for row in receipts if row.get('status')=='PASS' and row.get('metrics')]
+    parents={key for row in passed for key in row.get('keys',[])}
+    path=folder/'transitions.json'
+    transitions=json.loads(path.read_text(encoding='utf8')) if path.is_file() else None
+    return dict(recommended=len(receipts),scored=len(passed),mutations=None if transitions is None else
+        sum(row.get('actual_execution') is True and row.get('parent') in parents for row in transitions))
+
+
+def nonspatial_winner(search, graphs):
+    """Read the deployed graph and the backend's own score, without reranking."""
+    best=search.get('delivered_best') or search.get('best') or {}
+    if search.get('service')!='PlatformSearch/PortraitMutation' or not search.get('product') or best.get('key') not in graphs:
+        return None
+    seen=set()
+    steps=[]
+
+    def visit(key):
+        if key in seen or key not in graphs:
+            return
+        seen.add(key)
+        node=graphs[key]
+        for parent in node.get('parents',[]):
+            visit(parent)
+        if node['operation']!='source':
+            steps.append(node['operation'])
+
+    visit(best['key'])
+    return dict(steps=steps,metrics=best.get('metrics') or {},
+        recommendation_review=search.get('recommendation_review'),delivery_status=search.get('delivery_status'),
+        mutation_executed=bool(search.get('mutation_new_executions')),
+        validation_best_delivered=search.get('final_validation_best_delivered'))
+
+
 def candidate_options(result,limit=10):
     """Only already measured candidates, never an invented improvement label."""
     from .output_review import searches
@@ -26,7 +64,8 @@ def candidate_options(result,limit=10):
 def export_evaluated_candidate(folder,key,destination):
     """Deploy a user-chosen, passed graph; keep the default engineering ZIP intact."""
     from pathlib import Path
-    from tempfile import TemporaryDirectory,NamedTemporaryFile
+    from ecodata.core.temporary import TemporaryDirectory
+    from tempfile import NamedTemporaryFile
     import hashlib,math,zipfile
     from ecodata.algorithms.platform_search import SearchInput,execute_evaluated_candidate
     folder=Path(folder).resolve();destination=Path(destination).resolve()
@@ -91,16 +130,16 @@ def ranked_candidates(folder, search):
     rows = json.loads(path.read_text(encoding="utf8"))
     passed = [row for row in rows if row["status"] == "PASS"]
     graphs=json.loads((folder/"graphs.json").read_text(encoding="utf8"))
-    selected=search["best"]["key"]
+    selected=(search.get('delivered_graph') or {}).get('key',search["best"]["key"])
     # The original winner is authoritative, including ties within its numerical tolerance.
     passed.sort(key=lambda row: (
-        row["key"] != selected, row["metrics"]["RMSE"], row["algorithm_nodes"], row["key"]))
+        row["key"] != selected, row["metrics"].get("objective",row["metrics"]["RMSE"]), row["algorithm_nodes"], row["key"]))
     return [
         dict(rank=rank, key=row["key"], family=row["source_family"],
              phase=row["phase"], metrics=row["metrics"], algorithm=graphs[row["key"]]["operation"],
              steps=collect_steps(row["key"], graphs), parameters=graphs[row["key"]].get("parameters", {}),
              same_predictions_as=row.get('same_validation_predictions_as'),
-             selected=row["key"]==selected)
+             selected=row["key"]==selected,review_status=(search.get('recommendation_review') or {}).get('status'))
         for rank,row in enumerate(passed,1)
     ]
 
@@ -137,6 +176,12 @@ def describe(result):
         family = family_labels.get(evidence.get("selected_family"),"未确定")
         lines.extend(["",f"{task} · 本次搜索找到的最优方案：{family} / {algorithm_name(op,evidence.get('selected_family'))}",
                       f"选中方案 RMSE：{best['metrics']['RMSE']:.4g}"])
+        if best['metrics'].get('objective_name')=='equal_date_region_RMSE':
+            lines.append(f"实际选优指标：各日期×区域等权 RMSE {best['metrics']['objective']:.4g}；上列为全部样本汇总RMSE，两者含义不同。")
+            for label,report in evidence.get('date_region_validation',{}).items():
+                if report:lines.append(f"{family_labels.get(label,label)}：{report['date_count']} 日期、{report['region_count']} 区域；{report['robustness_status']}（不是独立性或显著性证明）")
+            paired=evidence.get('paired_date_regions')
+            if paired:lines.append(f"多源改善日期×区域块 {paired['improved_blocks']}/{len(paired['blocks'])}；平均RMSE变化 {paired['mean_RMSE_change']:+.4g}。")
         if parameters:
             lines.append("参数："+json.dumps(parameters,ensure_ascii=False))
         for seed in search.get("confirmed_initial", []):

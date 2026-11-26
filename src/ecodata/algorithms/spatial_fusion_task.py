@@ -20,12 +20,12 @@ from ecodata.algorithms.search_accounting import SearchAccount, SearchBudgetExce
 from ecodata.algorithms.search_stopping import SearchStopper, policy
 from ecodata.fusion.point_weights import distance_weights, weighted_values
 from ecodata.fusion.residual import residual_difference, residual_addition
-from ecodata.algorithms.quality_aware import fit_affine_frames
+from ecodata.algorithms.quality_aware import fit_affine_frames,fit_ratio_frames
 from ecodata.evaluation.quality_gates import RawInputQualityGate,ResultQualityGate
 from ecodata.io.structures import table_frame
 from ecodata.algorithms.spatial_selection_protocol import split_locations, fixed_support, xskillscore_assessment
 
-VERSION = 'spatial_relationship_fusion_v1_4_evidence_adaptive'
+VERSION = 'spatial_relationship_fusion_v1_5_date_region'
 COMPONENTS = {
     'spatial.source': dict(kind='source',backend='xarray / SciPy cKDTree sampling'),
     'spatial.observations': dict(kind='source',backend='Explicit retained-observation matrix; held labels absent'),
@@ -37,6 +37,10 @@ COMPONENTS = {
     'spatial.residual_idw': dict(kind='combine',backend='fusion.residual_difference / residual_addition + metric IDW'),
     'spatial.blend': dict(kind='combine',backend='declared convex source weighting; not inverse-uncertainty weighting'),
 }
+
+
+def blend_fields(left, right, weight):
+    return weight * left + (1 - weight) * right
 
 
 def applies(parsed, request):
@@ -346,7 +350,7 @@ class SpatialTask:
         if not obs.variable.eq(physical).all(): raise ValueError('Observation/background physical variable conflict')
         temporal=request.get('temporal_semantics') or (fields[0][variable].attrs.get('temporal_semantics') if fields else obs.temporal_semantics.iloc[0])
         if temporal not in {'instantaneous','accumulation'}:
-            raise ValueError('Interval means need a reviewed interval-alignment adapter; no guessed time support')
+            raise ValueError('Temporal support '+repr(temporal)+' is unsupported or UNKNOWN: spatial estimation currently accepts instantaneous values or explicitly bounded daily accumulations; no guessed interval/window')
         if not obs.temporal_semantics.eq(temporal).all() or any(ds[variable].attrs.get('temporal_semantics')!=temporal for ds in fields):
             raise ValueError('Source temporal semantics differ')
         request=dict(request,temporal_semantics=temporal)
@@ -426,6 +430,7 @@ class SpatialSearch:
     def __init__(self,task,folder,budget,seed,model=None,progress=None):
         self.progress=progress
         self.task=task; self.folder=Path(folder); self.request=task.request; self.rng=np.random.default_rng(seed)
+        self.seed=seed
         self.budget=budget
         self.account=SearchAccount(budget['objective_limit'],budget['wall_seconds'],total_calls=budget.get('total_call_limit'))
         # Selected graph + fixed single-source comparator require a protected
@@ -447,6 +452,19 @@ class SpatialSearch:
         # Last date block is confirmation only and cannot influence search/stop.
         cut=max(1,int(len(task.times)*.8)) if len(task.times)>=5 else len(task.times)
         self.search_times=task.times[:cut];self.confirm_times=task.times[cut:];self.groups=groups
+        if 'confirmation_times' in self.request:
+            requested=pd.DatetimeIndex(self.request['confirmation_times'])
+            if requested.hasnans or requested.has_duplicates:
+                raise ValueError('Invalid pre-reserved confirmation times')
+            self.confirm_times=task.times.intersection(requested)
+            self.search_times=task.times.difference(self.confirm_times)
+            reservation=self.request.get('recommendation_isolation',{})
+            if reservation.get('status')=='RESERVED':
+                previous=pd.DatetimeIndex(reservation['recommendation_review_times'])
+                if len(previous.intersection(self.confirm_times)):
+                    raise ValueError('Recommendation and mutation confirmation units overlap')
+                if len(self.confirm_times)!=len(requested):
+                    raise ValueError('Reserved confirmation times are absent from actual search input')
         # Outer test values cannot affect even tie resolution or stopping.
         visible=task.observations[task.observations.station_id.isin(selection_ids)&task.observations.time.isin(self.search_times)]
         finite=visible.value.to_numpy(float);finite=finite[np.isfinite(finite)]
@@ -472,6 +490,7 @@ class SpatialSearch:
         if self.reconstruction is not None:
             self.reconstruction_executor=self.executor(self.reconstruction['cohort'],'search')
             self.resolution=np.finfo(float).eps
+        self.review_axes=['space','time'] if (self.reconstruction is None and len(task.times.normalize().unique())>=5) or 'confirmation_times' in self.request else ['space']
         if self.progress:
             self.progress('评价依据：'+self.evaluation_plan['mode']+'；'+self.evaluation_plan['selection_meaning'])
         save(self.folder/'evaluation_protocol.json',self.evaluation_plan)
@@ -580,7 +599,8 @@ class SpatialSearch:
                        key=lambda r:(r['algorithm_nodes'],r['key'])) if passed else None
             families[name]=dict(evaluated=len(rows),passed=len(passed),
                 best_key=winner['key'] if winner else None,metrics=winner['metrics'] if winner else None,
-                coarse_reference_diagnostic=winner.get('coarse_reference_diagnostic') if winner else None)
+                coarse_reference_diagnostic=winner.get('coarse_reference_diagnostic') if winner else None,
+                blocked_validation=winner.get('blocked_validation') if winner else None)
         ablations=[]
         for source in ['field:'+d.attrs['source_id'] for d in self.task.fields]:
             rows=[r for r in self.rows if r['status']=='PASS' and source not in r['source_identities']]
@@ -594,13 +614,22 @@ class SpatialSearch:
             r=self.reconstruction
             paired=paired_report(self.reconstruction_predictions[families['SINGLE_SOURCE']['best_key']],
                 self.reconstruction_predictions[families['MULTISOURCE']['best_key']],r['reference'],r['selected'],r['split'])
+        paired_blocks=None
+        if all(f.get('blocked_validation') for f in families.values()):
+            single={ (b['date'],b['region']):b for b in families['SINGLE_SOURCE']['blocked_validation']['blocks'] }
+            multi={ (b['date'],b['region']):b for b in families['MULTISOURCE']['blocked_validation']['blocks'] }
+            if single.keys()!=multi.keys():raise ValueError('Candidate date-region comparison queues differ')
+            changes=[dict(date=k[0],region=k[1],RMSE_change=multi[k]['metrics']['RMSE']-single[k]['metrics']['RMSE']) for k in sorted(single)]
+            paired_blocks=dict(blocks=changes,improved_blocks=sum(b['RMSE_change']<0 for b in changes),
+                mean_RMSE_change=float(np.mean([b['RMSE_change'] for b in changes])),
+                uncertainty='Descriptive paired blocks; adjacent dates/regions are not independent replicates')
         return dict(protocol='spatial_selection_assessment_v2',evaluation_protocol=self.evaluation_plan,
-            decision_after_scoring=True,selection_metric='RMSE',
+            decision_after_scoring=True,selection_metric=best['metrics'].get('objective_name','RMSE'),
             fixed_support_sha256=[f['support_sha256'] for f in self.folds],
             families=families,selected_key=best['key'],selected_family=best['source_family'],
             comparison_status='BOTH_FAMILIES_SCORED' if all(f['passed'] for f in families.values()) else 'COMPARISON_INCOMPLETE_OR_SINGLE_SOURCE_ONLY',
             reference_basis='PRIMARY_GRID_RECONSTRUCTION_PROXY' if self.task.self_reference else 'HELD_STATION_OBSERVATIONS',
-            selection_reference_basis=self.evaluation_plan['mode'],source_ablations=ablations,paired_selection=paired,
+            selection_reference_basis=self.evaluation_plan['mode'],source_ablations=ablations,paired_selection=paired,paired_date_regions=paired_blocks,
             accuracy_improvement='NOT_ESTABLISHED',
             source_identity_scope='Declared source identities, not proof of statistical independence')
 
@@ -609,20 +638,47 @@ class SpatialSearch:
         if self.reconstruction is not None:
             from ecodata.algorithms.spatial_selection_protocol import error_metrics
             r=self.reconstruction;index=r['test'];schemes={}
+            times=self.search_times
+            predictions=self.reconstruction_predictions
+            traces={}
+            if 'confirmation_times' in self.request:
+                if not len(self.confirm_times):
+                    return dict(status='NO_SEPARATE_DATE_BLOCK',used_for_selection=False,schemes={})
+                from ecodata.evaluation.fusion_protocol import prepare
+                _,outer=prepare(self.task,self.confirm_times,self.seed)
+                if outer is None or not np.array_equal(outer['test'],index) or not np.array_equal(outer['query'],r['query']):
+                    return dict(status='CONFIRMATION_SUPPORT_UNAVAILABLE',used_for_selection=False,schemes={})
+                r=outer;times=self.confirm_times;predictions={}
+                executor=self.executor(r['cohort'],'validation_audit')
+                for key in set(keys.values())-{None}:
+                    try:
+                        executed=executor.run(self.nodes(key),key)
+                        values=executed['outputs']['field'].value[:,:r['cohort']['query_count']]
+                        if self.request.get('nonnegative'):values=np.maximum(values,0.)
+                        if not np.isfinite(values[np.isfinite(r['reference'])]).all():
+                            raise ValueError('Incomplete reserved confirmation output')
+                        predictions[key]=values;traces[key]=executed['trace']
+                    except (SearchBudgetExceeded,DAGError,ValueError) as exc:
+                        traces[key]=dict(error=str(exc))
             for name,key in keys.items():
-                if key is not None and len(index):
-                    schemes[name]=dict(status='PASS',key=key,metrics=error_metrics(self.reconstruction_predictions[key][:,index],r['reference'][:,index]))
+                if key is not None and key in predictions and len(index):
+                    from ecodata.algorithms.spatial_selection_protocol import blocked_validation
+                    schemes[name]=dict(status='PASS',key=key,metrics=error_metrics(predictions[key][:,index],r['reference'][:,index]),
+                        blocked_validation=blocked_validation(predictions[key][:,index],r['reference'][:,index],times,index,r['split']['block_by_station']),
+                        trace=traces.get(key))
             return dict(status='PASS' if schemes else 'NO_SEPARATE_LOCATION_TEST',used_for_selection=False,
                 source='FROZEN_REDUCED_SCALE_OUTER_BLOCKS',reference_basis=self.evaluation_plan['mode'],
                 statistical_independence_verified=False,accuracy_improvement='NOT_ESTABLISHED',schemes=schemes,
                 metric_backend='Shared error_metrics; cached genuine numerical predictions, no new fitted graphs',
-                test_ids=index.tolist(),conditioning='Degraded primary only; fine test labels never used in fitting')
+                test_ids=index.tolist(),conditioning='Degraded primary only; fine test labels never used in fitting',
+                review_support=dict(locations=list(map(str,index)),times=[str(t) for t in times],reference_key=sha256(r['reference'][:,index].tobytes()).hexdigest()))
         task=self.task;explicit=task.evaluation_observations
         if explicit is not None and not explicit.empty:
             frame=explicit;origin='EXPLICIT_TEST_LOCATIONS'
         else:
             frame=task.observations[task.observations.station_id.isin(self.location_protocol['test_ids'])]
             origin=self.location_protocol['reason']
+        if 'time' in self.review_axes:frame=frame[frame.time.isin(self.confirm_times)]
         report=dict(used_for_selection=False,source=origin,metric_backend='xskillscore',
             reference_basis='PRIMARY_GRID_RECONSTRUCTION_PROXY' if task.self_reference else 'STATION_OBSERVATIONS_UPSTREAM_INDEPENDENCE_UNKNOWN',
             statistical_independence_verified=False,accuracy_improvement='NOT_ESTABLISHED')
@@ -635,6 +691,9 @@ class SpatialSearch:
         report.update(test_station_ids=ids,conditioning_station_ids=self.location_protocol['selection_ids'],
             reference_sha256=sha256(reference.tobytes()).hexdigest(),support_sha256=fixed_support(reference,ids,times),
             schemes={},times=[str(t) for t in times])
+        from ecodata.algorithms.spatial_selection_protocol import spatial_blocks,blocked_validation
+        groups={str(i):int(group) for i,group in zip(ids,spatial_blocks(meta))}
+        report['review_support']=dict(locations=list(map(str,ids)),times=[str(t) for t in times],reference_key=sha256(reference.tobytes()).hexdigest())
         executor=self.executor(cohort,'validation_audit')
         scored={}
         for name,key in keys.items():
@@ -651,7 +710,8 @@ class SpatialSearch:
                 mask=np.isfinite(reference)
                 if bounds is not None and ((prediction[mask]<bounds[0])|(prediction[mask]>bounds[1])).any():
                     raise ValueError('Assessment prediction outside declared application range')
-                report['schemes'][name]=dict(status='PASS',key=key,metrics=xskillscore_assessment(prediction,reference),trace=executed['trace'])
+                report['schemes'][name]=dict(status='PASS',key=key,metrics=xskillscore_assessment(prediction,reference),trace=executed['trace'],
+                    blocked_validation=blocked_validation(prediction,reference,times,ids,groups))
             except Exception as exc:
                 report['schemes'][name]=dict(status='NOT_EVALUATED_RESOURCE_LIMIT' if isinstance(exc,SearchBudgetExceeded) or getattr(exc,'details',{}).get('budget_exhausted') else 'FAILED',key=key,error=str(exc))
             scored[key]=report['schemes'][name]
@@ -732,7 +792,7 @@ class SpatialSearch:
                     elif op=='spatial.blend':
                         a=inputs['left'].value;b=inputs['right'].value;w=p['weight']
                         if not np.isfinite(w) or not 0<=w<=1:raise ValueError('Convex blend weight must be in [0,1]')
-                        result=w*a+(1-w)*b
+                        result=blend_fields(a,b,w)
                     else:
                         a=inputs['field'].value; station=a[:,nq:]
                         if op=='spatial.affine':
@@ -741,9 +801,7 @@ class SpatialSearch:
                             detail.update(coefficient_sha256=sha256(slope.tobytes()+intercept.tobytes()).hexdigest(),
                                 slope_range=[float(slope.min()),float(slope.max())],intercept_range=[float(intercept.min()),float(intercept.max())])
                         elif op=='spatial.ratio':
-                            valid=np.isfinite(station)&np.isfinite(y);den=np.where(valid,station,0).sum(axis=1,keepdims=True)
-                            num=np.where(valid,y,0).sum(axis=1,keepdims=True);ok=(valid.sum(axis=1,keepdims=True)>=2)&(den>0)
-                            ratio=np.divide(num,den,out=np.ones_like(num),where=ok);result=ratio*a
+                            ratio,ok=fit_ratio_frames(station,y);result=ratio*a
                             detail['unidentifiable_dates_identity']=int((~ok).sum())
                         elif op=='spatial.residual_idw':
                             delta=residual_difference(y,station);correction=weighted_values(delta,weights(p['power']))
@@ -778,7 +836,7 @@ class SpatialSearch:
             fixed_support_sha256=[f['support_sha256'] for f in self.folds]+(
                 [self.evaluation_plan['fixed_support_sha256']] if self.reconstruction is not None else []))
         if self.portraits is not None:row['candidate_prior']=self.portraits.score(key)
-        predictions=[];labels=[];traces=[]
+        predictions=[];labels=[];traces=[];blocked_parts=[]
         try:
             for fold,executor in zip(self.folds,self.executors):
                 executed=executor.run(nodes,key);trace=executed['trace'];raw=executed['outputs']['field'].value
@@ -800,6 +858,9 @@ class SpatialSearch:
                 if bounds is not None and ((a[mask]<bounds[0])|(a[mask]>bounds[1])).any():
                     raise ValueError('Candidate outside declared application range')
                 predictions.append(a[mask]);labels.append(fold['reference'][mask]);traces.append(trace)
+                from ecodata.algorithms.spatial_selection_protocol import blocked_validation
+                blocked_parts.append(blocked_validation(a,fold['reference'],self.search_times,fold['held'],
+                    self.location_protocol['block_by_station']))
             values=np.concatenate(predictions);truth=np.concatenate(labels)
             coarse_error=values-truth
             row['coarse_reference_diagnostic']=dict(RMSE=float(np.sqrt(np.mean(coarse_error**2))),MAE=float(np.mean(abs(coarse_error))),
@@ -830,6 +891,22 @@ class SpatialSearch:
             row.update(status='PASS',evaluation_mode=self.evaluation_plan['mode'],
                 metrics=dict(objective=rmse,RMSE=rmse,MAE=float(np.mean(abs(error))),Bias=float(error.mean()),
                              coverage=1.,failure_rate=0.,count=len(error)),traces=traces)
+            from ecodata.algorithms.spatial_selection_protocol import blocked_validation
+            selection_policy=self.request.get('selection_policy','date_region_v1')
+            if selection_policy not in {'date_region_v1','pooled_rmse_v1'}:raise ValueError('Unknown selection policy')
+            if self.reconstruction is not None:
+                r=self.reconstruction
+                report=blocked_validation(predicted[:,r['selected']],r['reference'][:,r['selected']],self.search_times,
+                    r['selected'],r['split']['block_by_station'])
+            else:
+                blocks=[block for part in blocked_parts for block in part['blocks']]
+                report=dict(objective=float(np.mean([b['metrics']['RMSE'] for b in blocks])),blocks=blocks,
+                    objective_name='equal_date_region_RMSE',source_bonus=0,
+                    date_count=len({b['date'] for b in blocks}),region_count=len({b['region'] for b in blocks}),
+                    robustness_status='MULTIPLE_DATES_AND_REGIONS' if len({b['date'] for b in blocks})>=3 and len({b['region'] for b in blocks})>=2 else 'INSUFFICIENT_DATE_OR_REGION_REPLICATION')
+            row['blocked_validation']=report
+            row['metrics']['objective']=report['objective'] if selection_policy=='date_region_v1' else rmse
+            row['metrics']['objective_name']='equal_date_region_RMSE' if selection_policy=='date_region_v1' else 'pooled_RMSE'
             row['reconstruction_reference_used_for_selection']=self.reconstruction is not None
         except SearchBudgetExceeded: return
         except Exception as exc:
@@ -1000,6 +1077,8 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     best=search.best()
     if progress:progress(f"搜索停止 · 已评价 {len(search.rows)} 图，提议 {search.attempts} 次，真实节点调用 {search.account.receipt()['used']}；预算内最佳 {best['key']}，RMSE {best['metrics']['RMSE']:.5g}。正在生成产品及回读。")
     comparison=search.comparison_report(best)
+    save(folder/'selection_freeze.json',dict(key=best['key'],baseline_key=comparison['families']['SINGLE_SOURCE']['best_key'],
+        graph=search.records,review_axes=search.review_axes,confirmation_read=False))
     out,trace=search.product(best['key']);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
     with xr.open_dataset(path,engine='h5netcdf') as readback:xr.testing.assert_equal(out,readback.load())
     assessment=search.post_selection_assessment(dict(selected=best['key'],
@@ -1028,8 +1107,30 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
                 confirm=dict(status='NOT_EVALUATED_RESOURCE_LIMIT',used_for_selection=False)
             else:confirm=dict(status='FAILED',error=str(exc),used_for_selection=False)
     else:confirm=dict(status='NO_SEPARATE_DATE_BLOCK',used_for_selection=False)
+    from ecodata.evaluation.blocked_confirmation import review_spatial
+    review=review_spatial(search,comparison,assessment,best)
+    baseline_key=comparison['families']['SINGLE_SOURCE']['best_key']
+    delivered_graph=dict(key=best['key']);candidate_product=None;delivery_status='ENHANCEMENT_RECOMMENDED' if review['recommended'] else 'EXPLORATORY_ONLY'
+    if not review['recommended'] and baseline_key:
+        if baseline_key==best['key']:delivery_status='BASELINE_RETAINED'
+        else:
+            candidate_product=folder/'exploratory-candidate.nc';candidate_product.write_bytes(path.read_bytes())
+            try:
+                fallback,fallback_trace=search.product(baseline_key)
+                fallback.to_netcdf(path,engine='h5netcdf')
+                with xr.open_dataset(path) as restored:xr.testing.assert_allclose(fallback,restored.load())
+                delivered_graph=dict(key=baseline_key);trace=fallback_trace;delivery_status='BASELINE_RETAINED'
+            except (SearchBudgetExceeded,DAGError,ValueError) as exc:
+                path.write_bytes(candidate_product.read_bytes())
+                review['delivery_error']=str(exc);delivery_status='EXPLORATORY_ONLY_NO_SAFE_BASELINE'
+    save(folder/'recommendation_review.json',review)
+    delivered_key=delivered_graph['key']
+    delivered_graph['records']={n.id:search.records[n.id] for n in search.nodes(delivered_key)}
     groups=[dict(held_station_ids=f['held'],training_station_ids=f['train'],reference_sha256=sha256(f['reference'].tobytes()).hexdigest()) for f in search.folds]
     result=dict(status='PASS',version=VERSION,product=str(path),best=best,initial_key=initial_key,
+        recommendation_review=review,delivery_status=delivery_status,delivered_graph=delivered_graph,
+        delivered_best=next(r for r in search.rows if r['key']==delivered_key),
+        candidate_product=str(candidate_product) if candidate_product else None,
         recommendation_validation=search.recommendation_receipts,
         confirmed_initial=seed_receipt,optimizer=optimizer,counts=dict(evaluated=len(search.rows),proposals=search.attempts),
         stop_reason=search.stopper.reason or ('BUDGET_OR_PROPOSAL_LIMIT' if backend=='random' else 'NO_MUTATION_CONTROL'),
@@ -1105,8 +1206,7 @@ def execute_graph(parsed,request,audit,graph,folder):
         if node.operation in {'spatial.affine','spatial.ratio','spatial.aux_affine'} and not request.get('allow_training'):
             raise ValueError('Fixed fitting requires authorized training')
     out,trace=engine.product(key);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
-    from ecodata.io.netcdf import load_dataset
-    xr.testing.assert_equal(out,load_dataset(path))
+    with xr.open_dataset(path) as saved:xr.testing.assert_equal(out,saved.load())
     receipt=dict(status='PASS',product=str(path),graph=graph,trace=trace,cost=engine.account.receipt(),
         selection_performed=False,reference_used=False,inputs=audit)
     save(folder/'deployment.json',receipt)

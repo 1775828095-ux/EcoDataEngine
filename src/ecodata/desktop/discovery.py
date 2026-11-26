@@ -92,10 +92,11 @@ def pair_units(ar, a, br, b, inferred_quantity=None):
 def public_unit(value):
     if value in PUBLIC_UNITS:
         return value
-    if not re.fullmatch(r"[A-Za-z0-9°µμ%*/^(). +_-]{1,40}",value):
-        return None
     from ecodata.core.exceptions import SchemaError
-    from ecodata.engines.units import UnitEngine
+    from ecodata.engines.units import UnitEngine, normalize_unit
+    value = normalize_unit(value)
+    if not re.fullmatch(r"[A-Za-z0-9°µμ%*/^(). +_-]{1,40}", value):
+        return None
     try:
         return f"{UnitEngine.parse(value):~}"
     except (SchemaError, ValueError, TypeError):
@@ -231,6 +232,7 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
                 **({"time_cell_methods":field["time_cell_methods"],"time_cell_methods_basis":"CF cell_methods"}
                    if field.get("time_cell_methods") else {}),
                 source_column=field.get("source_column"),
+                unit_column=field.get("unit_column"),sampled_unit_values=field.get("sampled_unit_values"),unit_evidence=field.get("unit_evidence"),
                 dimensions=field.get("dimensions"), shape=field.get("shape"), sheet=field.get("sheet"), axis=field["axis"],
                 raw_companion=field.get("raw_companion",False),
                 **({"metadata_role":field["metadata_role"]} if field.get("metadata_role") else {}),
@@ -427,7 +429,54 @@ def audit_precipitation(scan,row,field,raw,dataset):
                 pass
     return dict(product=audit["product"],**detail)
 
-def check(scan,candidates,reply,approved_summary,*,station_matches=None):
+def engineering_fusion_targets(approved):
+    """Bind explicit fusion requirements to referenced or compatible field pairs."""
+    requirements = []
+    for doc in approved.get("engineering_documents", ()):
+        for clause in re.split(r"[。！？；;\n]", doc.get("text") or ""):
+            required = re.search(
+                r"(?:必须|需要|要求|须|应当|应先).{0,35}(?:融合|合并.{0,5}来源)"
+                r"|融合\s*(?:为必需|是必需|为必选|必须执行)"
+                r"|\b(?:must|shall|required to|requires?)\b.{0,60}\b(?:fus(?:e[ds]?|ing|ion)|blend(?:ed|ing)?)\b", clause, re.I)
+            negated = re.search(r"不(?:得|可|必|应|需要|要求)|无需|禁止|是否|\b(?:not|never|optional|whether)\b", clause, re.I)
+            if required and not negated:
+                requirements.append(set(doc.get("source_ids", ())))
+                break
+    targets = set()
+    for sources in requirements:
+        pairs = [pair for pair in approved.get("candidates", ()) if "fusion" in pair.get("possible_actions", ())
+                 and (not sources or {fid.split(".")[0] for fid in pair["fields"]} <= sources)]
+        compatible = [pair for pair in pairs if pair.get("unit_check", {}).get("status") in {"equivalent", "convertible"}]
+        if compatible and (sources or len(compatible) == 1):
+            targets.update(pair["id"] for pair in compatible)
+        elif len(pairs) == 1:
+            targets.add(pairs[0]["id"])
+        else:
+            targets.add("工程要求")
+    return targets
+
+
+def workflow_proposals(decisions, approved):
+    """Offer a joint trial for an inspected pair when alignment is a prerequisite."""
+    proposals = list(decisions)
+    if approved.get("task_goal") == "grid_comparison":
+        return proposals
+    required = engineering_fusion_targets(approved)
+    for pair in approved.get("candidates", ()):
+        cid = pair["id"]
+        actions = {row["action"] for row in decisions if row["candidate"] == cid}
+        if (cid in required and not actions & {"fusion", "reject"}) or (
+                actions & {"align_space", "align_time", "compare_station_grid"}
+                and actions <= {"align_space", "align_time", "compare_station_grid", "convert_units", "convert_format",
+                                "quality_screen"}
+                and "fusion" in pair.get("possible_actions", ())
+                and pair.get("unit_check", {}).get("status") in {"equivalent", "convertible"}):
+            proposals.append(dict(candidate=cid, action="fusion", goal="evaluate_gain",
+                                  reason="在该字段对上试跑对齐、补缺与按需融合，并与单源基线比较。"))
+    return proposals
+
+
+def check(scan,candidates,reply,approved_summary,*,station_matches=None,sampled_workflow=False):
     from .scan import read_selected
     from ecodata.recognition import recognise_file
     assert_current(scan)
@@ -447,6 +496,8 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
             loaded_bytes+=row["bytes"]
             raw=read_selected(row)
             dataset,_=recognise_file(row["name"],raw,record_read_source=False)
+            from ecodata.core.recovery import scan_dataset
+            dataset,recovery=scan_dataset(scan,index,dataset)
             datasets[index]=dataset
             if physical(field)=="precipitation":
                 audits[index,field["name"]]=audit_precipitation(scan,row,field,raw,dataset)
@@ -561,7 +612,8 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         delegated=(isinstance(actions,list) and action in {'fusion','align_space','align_time'} and task_goal in TASK_GOALS and
             scan.get('native_model_probes',{}).get(model_id,{}).get('status')=='project' and 'fusion' in actions)
         if cid not in candidates or not isinstance(actions,list) or (action not in actions and not delegated):
-            row["reason"]="建议不在本地扫描且经审核的候选范围内"
+            row["reason"]="已自动跳过不在审核范围内的建议；不影响其他合法任务"
+            row["disposition"]="SKIPPED_UNSUPPORTED_PROPOSAL"
             continue
         left,right,detected=candidates[cid]
         if approved.get("fields")!=[left[1],right[1]] or (action not in detected and not delegated):
@@ -570,31 +622,96 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         ai,_,a=left
         bi,_,b=right
         ar,br=scan["rows"][ai],scan["rows"][bi]
+        # Check the bounded scientific route before handing the pair to the
+        # native writer. The discovered project is the delivery target.
+        try_sampled = (sampled_workflow and action in {"fusion", "align_space"}
+                       and action in actions and action in detected
+                       and {ar["format"], br["format"]} <= {"NetCDF", "GeoTIFF", "CSV", "TSV", "Excel"})
         row["block_code"]="verification_pending"
         if a["axis"] or b["axis"]:
-            row.update(block_code="coordinate_field",reason="坐标轴可用于对齐，不能作为待融合的观测变量")
+            row.update(block_code="coordinate_field",disposition="SKIPPED_NOT_PROCESSING_VARIABLE",reason="已自动排除坐标融合建议；坐标仍保留供定位和对齐使用")
+            continue
+        # Decode a registered compound field only when the other field's actual
+        # quantity uniquely identifies a component. Wind speed is not u/v.
+        rebound=[]
+        for side,other in [('left',b),('right',a)]:
+            index,identifier,field=left if side=='left' else right
+            if not field.get('noaa_compound'):continue
+            other_row=br if side=='left' else ar
+            wanted,_=field_identity(other_row,other)
+            declared=proposed_quantities.get(cid,set())
+            if wanted is None and len(declared)==1:wanted=next(iter(declared))
+            options=[(j,f) for j,f in enumerate(scan['rows'][index]['fields'],1)
+                if f.get('noaa_component') and f.get('source_column')==field['name'] and f.get('standard_name')==wanted]
+            if len(options)==1:
+                offset,component=options[0]
+                bound=(index,f'D{index+1}.F{offset}',component)
+                rebound.append(dict(original=identifier,bound=bound[1],source_column=field['name'],
+                    variable=component['name'],unit=component['unit'],basis='registered NOAA compound decoder and exact physical quantity'))
+                if side=='left':left=bound;a=component
+                else:right=bound;b=component
+        if rebound:row['automatic_binding']=rebound
+        if any(f.get('noaa_compound') for f in (a,b)):
+            row.update(block_code='compound_quantity_mismatch',disposition='SKIPPED_UNSUPPORTED_PROPOSAL',
+                reason='已自动跳过复合编码列的不适用配对；必须绑定同物理量的已解码分量，风速不能直接当作东西/南北风分量。原始资料保留，其他合法步骤继续。')
             continue
         guesses=proposed_quantities.get(cid,set())
         inferred=next(iter(guesses)) if len(guesses)==1 else None
+        if any(f.get('unit') in {None,'','UNKNOWN'} for f in (a,b)):
+            try:
+                fixed=[]
+                for index,field in ((ai,a),(bi,b)):
+                    ds=read_for_check(index,field)
+                    unit=ds[field['name']].attrs.get('units') if field['name'] in ds else None
+                    fixed.append(dict(field,unit=unit) if field.get('unit') in {None,'','UNKNOWN'} and unit else field)
+                a,b=fixed
+            except (ValueError,OSError) as exc:
+                row['recovery_attempt']=dict(status='UNRESOLVED',reason=str(exc))
         unit_check=pair_units(ar,a,br,b,inferred)
         _,basis_a=field_identity(ar,a)
         _,basis_b=field_identity(br,b)
         same_quantity=bool(unit_check["quantity"])
+        cf_daily_pair = (action in {"align_space", "fusion"} and (not delegated or try_sampled)
+                         and unit_check.get("quantity") == "precipitation"
+                         and ar["format"] == br["format"] == "NetCDF")
         row["unit_check"]=unit_check
         row["physical_identity"]=dict(left_basis=basis_a,right_basis=basis_b,match=same_quantity,
                                       mapping_basis=unit_check.get("identity_basis","local_metadata"))
-        if action!="convert_format" and unit_check["status"] not in {"equivalent","convertible","physical_identity_unconfirmed"}:
+        if action in {'align_space','align_time'} and unit_check['status']=='quantity_conflict':
+            try:
+                from ecodata.algorithms.cross_scale import align_variables
+                selected=[read_for_check(ai,a)[[a['name']]],read_for_check(bi,b)[[b['name']]]]
+                frequency=None
+                if action=='align_time':
+                    from .pair_processing import time_plan
+                    # Determine sampling geometry separately, never rename units.
+                    clock_inputs=[d.rename({n:'clock_field'}) for d,n in zip(selected,[a['name'],b['name']])]
+                    frequency,_=time_plan(clock_inputs,'clock_field')
+                target=approved_summary.get('task_requirements',{}).get('target_grid')
+                _,evidence=align_variables(selected,[a['name'],b['name']],target_grid=target,target_frequency=frequency)
+                prepared[cid,action]=dict(action=action,route='cross_variable_alignment',fields=[(ai,a['name']),(bi,b['name'])],
+                    recipe_steps=[['scale.semantic_stack']],target_grid=target,target_frequency=frequency)
+                row.update(status='通过',block_code=None,reason='不同变量分别按各自语义对齐，禁止直接加权平均；'+evidence['target_basis'],
+                    algorithm_candidates=['scale.semantic_stack'],alignment_evidence=evidence)
+            except Exception as exc:row.update(reason=str(exc),block_code='cross_variable_alignment_contract')
+            continue
+        if (action != "convert_format" and not cf_daily_pair
+                and unit_check["status"] not in {"equivalent", "convertible", "physical_identity_unconfirmed"}):
             row["block_code"]={"quantity_conflict":"quantity_conflict","unit_not_convertible":"unit_conflict"}.get(
                 unit_check["status"],"unit_unknown")
             row["reason"]=("两份元数据明确声明了不同物理量" if row["block_code"]=="quantity_conflict"
                            else "物理量已核对，但单位缺失或无法换算")
+            evidence=[dict(variable=f['name'],unit_column=f['unit_column'],sampled=f.get('sampled_unit_values',[])) for f in (a,b) if f.get('unit_column')]
+            if evidence and row['block_code']=='unit_unknown':
+                row.update(reason='已找到表内逐记录单位列；尚未核验本次评价队列的单位与适配关系，已跳过此操作，不要求用户猜填单位。',
+                    unit_column_evidence=evidence,action_required='平台需按单位列核验所选记录；保留原始数据，其他可执行步骤继续。')
             continue
         if action=="fusion" and {ar.get("ioapi_grid_role"),br.get("ioapi_grid_role")}=={"boundary","interior"}:
             row["block_code"]="different_grid_roles"
             row["reason"]="I/O API 边界和内部字段承担不同模型角色。只有经工程确认来源及角色后才能拿来比较或融合。"
             continue
         try:
-            if delegated:
+            if delegated and not try_sampled:
                 prepared[(cid,action)]=dict(action=action,route='original_engineering',fields=[(ai,a['name']),(bi,b['name'])])
                 row.update(status='待工程核验',next_step='original_workbench',reason='已识别实际工程控制与同物理量候选；交由公共工程输入端口服务核验日界、依赖、拟合隔离及真实数值效果。此状态不是融合或质量PASS。')
                 continue
@@ -604,18 +721,34 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                     row["block_code"]="quantity_unknown"
                     raise ValueError("还需确定可共同换算的物理量和单位")
                 if action=="convert_units" and unit_check["status"]=="equivalent":
-                    results.pop()
-                    continue
+                    from .table_unit_segments import unit_column
+                    explicitly_segmented = any(
+                        source["format"] in {"CSV", "TSV", "Excel"} and
+                        unit_column([column.get("original_header") or column["name"] for column in source["fields"]
+                                     if column.get("sheet") == field.get("sheet")], field) is not None
+                        for source, field in ((ar, a), (br, b)))
+                    if not explicitly_segmented:
+                        results.pop()
+                        continue
                 task=conversion_task(scan,[(ai,a),(bi,b)],action,unit_check)
                 prepared[(cid,action)]=task
                 row.update(status="通过",reason="可独立转换字段并回读核对，供后续配对和融合使用。")
                 continue
             if "compare_station_grid" in detected and action in {"compare_station_grid","align_time","align_space","fusion"}:
-                from .station_grid import load, plan, task_for
+                from .station_grid import BIAS, EXACT, FORMAT_STEP, MATCH, NEAREST, UNIT_STEP, load, plan, task_for
                 if unit_check["status"] not in {"equivalent","convertible"}:
                     row["block_code"]="quantity_unknown"
                     raise ValueError("请识别共同物理量并检查单位后进行站点配对")
                 task=task_for(scan,(left,right),action,unit_check)
+                if action == "fusion":
+                    from .recipe_trials import FILL
+
+                    task["fields"] = [(ai, a["name"]), (bi, b["name"])]
+                    task["recipe_steps"] = [[UNIT_STEP, FORMAT_STEP, method, MATCH, FILL, BIAS]
+                                            for method in (EXACT, NEAREST)]
+                    prepared[(cid,action)] = task
+                    row.update(status="通过", reason="按表格索引留出站点或月份，在实际网格位置和时间上试跑订正与补位。")
+                    continue
                 evidence_key=tuple(item[1] for item in (left,right)),unit_check["quantity"]
                 if evidence_key not in station_matches:
                     station_matches[evidence_key]=load(scan,task)
@@ -623,6 +756,47 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                 prepared[(cid,action)]=task
                 row.update(status="通过",reason="原始站点与网格时空配对通过。可运行已登记的组合。")
                 continue
+            cf_error = None
+            if cf_daily_pair:
+                from .independent_alignment import check_cf_headers
+
+                selections = [(ai, a["name"]), (bi, b["name"])]
+                try:
+                    check_cf_headers(scan, selections)
+                except (EcoDataError, OSError, ValueError, KeyError) as error:
+                    cf_error = error
+                else:
+                    prepared[(cid, action)] = dict(action=action, cf_daily=True,
+                        route="independent_grid_search" if action == "fusion" else "independent_alignment",
+                        fields=selections)
+                    row.update(status="通过", next_step="alignment_then_fusion",
+                               reason="已核对 UTC 区间语义、单位和共同网格范围。完整日对齐，不完整日留待补位试跑。")
+                    continue
+            if action == "fusion" and unit_check["status"] in {"equivalent", "convertible"}:
+                from . import indexed_table_recipe, recipe_trials, windowed_grid_recipe
+
+                formats = {ar["format"], br["format"]}
+                task = dict(action=action, fields=[(ai, a["name"]), (bi, b["name"])], field_metadata=[a, b],
+                            quantity=unit_check["quantity"], unit=unit_check["target_unit"])
+                steps = []
+                if all(indexed_table_recipe.supports(source, field) for source, field in ((ar, a), (br, b))):
+                    task["route"] = "indexed_table_recipe"
+                    steps = [[indexed_table_recipe.LINEAR]]
+                elif formats <= windowed_grid_recipe.FORMATS and not approved_summary.get("task_requirements", {}).get("target_grid"):
+                    try:
+                        steps = windowed_grid_recipe.available(scan, task)
+                        task["route"] = "windowed_grid_recipe"
+                    except (EcoDataError, OSError, ValueError, KeyError):
+                        # Let the registered engineering adapters handle other grid supports.
+                        pass
+                if steps:
+                    task["recipe_steps"] = [["units.harmonize", "format.normalize", *align, recipe_trials.FILL, recipe_trials.BLEND]
+                                             for align in steps]
+                    prepared[(cid, action)] = task
+                    row.update(status="通过", next_step="alignment_then_fusion", algorithm_candidates=list(dict.fromkeys(
+                               operation for recipe in steps for operation in recipe)),
+                               reason="字段物理量和单位可对应。留出组的原始数据将执行完整方案并与基线比较。")
+                    continue
             if physical(a)==physical(b)=="precipitation":
                 read_for_check(ai,a)
                 read_for_check(bi,b)
@@ -648,7 +822,7 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                         if action=="align_space":
                             prepared[(cid,action)]=dict(action=action,route="independent_alignment",
                                 fields=[(ai,a["name"]),(bi,b["name"])])
-                            row.update(status="通过",reason="可按共同 UTC 日期转为日累计量，并对齐到较粗网格后分别导出。")
+                            row.update(status="通过",reason="可按共同 UTC 日期范围转为日累计量并保守对齐。未指定目标时比较可行的原生网格。")
                         else:
                             if ar["bytes"]+br["bytes"]>32*1024**2:
                                 raise ValueError("独立格点试跑超出读取预算")
@@ -657,8 +831,16 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
                                 raise ValueError("同一产品不作为两个融合来源")
                             prepared[(cid,action)]=dict(action=action,route="independent_grid_search",
                                 fields=[(ai,a["name"]),(bi,b["name"])],methods=["spatial.blend"])
-                            row.update(status="通过",reason="可先做保守网格对齐，再用原版空间变异搜索比较单源与多源。当前仅有格点代理参考。")
+                            row.update(status="通过",reason="先做保守网格对齐，缺测可用备用源补位；满足覆盖条件时用原版空间变异搜索比较单源与多源。")
                         continue
+            if cf_error and unit_check["status"] not in {"equivalent", "convertible"}:
+                raise ValueError(f"降水率与累计量需要明确的单位、时间边界与日界：{cf_error}") from cf_error
+            if delegated:
+                prepared[(cid,action)] = dict(action=action, route="original_engineering",
+                                              fields=[(ai,a["name"]),(bi,b["name"])])
+                row.update(status="待工程核验",next_step="original_workbench",
+                           reason="需要通过公共工程输入端口核验统计日界、依赖及真实数值效果。")
+                continue
             if action=="fusion":
                 if not same_quantity:
                     row["block_code"]="quantity_unknown"
@@ -729,7 +911,7 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None):
         from ecodata.spatial.regridding import target_grid_spec
         target=target_grid_spec(target)
         for key,task in prepared.items():
-            if task.get('route') not in {'independent_grid_search','independent_alignment'}:
+            if task.get('route') not in {'independent_grid_search','independent_alignment','cross_variable_alignment'}:
                 for row in results:
                     if (row.get('candidate'),row.get('action'))==key:
                         row.update(status='条件不足',next_step=None,block_code='target_grid_unsupported',reason='此任务适配器尚未消费目标网格硬约束，不能按默认网格继续')
@@ -749,8 +931,14 @@ def deferred_quality_check(row,rows):
 
 
 def blocking_checks(rows):
-    return [row for row in rows if row.get('status')!='通过' and row.get('next_step')!='original_workbench'
-        and not deferred_quality_check(row,rows)]
+    from ecodata.core.continuation import check_decision
+    return [row for row in rows if check_decision(row,rows)['action']=='BLOCK_STEP']
+
+
+def executable_checks(rows):
+    """A pending suggestion must not veto an independently verified operation."""
+    return [row for row in rows if row.get('status') in {'通过','无需新增处理'}
+        or row.get('next_step')=='original_workbench']
 
 def parse_decisions(raw):
     rows=raw.get("decisions")

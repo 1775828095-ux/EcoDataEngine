@@ -36,7 +36,7 @@ def prepare(request):
     scenario=dict(id=declaration['id'],task=request['task'],role='reconstruction',field=request['variable'],
         issues=deepcopy(declaration['issues']),coupled_constraints=[],evidence=declaration['evidence'])
     model=dict(model_id='application:'+declaration['id'],version=declaration['version'],
-        selected_role='reconstruction',selected_field=dict(name=request['variable'],unit=request['unit'],data_type=request['semantic_type']),
+        selected_role='reconstruction',selected_field=dict(name=request['variable'],standard_name=request.get('physical_variable',request['variable']),unit=request['unit'],data_type=request['semantic_type']),
         matching_requirements=matching,attribute_registry=registry,scoring_parameters=parameters,
         state_policy=dict(policy_version=declaration['version'],policy_sha256=digest(declaration),scenario=scenario),
         application_preferences={},sensitivity=None,sensitivity_status='UNKNOWN',full_model_ready=False,

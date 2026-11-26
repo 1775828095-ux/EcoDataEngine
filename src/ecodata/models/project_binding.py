@@ -32,6 +32,11 @@ def safe_name(name, *, posix=False):
 class ProjectFiles:
     """Lazy archive/directory resources. No extraction or uploaded code execution."""
     def __init__(self, uploads, stack, *, posix_members=False):
+        from .selective_resources import current_index
+        shared=current_index(uploads)
+        if shared is not None:
+            self.__dict__.update(shared.__dict__)
+            return
         self.files = {}
         self._folded = set()
         self._posix_members=posix_members
@@ -102,8 +107,32 @@ class ProjectFiles:
         raise ValueError('绝对路径无法在上传资料内唯一绑定：' + reference)
 
     def prefix(self, name, length=65536):
+        cached=getattr(self,'_prefixes',{}).get(name)
+        if cached is not None and (len(cached)>=length or len(cached)==self.files[name][1]['bytes']):
+            return cached[:length]
+        reader=getattr(self,'_prefix_readers',{}).get(name)
+        if reader is not None:
+            with reader() as stream:return stream.read(length)
         with self.files[name][0]() as stream:
             return stream.read(length)
+
+    @contextmanager
+    def netcdf(self,name,**options):
+        """Seekable selected-member staging; no HDF5 access on ZIP streams.
+
+        HDF5 repeatedly seeks dimension scales. Reading it through a compressed
+        ZipExtFile can be pathological; the existing netCDF4 path backend also
+        handles native WRF dimension scales. Temporary member is always removed.
+        """
+        import shutil
+        import tempfile
+        import xarray as xr
+        with tempfile.TemporaryDirectory(prefix='ecodata-netcdf-member-') as directory:
+            path=Path(directory)/'member.nc'
+            with self.files[name][0]() as source,path.open('wb') as target:
+                shutil.copyfileobj(source,target,length=1024*1024)
+            with xr.open_dataset(path,engine='netcdf4',**options) as dataset:
+                yield dataset
 
     def identity(self, name):
         with self.files[name][0]() as stream:
@@ -142,6 +171,9 @@ def bind_project(uploads, model_id):
                 return bind_templates(files)
             return None
         if len(controls) != 1:
+            if model_id=='camx':
+                from .engineering.schedule import bind_plain_schedule
+                return bind_plain_schedule(files,controls)
             raise ValueError('多个工程控制文件，不能自动猜选：' + '、'.join(controls))
         control = controls[0]
         with files.files[control][0]() as stream:
@@ -217,7 +249,7 @@ def prepare_project_binding(uploads, model_id, folder, progress=None):
     try:
         binding = bind_project(uploads, model_id)
     except ValueError as exc:
-        if model_id not in {'cmaq','camx'}:raise
+        if model_id != 'cmaq':raise
         # Unresolved declarations still receive the existing read-only report;
         # never turn a partial binding into a native product.
         from .project_inventory import prepare_project_inventory

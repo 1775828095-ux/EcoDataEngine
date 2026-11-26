@@ -7,38 +7,10 @@ The original is opened only for reading; a destination must not already exist.
 """
 from itertools import product
 from pathlib import Path
-from contextlib import contextmanager
 import hashlib
 import math
-import shutil
-import tempfile
 import numpy as np
 from netCDF4 import Dataset, Variable
-
-
-@contextmanager
-def _open_native(path, mode):
-    """Keep Windows Unicode paths out of netCDF-C, without re-encoding data."""
-    path = Path(path)
-    if str(path).isascii():
-        with Dataset(path, mode) as dataset:
-            yield dataset
-    else:
-        # Stream to an ASCII path rather than materialize the native container
-        # in memory. Read-only originals are never copied back or edited.
-        with tempfile.TemporaryDirectory(prefix='ecodata_native_') as directory:
-            staged = Path(directory) / 'update.nc'
-            if not str(staged).isascii():
-                raise ValueError('Native writeback needs an ASCII temporary directory; set TMP/TEMP accordingly')
-            if shutil.disk_usage(directory).free < path.stat().st_size:
-                raise OSError('Insufficient temporary disk space for native I/O')
-            shutil.copyfile(path, staged)
-            try:
-                with Dataset(staged, mode) as dataset:
-                    yield dataset
-            finally:
-                # Preserve partial output for diagnosis on failure, as before.
-                if mode != 'r':shutil.copyfile(staged, path)
 
 
 def _digest(path):
@@ -202,7 +174,7 @@ def update_variable(template, destination, variable, values, allowed_mask=None):
     if destination.exists() or destination.is_symlink():
         raise ValueError('Native destination already exists; refusing overwrite')
     canonical = '/' + str(variable).lstrip('/')
-    with _open_native(template, 'r') as source:
+    with Dataset(template, 'r') as source:
         _disable_decoding(source)
         variables = _variables(source)
         if canonical not in variables or not isinstance(variables[canonical], Variable):
@@ -243,14 +215,14 @@ def update_variable(template, destination, variable, values, allowed_mask=None):
             while chunk := src.read(4 * 1024 * 1024):
                 dst.write(chunk)
                 copied_hash.update(chunk)
-        with _open_native(destination, 'r+') as result:
+        with Dataset(destination, 'r+') as result:
             _disable_decoding(result)
             result_variable = _variables(result)[canonical]
             for block in _chunks(target.shape, np.dtype(target.dtype).itemsize):
                 result_variable[block] = converted[block]
         checks = []
         changed = 0
-        with _open_native(destination, 'r') as result:
+        with Dataset(destination, 'r') as result:
             _disable_decoding(result)
             _check_metadata(before_metadata, _metadata(result))
             for name, original in variables.items():

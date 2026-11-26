@@ -4,6 +4,15 @@ import json
 
 
 def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, request_builder=None):
+    from ecodata.core.recovery import session,attach,failed
+    with session(progress=progress) as recovery:
+        try:result=_prepare_with_context(uploads,model_id,folder,progress,task=task,request_builder=request_builder)
+        except Exception as exc:
+            failed(exc,folder,recovery);raise
+        return attach(result,folder,recovery)
+
+
+def _prepare_with_context(uploads, model_id, folder, progress=None, *, task=None, request_builder=None):
     """Shared input roles apply to page, toolkit and research callers alike."""
     from ecodata.models.source_catalog import partition_uploads
     import hashlib,zipfile
@@ -11,24 +20,29 @@ def prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, requ
     from ecodata.models.input_context import augment
     uploads,saved_context=augment(uploads,model_id,progress)
     active,roles=partition_uploads(uploads,folder)
-    from ecodata.models.archive_inputs import normalize_archives
-    active,intake=normalize_archives(active,folder)
-    result=_prepare_uploads(active,model_id,folder,progress,task=task,request_builder=request_builder)
-    if saved_context:
-        result['manifest']['saved_input_context']=saved_context
-        with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr('_ecodata/saved_input_context.json',json.dumps(saved_context,ensure_ascii=False,indent=2))
-    if intake:
-        with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
-            archive.write(folder/'archive_intake.json','_ecodata/archive_intake.json')
-        result['archive_intake']=intake
-    if roles['references']:
-        raw=json.dumps(roles,ensure_ascii=False,indent=2).encode('utf8')
-        name='_ecodata/input_roles_'+hashlib.sha256(raw).hexdigest()[:16]+'.json'
-        with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
-            if name in archive.namelist():raise ValueError('输入角色核验路径冲突，未覆盖已有产物')
-            archive.writestr(name,raw)
-        result['input_roles']=roles
+    from ecodata.models.archive_inputs import normalized_archive_scope
+    keep=[]
+    with normalized_archive_scope(active,folder,keep=keep,progress=progress) as (active,intake,cleanup):
+        result=_prepare_uploads(active,model_id,folder,progress,task=task,request_builder=request_builder)
+        if saved_context:
+            result['manifest']['saved_input_context']=saved_context
+            with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr('_ecodata/saved_input_context.json',json.dumps(saved_context,ensure_ascii=False,indent=2))
+        if intake:
+            result['archive_intake']=intake
+        if roles['references']:
+            raw=json.dumps(roles,ensure_ascii=False,indent=2).encode('utf8')
+            name='_ecodata/input_roles_'+hashlib.sha256(raw).hexdigest()[:16]+'.json'
+            with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
+                if name in archive.namelist():raise ValueError('输入角色核验路径冲突，未覆盖已有产物')
+                archive.writestr(name,raw)
+            result['input_roles']=roles
+        keep.append(result['archive'])
+    result['temporary_cleanup']=cleanup
+    result['manifest']['temporary_cleanup']=cleanup
+    with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('_ecodata/temporary_cleanup.json',json.dumps(cleanup,ensure_ascii=False,indent=2))
+        if intake:archive.writestr('_ecodata/archive_intake.json',json.dumps(intake,ensure_ascii=False,indent=2))
     from ecodata.models.final_check import attach_final_check
     if progress:progress('最终检查：核对原生格式、工程引用与版本，调用已登记程序进行有界试读')
     final=attach_final_check(result,model_id,folder/'final_check')
@@ -49,6 +63,16 @@ def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, req
 
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
+    from ecodata.models.selective_resources import current_index
+    bound_schedule=False
+    if task is None and model_id=='camx' and current_index(uploads) is None:
+        from ecodata.models.project_binding import bind_project
+        binding=bind_project(uploads,model_id)
+        bound_schedule=bool(binding and (binding.get('runs') or sum(b['parameter']=='met2d_grid' for b in binding['bindings'])>1))
+    if task is None and (current_index(uploads) is not None or bound_schedule):
+        from ecodata.models.project_binding import prepare_project_binding
+        bound=prepare_project_binding(uploads,model_id,folder,progress)
+        if bound is not None:return bound
     from ecodata.models.converter_contract import load_converter
     converter = load_converter(model_id)
     from ecodata.models.archive_preflight import inspect_upload_archives
@@ -87,7 +111,7 @@ def _prepare_uploads(uploads, model_id, folder, progress=None, *, task=None, req
     from ecodata.models.project_inventory import prepare_project_inventory
     # The old converter probe rejects all C-shell syntax. The public bounded
     # binder validates supported declarations before that legacy fallback.
-    if model_id in {'cmaq','camx'}:
+    if model_id=='cmaq':
         from ecodata.models.project_binding import prepare_project_binding
         bound=prepare_project_binding(uploads,model_id,folder,progress=progress)
         if bound is not None:return bound

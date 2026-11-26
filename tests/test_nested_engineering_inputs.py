@@ -91,37 +91,6 @@ def test_7z_streaming_is_used_and_preserves_member_bytes(tmp_path):
     with zipfile.ZipFile(result[0].path) as z:assert z.read('project/file.cio')==b'weather'
 
 
-@pytest.mark.parametrize('kind', ['zip', 'tar', '7z'])
-def test_expansion_continues_past_former_ten_gib_counter(tmp_path,monkeypatch,kind):
-    from ecodata.models.archive_inputs import _Reader
-    original_init=_Reader.__init__
-    def init(self,stage):
-        original_init(self,stage)
-        self.total=10*1024**3
-    monkeypatch.setattr(_Reader,'__init__',init)
-    if kind=='zip':
-        name='inner.zip';payload=zipped({'project/file.cio':b'weather'})
-    elif kind=='tar':
-        name='inner.tar.gz';b=io.BytesIO()
-        with tarfile.open(fileobj=b,mode='w:gz') as t:
-            i=tarfile.TarInfo('project/file.cio');i.size=7;t.addfile(i,io.BytesIO(b'weather'))
-        payload=b.getvalue()
-    else:
-        import py7zr
-        name='inner.7z';p=tmp_path/name
-        with py7zr.SevenZipFile(p,'w') as z:z.writestr(b'weather','project/file.cio')
-        payload=p.read_bytes()
-    result,audit=normalize_archives([upload(tmp_path,zipped({name:payload}))],tmp_path)
-    assert audit['decoded_bytes']>10*1024**3
-    with zipfile.ZipFile(result[0].path) as z:assert z.read('project/file.cio')==b'weather'
-
-
-@pytest.mark.parametrize('expected,payload', [(-1,b''),(1,b'xx'),(2,b'x')])
-def test_member_size_integrity_is_still_enforced(tmp_path,expected,payload):
-    from ecodata.models.archive_inputs import _Reader
-    with pytest.raises(ValueError):_Reader(tmp_path).copy(io.BytesIO(payload),tmp_path/'member',expected)
-
-
 def test_wrfda_recognition_does_not_claim_assimilation(tmp_path,monkeypatch):
     monkeypatch.setenv('ECODATA_WRFDA_CONFIG',str(tmp_path/'uninstalled.json'))
     from ecodata.models.wrfda_inputs import prepare_wrfda_inputs

@@ -189,6 +189,7 @@ def read_catalogue(batches,cache,mock,key,progress,feedback,current,reply,*,samp
 
 def answer_single_field_questions(sent,allowed,answer,sample_field,mock,key,progress,current,on_receipt):
     from .decision_checks import MAX_QUESTIONS, MAX_ROUNDS
+    from .sampling_strata import choose
     evidence={}
     for turn in range(MAX_ROUNDS):
         questions=[]
@@ -199,13 +200,16 @@ def answer_single_field_questions(sent,allowed,answer,sample_field,mock,key,prog
             if (isinstance(refs,list) and len(refs)==1 and isinstance(refs[0],str) and refs[0] in allowed
                     and refs[0] not in evidence and refs[0] not in questions):
                 questions.append(refs[0])
-        questions=questions[:MAX_QUESTIONS-len(evidence)]
+        descriptions = sent.get("numeric_sampling_strata", {})
+        questions = choose(questions, descriptions, MAX_QUESTIONS-len(evidence))
         if not questions:
             break
         progress("正在抽取字段数值并回传扰动样本…")
         for fid in questions:
             current()
             evidence[fid]=dict(candidate=fid,check="numeric_samples",**sample_field(fid))
+            if fid in descriptions:
+                evidence[fid]["sampling_stratum"] = descriptions[fid]
         context=dict(results=list(evidence.values()),rounds_completed=turn+1,
                      final_round=turn+1==MAX_ROUNDS or len(evidence)>=MAX_QUESTIONS,
                      previous_decisions=answer.get("decisions",[]))
