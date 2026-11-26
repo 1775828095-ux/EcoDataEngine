@@ -96,7 +96,7 @@ def _semantic(value: xr.DataArray, name: str) -> str:
         return "datetime"
     if lower.startswith("source_") or lower.endswith("_flag") or any(token in lower for token in ("来源", "源文件", "源表", "原始行", "质量标记")):
         return "quality_metadata"
-    if lower in {"id", "station_id", "name", "label", "code", "qc_flag", "quality_flag"}:
+    if lower in {"id", "station", "station_id", "site_no", "name", "label", "code", "qc_flag", "quality_flag"}:
         return "string_identifier" if "qc" not in lower and "quality" not in lower else "quality_metadata"
     if any(token in lower for token in ("编码", "代码", "编号", "_id", "_code")):
         return "string_identifier"

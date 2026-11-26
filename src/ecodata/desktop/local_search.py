@@ -71,6 +71,7 @@ def run_paired(scan, task_id, task, frame, request, folder, progress, queues, *,
     """Common real paired-series mutation and product export, no selection policy."""
     from pathlib import Path
     import json
+    import pandas as pd
     from ecodata.algorithms.platform_search import SearchInput, submit_search
     from ecodata.algorithms.paired_station_search import DEFAULT_BUDGET
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
@@ -79,6 +80,7 @@ def run_paired(scan, task_id, task, frame, request, folder, progress, queues, *,
     result=submit_search([SearchInput('paired.csv','paired_observations',frame.to_csv(index=False).encode())],request,None,
         folder/'mutation',budget=dict(DEFAULT_BUDGET,**task.get('mutation_budget',{})),seed=task.get('seed',11),progress=progress)
     files=[];artifacts=[];reports=[]
+    native_updates=[]
     for index,station in enumerate(result['stations'],1):
         if (task.get('search_after_rejection') and station.get('product')
                 and not station.get('post_mutation_acceptance', {}).get('recommended')
@@ -90,6 +92,12 @@ def run_paired(scan, task_id, task, frame, request, folder, progress, queues, *,
             import xarray as xr
             with xr.open_dataset(path) as ds:
                 artifacts.append(dict(name=name,dimensions=dict(ds.sizes),fields=list(ds.data_vars)))
+                if task.get('route')=='station_grid' and {'native_t','native_y','native_x'}<=set(frame):
+                    from .station_grid import native_update
+                    matched=frame[frame.station.astype(str)==str(station['station'])].set_index('grid_time')
+                    selected=matched.loc[pd.DatetimeIndex(ds.time.values)].reset_index()
+                    native_updates.append(native_update(scan,task,selected,ds[request['variable']].values.reshape(-1),
+                        station.get('delivery_status'),task_id))
         root=folder/'mutation'/f'station-{index}'/'search'
         candidate=station.get('candidate_product')
         if candidate and candidate!=product:
@@ -105,4 +113,4 @@ def run_paired(scan, task_id, task, frame, request, folder, progress, queues, *,
     return dict(files=files,source_formats=[scan['rows'][i]['format'] for i in source_indices],
         target_format='NetCDF',original_report=reports,local=dict(artifacts=artifacts,native_ready=False,
             reason='公共变异服务已执行；产品为未定位序列预测，不推断地理坐标或模型运行。' if request.get('unlocated_series') else '公共变异服务已执行；产品为站点位置的时间预测，不是原生网格写回或模型运行。'),
-        mutation_status=result['status'])
+        mutation_status=result['status'],native_updates=native_updates)

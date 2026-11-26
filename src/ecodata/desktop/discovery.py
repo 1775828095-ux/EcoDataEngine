@@ -508,14 +508,14 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None,sampled_
     from .reference_search import plan as reference_plan
     proposals=list(reply.get("decisions",[]))
     if task_goal=='evaluate_gain':
-        # A QA suggestion is a prerequisite, not a replacement for the explicit
-        # user task. No algorithm, score or winner is introduced here.
+        # Preparation/comparison does not discharge an explicit gain evaluation.
+        # Existing compatibility and real evaluation still decide applicability.
         for cid in sorted(allowed.keys() & candidates.keys()):
             related=[row for row in proposals if row.get('candidate')==cid]
-            if related and any(row.get('action')=='quality_screen' for row in related) and not any(
+            if related and any(row.get('action') in {'quality_screen','compare_station_grid','align_time','align_space','convert_units','convert_format'} for row in related) and not any(
                 row.get('action') in {'fusion','insufficient','pending_goal','reject','direct'} for row in related):
                 proposals.append(dict(candidate=cid,action='insufficient',goal=task_goal,
-                    reason='显式用户目标仍需比较处理价值；质量筛查建议交给公共质量门，不能替代工程任务核验。'))
+                    reason='显式用户目标仍需评估融合价值；前处理或比较建议不能替代该目标。适用性、真实评分与独立复核仍由公共机制核验，不预设融合胜出。'))
     proposed_quantities={}
     for proposal in proposals:
         if quantity:=proposal.get("physical_quantity"):

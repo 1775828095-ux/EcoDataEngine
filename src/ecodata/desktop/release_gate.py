@@ -295,7 +295,7 @@ def table_review(row, field, folder, *, target_unit=None):
     import pandas as pd
     from itertools import islice
     from .sampling_plan import IDENTIFIERS, TIME, normalized, records
-    from .sample_values import numeric
+    from .sample_values import field_values
     from .table_unit_segments import unit_column
 
     folder = Path(folder)
@@ -320,8 +320,8 @@ def table_review(row, field, folder, *, target_unit=None):
                     seen.execute("CREATE TABLE records (station TEXT, instant TEXT, PRIMARY KEY (station, instant)) WITHOUT ROWID")
                     while batch := list(islice(rows, 4096)):
                         total += len(batch)
-                        missing += sum(value is None for value in numeric(
-                            record[col] if len(record) > col else None for record in batch))
+                        missing += sum(value is None for value in field_values(
+                            (record[col] if len(record) > col else None for record in batch),field))
                         if units is not None:
                             for position, record in enumerate(batch, total - len(batch) + 1):
                                 unit = (str(record[units]).strip() if len(record) > units and record[units] else declared)

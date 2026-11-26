@@ -137,7 +137,7 @@ def render_local_check(record, labels):
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("模拟技术引擎 | 环境数据工作台 · 20261126-r5")
+        self.setWindowTitle("模拟技术引擎 | 环境数据工作台 · 20261126-r8")
         self.resize(1200,790)
         self.scanner=Scanner()
         self.decision_model=None
@@ -2820,7 +2820,3 @@ def main():
 
 if __name__=="__main__":
     raise SystemExit(main())
-
-
-
-

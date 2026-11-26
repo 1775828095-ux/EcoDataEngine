@@ -1,0 +1,43 @@
+[
+  {
+    "parent": "m912bdea5c67a22f3e4a0f9a14588dd571b7f4eb612ca1f79bc475aaedc0a8e9d",
+    "child": "m62599366269403c5df6078c0105ca4996c779b12adb117086fce46acc482b749",
+    "family": "structure",
+    "strategy": "random",
+    "edit": {
+      "parent": "m912bdea5c67a22f3e4a0f9a14588dd571b7f4eb612ca1f79bc475aaedc0a8e9d",
+      "target": "m912bdea5c67a22f3e4a0f9a14588dd571b7f4eb612ca1f79bc475aaedc0a8e9d",
+      "algorithm": "fusion.series_missing_fallback",
+      "parents": [
+        "m912bdea5c67a22f3e4a0f9a14588dd571b7f4eb612ca1f79bc475aaedc0a8e9d",
+        "m690aa58d0dbe09815452a550c787b79a8e7f9d46a056309e799edc1f1f920c14"
+      ],
+      "parameters": {
+        "primary_index": 0
+      },
+      "operator": "insert_node",
+      "child": "m62599366269403c5df6078c0105ca4996c779b12adb117086fce46acc482b749",
+      "status": "COMPATIBLE_LOCAL_EDIT",
+      "matching": {
+        "status": "DISABLED",
+        "score_interval": [
+          0.0,
+          0.0
+        ],
+        "reference_used": false,
+        "basis": "Soft portrait scoring disabled; hard compatibility and measured validation remain active"
+      }
+    },
+    "iteration": 71,
+    "proposed_child": "m62599366269403c5df6078c0105ca4996c779b12adb117086fce46acc482b749",
+    "screened_alternatives": 1,
+    "before_objective": 0.14008253405740892,
+    "after_objective": 0.14008253405740892,
+    "neighbourhood_proposals": 2,
+    "neighbourhood_complete": false,
+    "parent_is_best_at_proposal": true,
+    "accepted": false,
+    "actual_execution": true,
+    "execution_status": "ELIGIBLE_OUTPUT"
+  }
+]

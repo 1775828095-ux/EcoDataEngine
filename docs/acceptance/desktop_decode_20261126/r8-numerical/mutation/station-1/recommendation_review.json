@@ -1,0 +1,123 @@
+{
+  "version": "blocked_confirmation_v2_aggregate_risk",
+  "status": "CONFIRMATION_FAILED",
+  "recommended": false,
+  "selection": {
+    "sufficient": false,
+    "differences": [
+      {
+        "block": "time-block-0",
+        "rmse_change": -0.36026611328122726,
+        "mae_change": -0.36026611328122726
+      },
+      {
+        "block": "time-block-2",
+        "rmse_change": -0.32163085937497726,
+        "mae_change": -0.32163085937497726
+      }
+    ],
+    "objective_change": -0.34071212682232,
+    "stable_gain": false,
+    "roundoff_only_tolerance": 1.4210854715202004e-14,
+    "aggregate_gain": true,
+    "uncertainty": {
+      "status": "INSUFFICIENT",
+      "units": 2,
+      "resampling_unit": "evaluation blocks",
+      "interpretation": "Conditional block-resampling interval; block independence and future coverage are not established",
+      "method": "paired cluster percentile bootstrap",
+      "confidence_level": 0.95,
+      "resamples": 4999,
+      "seed": 20261125
+    },
+    "local_risk": {
+      "status": "NO_OBSERVED_DEGRADATION",
+      "degraded_blocks": 0,
+      "total_blocks": 2,
+      "degraded_fraction": 0.0,
+      "worst_rmse_increase": -0.32163085937497726,
+      "worst_mae_increase": -0.32163085937497726,
+      "violations": [],
+      "basis": "Observed changes only; no task harm tolerance inferred"
+    }
+  },
+  "confirmation": {
+    "sufficient": false,
+    "differences": [
+      {
+        "block": "time-block-0",
+        "rmse_change": -0.6204467773437727,
+        "mae_change": -0.6204467773437727
+      },
+      {
+        "block": "time-block-1",
+        "rmse_change": 0.4412353515625682,
+        "mae_change": 0.4412353515625682
+      },
+      {
+        "block": "time-block-2",
+        "rmse_change": 0.6204467773437727,
+        "mae_change": 0.6204467773437727
+      }
+    ],
+    "objective_change": 0.1470784505208561,
+    "stable_gain": false,
+    "roundoff_only_tolerance": 1.4210854715202004e-14,
+    "aggregate_gain": false,
+    "uncertainty": {
+      "status": "CONDITIONAL_INTERVAL",
+      "units": 3,
+      "resampling_unit": "evaluation blocks",
+      "interpretation": "Conditional block-resampling interval; block independence and future coverage are not established",
+      "method": "paired cluster percentile bootstrap",
+      "confidence_level": 0.95,
+      "resamples": 4999,
+      "seed": 20261125,
+      "lower": -0.6204467773437727,
+      "upper": 0.6204467773437727,
+      "gain_supported": false,
+      "leave_one_unit_out_range": [
+        -0.08960571289060226,
+        0.5308410644531705
+      ]
+    },
+    "local_risk": {
+      "status": "UNASSESSED_TOLERANCE",
+      "degraded_blocks": 2,
+      "total_blocks": 3,
+      "degraded_fraction": 0.6666666666666666,
+      "worst_rmse_increase": 0.6204467773437727,
+      "worst_mae_increase": 0.6204467773437727,
+      "violations": [],
+      "basis": "Observed changes only; no task harm tolerance inferred"
+    }
+  },
+  "confirmation_used_for_search": false,
+  "confirmation_retries": 0,
+  "policy": {
+    "version": "blocked_confirmation_v2_aggregate_risk",
+    "blocks": 3,
+    "min_times_per_block": 2,
+    "objective": "Equal-block mean RMSE",
+    "confirmation": "Disjoint chronological holdout, once after freezing",
+    "acceptance": "Aggregate gain in both stages, paired block uncertainty, declared local risk limits",
+    "insufficient": "Quality-valid candidate may be tried; baseline remains default until confirmed",
+    "confidence": "No statistical confidence or universal accuracy guarantee",
+    "resampling": {
+      "method": "paired cluster percentile bootstrap",
+      "confidence_level": 0.95,
+      "resamples": 4999,
+      "seed": 20261125
+    },
+    "local_risk": "No default tolerance percent; undeclared local harm limits remain UNKNOWN"
+  },
+  "warning": "Paired block intervals are conditional diagnostics; not calibrated future guarantees or independent pixel replicates",
+  "decision": "KEEP_BASELINE",
+  "candidate_trial_available": false,
+  "evidence_status": "INSUFFICIENT",
+  "recommendation_isolation": {
+    "status": "INSUFFICIENT",
+    "reason": "This route requires its native independent reference protocol"
+  },
+  "isolation_reason": "No separate recommendation/mutation reserve; only development evidence"
+}

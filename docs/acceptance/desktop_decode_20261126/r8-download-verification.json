@@ -1,0 +1,27 @@
+{
+  "archive_integrity": "PASS",
+  "outer_members": 15,
+  "native_members": 55,
+  "native_read": "PASS",
+  "native_sha256": "62b1084a943b02f038b7929b499aff204427aefb1722d3e94a91326e4c325116",
+  "writeback_matches_frozen_delivery": true,
+  "changed_values": 0,
+  "native_facts": {
+    "native_format": "NETCDF3_CLASSIC",
+    "shape": [
+      25,
+      1,
+      149,
+      152
+    ],
+    "variables": 24,
+    "unit": "K"
+  },
+  "format_status": "PASS",
+  "project_status": "PASS",
+  "model_executed": false,
+  "platform_cleanup": "COMPLETED",
+  "owned_task_directory_absent": true,
+  "bytes": 3312948740,
+  "elapsed_seconds": 27.375
+}

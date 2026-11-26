@@ -188,7 +188,8 @@ def describe_output(result, profile):
     profile = profile or {}
     role_specs = profile.get("preparation_scenario", {}).get("inputs") or profile.get("inputs", [])
     component_only=manifest.get('status')=='COMPONENT_EXPORTED'
-    for role in ([] if component_only else role_specs):
+    bound_project=bool(gate and gate.get('project',{}).get('status')=='PASS')
+    for role in ([] if component_only or bound_project else role_specs):
         if not role.get("required"):
             continue
         required = [f for f in field_requirements(role) if f.get("required", True)]

@@ -79,6 +79,73 @@ or fused products must retain this provenance and the actual native support.
     return product
 
 
+def prepare_indexed_products(uploads,model_id,folder,updates,progress=None):
+    """Bind delivered point predictions back to their byte-identical native parent.
+
+    Indices and expected background values must come from the actual upstream
+    collocation. This adapter does no fitting, selection or spatial propagation.
+    Independent native projects are returned separately, never silently merged.
+    """
+    from ..selective_resources import resource_scope
+    from ..component_service import prepare_components,capabilities
+    from ..project_binding import bind_project
+    from ..final_check import attach_final_check
+    from ecodata.engines.units import UnitEngine
+    if not any(row['task']=='update_project' for row in capabilities(model_id)):
+        raise ValueError('该模型未登记NetCDF原生字段写回契约')
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    outputs=[];active=uploads
+    with resource_scope(active,progress) as intake:
+        with ExitStack() as stack:
+            files=ProjectFiles(active,stack)
+            binding=bind_project(active,model_id)
+            if binding is None:raise ValueError('没有可绑定的实际工程；保留处理产品，不假造原生工程')
+            groups={}
+            for row in updates:groups.setdefault((row['source_sha256'],row['variable']),[]).append(row)
+            for number,((digest,variable),rows) in enumerate(groups.items()):
+                if any(r.get('purpose')=='selected_product' for r in rows):
+                    rows=[r for r in rows if r.get('purpose')=='selected_product']
+                hits=[r['path'] for r in binding['resources'] if r['sha256']==digest]
+                if len(hits)!=1:raise ValueError('处理产品未唯一绑定实际工程输入资源')
+                product=extract_native_field(active,model_id,hits[0],variable)
+                occupied={}
+                for row in rows:
+                    if row['delivery_status'] not in {'BASELINE_RETAINED','ENHANCEMENT_RECOMMENDED'}:
+                        raise ValueError('未冻结或未验收的候选不能原生写回')
+                    scale,offset=UnitEngine().affine(row['unit'],product[variable].attrs['units'])
+                    for point in row['points']:
+                        index=tuple(point['index']);value=point['value']*scale+offset
+                        if len(index)!=product[variable].ndim or any(i<0 or i>=n for i,n in zip(index,product[variable].shape)):
+                            raise ValueError('上游索引超出原生支持域')
+                        expected=point['expected']*scale+offset
+                        if not np.isfinite(value) or not np.isclose(product[variable].values[index],expected,rtol=1e-6,atol=1e-6):
+                            raise ValueError('上游实际背景与原生父资源不一致')
+                        if index in occupied and occupied[index]!=value:raise ValueError('多个处理分支对同一原生位置输出冲突')
+                        occupied[index]=value
+                for index,value in occupied.items():product[variable].values[index]=value
+                name=f'_ecodata_processed_{number}.nc';path=folder/name
+                product.to_netcdf(path,engine='h5netcdf')
+                files.add(name,lambda p=path:p.open('rb'),dict(upload='verified_pipeline_product',bytes=path.stat().st_size))
+                stage=folder/f'project_{number}';stage.mkdir()
+                if progress:progress('将冻结的实际处理产品交给公共原生写回器：'+variable)
+                result=prepare_components(active,model_id,stage,progress=progress,
+                    task=dict(type='model_component',operation='update_project',input=name,configuration={}))
+                if not result or not result['manifest'].get('native_writeback_verified'):
+                    raise ValueError('原生组件未完成工程写回；处理产品保留')
+                result['manifest']['processed_product_binding']=dict(source_sha256=digest,variable=variable,
+                    assigned_positions=len(occupied),tasks=[r['task'] for r in rows],
+                    delivery_status=[r['delivery_status'] for r in rows],purposes=[r.get('purpose') for r in rows],selection_or_fitting_performed=False)
+                attach_final_check(result,model_id,stage/'final_check')
+                outputs.append(result)
+    cleanup=dict(status=intake['cleanup'],selective_resources=intake)
+    for result in outputs:
+        result['manifest']['temporary_cleanup']=cleanup
+        with zipfile.ZipFile(result['archive'],'a',zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('_ecodata/indexed_product_binding.json',json.dumps(result['manifest']['processed_product_binding'],ensure_ascii=False,indent=2))
+            archive.writestr('_ecodata/indexed_product_cleanup.json',json.dumps(cleanup,ensure_ascii=False,indent=2))
+    return outputs
+
+
 def bind_native_product(files,model_id,raw,configuration):
     """Resolve this product to a unique uploaded resource; no host paths/cases."""
     with xr.open_dataset(io.BytesIO(raw),decode_times=False) as opened:product=opened.load()
@@ -125,9 +192,10 @@ def bind_control_context(uploads,model_id,configuration,context):
     binding=bind_project(uploads,model_id)
     context.metadata['control_binding_status']='UNKNOWN'
     if binding is None:return
-    edges=[r for r in binding['bindings'] if r['target']==configuration['target']]
+    edges=[r for r in binding['bindings'] if r.get('target')==configuration['target']]
     if not edges:raise ValueError('目标资源没有已验证的工程输入端口；未支持的可选端口须补契约')
-    context.metadata.update(control_binding_status='BOUND',control=binding['control'],active_input_ports=edges)
+    context.metadata.update(control_binding_status='BOUND',control=binding['control'],active_input_ports=edges,
+                            project_binding=binding)
     for row in context.existing_mappings:row['active_input_ports']=edges
     # Verify explicit requirements, without inventing omitted model defaults.
     if model_id=='wrf' and len(edges)==1 and edges[0]['parameter']=='initial_state':
@@ -273,7 +341,12 @@ def finish_project(uploads,model_id,folder,operation,generated,configuration,val
         archive=folder/'EcoData-updated-project.zip'
         inventory=[]
         with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
-            for name in sorted(set(files.files)|set(replacements)):
+            included=set(files.files)
+            binding=context.metadata.get('project_binding')
+            if binding:
+                included={r['path'] for r in binding['resources']}|{binding['control']['path']}
+                included.update(r['path'] for r in binding.get('equivalent_controls',[]))
+            for name in sorted(included|set(replacements)):
                 if name in replacements:z.writestr(name,replacements[name])
                 else:
                     with files.files[name][0]() as source,z.open(name,'w',force_zip64=True) as dest:

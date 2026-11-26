@@ -1,4 +1,4 @@
-> 当前协作基准：`main` / `platform-baseline-20261126`。使用 `launch_platform.ps1` 启动 PySide 桌面平台；页面、工具包与研究客户端复用 `src/ecodata` 公共服务。历史分支仅供复现，不作为默认运行版。详见 `PLATFORM_BASELINE.json` 的代码/配置指纹。密钥与本机运行环境不入库；CAMx融合和原生写回回读已验收，原生模型求解未运行。
+> 当前协作基准：`main` / `platform-baseline-20261126-r8`。使用 `launch_platform.ps1` 启动 PySide 桌面平台（20261126-r8）；页面、工具包与研究客户端复用 `src/ecodata` 公共服务。详见 `PLATFORM_BASELINE.json` 与桌面验收记录。真实推荐、变异、原生写回/回读及下载清理已验收；本案例最终保留背景场，不声称融合增益，CAMx模型求解未运行。密钥与本机运行环境不入库。
 
 # EcoData Engine
 

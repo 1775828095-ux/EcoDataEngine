@@ -50,6 +50,15 @@ def test_untrusted_admission_cannot_bypass_gate():
     with pytest.raises(ValueError): require(rows)
 
 
+def test_insufficient_scoring_support_only_admits_bounded_exploration():
+    rows,gated=fixture();rows[0]['execution_release']['status']='pending'
+    rows[0]['local_holdout_review']=[dict(basis='recipe_scoring_reference_insufficient',
+        acceptance_sampling=dict(unscored_units=[dict(rule='insufficient_score_support')]))]
+    continue_rejected_search(rows,gated)
+    assert len(rows)==2 and selectable(rows[1]) and not allowed(rows[0]) and not allowed(rows[1])
+    assert rows[1]['search_admission']['reason']=='insufficient_reference_exploration_only'
+
+
 def test_page_shows_failed_recipe_separately_from_search_permission(monkeypatch):
     from PySide6.QtWidgets import QApplication, QCheckBox
     from ecodata.desktop.__main__ import Window

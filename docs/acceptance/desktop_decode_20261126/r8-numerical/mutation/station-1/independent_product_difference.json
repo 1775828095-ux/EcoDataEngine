@@ -1,0 +1,7 @@
+{
+  "variable": "air_temperature",
+  "points": 5,
+  "changed": 5,
+  "maximum_absolute_difference": 0.6204467773437727,
+  "baseline_preserved": true
+}

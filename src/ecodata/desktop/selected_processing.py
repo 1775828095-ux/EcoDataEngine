@@ -18,6 +18,7 @@ def _run(scan, tasks, folder, progress=None, *, model_id=None):
     assert_current(scan)
     files, artifacts, reports, formats, outputs, notes = [], [], [], [], [], []
     searches, failures = {}, []
+    native_updates=[]
     for index,(task_id,task) in enumerate(tasks,1):
         stage = folder/f"group-{index}"
         seeds = list(dict.fromkeys(step for recipe in task["recipes"] for step in recipe if step in ALGORITHMS))
@@ -70,6 +71,7 @@ def _run(scan, tasks, folder, progress=None, *, model_id=None):
             failures.append(dict(task=task_id,reason=str(exc),issues=exception(exc)))
             continue
         formats.extend(result["source_formats"])
+        native_updates.extend(result.get('native_updates',[]))
         outputs.append(result["target_format"])
         notes.append(result["local"]["reason"])
         reports.append(dict(task=task_id,backend=route or "station_search",report=result["original_report"],
@@ -132,5 +134,29 @@ def _run(scan, tasks, folder, progress=None, *, model_id=None):
     if research:
         result["research_archive"] = research["original_archive"]
         result["research_records"] = research["research_records"]
+    if native_updates and model_id and model_id!='data_only':
+        from ecodata.interface.engineering_upload import LocalUpload
+        from ecodata.models.engineering.native import prepare_indexed_products
+        root=scan['path']
+        uploads=[LocalUpload(path.relative_to(root).as_posix() if root.is_dir() else path.name,path)
+                 for path,*_ in scan['signature']]
+        try:
+            native=prepare_indexed_products(uploads,model_id,folder/'native_products',native_updates,progress)
+        except (EcoDataError,ValueError,OSError,RuntimeError,KeyError) as exc:
+            failures.append(dict(task='原生产品写回',reason=str(exc)))
+        else:
+            if len(native)==1:
+                result.update(component_archive=native[0]['archive'],archive=native[0]['archive'],
+                    manifest=native[0]['manifest'],final_check_folder=native[0]['final_check_folder'])
+            elif native:
+                import zipfile
+                combined=folder/'native_projects.zip'
+                with zipfile.ZipFile(combined,'w',zipfile.ZIP_STORED) as archive:
+                    for i,item in enumerate(native):archive.write(item['archive'],f'project_{i}.zip')
+                result['component_archive']=str(combined)
+                result['native_projects']=[item['manifest'] for item in native]
+        result['continuation']=receipt([*continuation.get('decisions',[]),
+            *[decision('operation',f['task'],f['reason']) for f in failures if f['task']=='原生产品写回']],
+            [*continuation.get('completed_steps',[]),*(['原生写回与回读'] if result.get('component_archive') else [])])
     bundle(result)
     return result

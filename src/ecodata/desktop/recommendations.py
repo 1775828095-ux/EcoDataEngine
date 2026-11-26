@@ -340,7 +340,7 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
 def continue_rejected_search(rows, gated):
     """A failed recipe is not a failed task; admit exploration, never that recipe."""
     from .release_gate import allowed
-    from .recipe_trials import continuation_steps
+    from .recipe_trials import continuation_steps,UNSCORED
 
     for task_id in dict.fromkeys(row.get("task") for row in rows):
         if not task_id or any(allowed(row) or row.get("search_admission")
@@ -348,28 +348,33 @@ def continue_rejected_search(rows, gated):
             continue
         task = gated.get(tuple(task_id.split(":", 1)), {})
         rejected = [row for row in rows if row.get("task") == task_id
-                    and row.get("execution_release", {}).get("status") == "failed"]
+                    and row.get("execution_release", {}).get("status") in {"failed","pending"}]
         numeric = []
         for row in rejected:
             reports = row.get("local_holdout_review", ())
             failures = [failure for report in reports
                         for failure in report.get("acceptance_sampling", {}).get("failures", ())]
-            if (reports and failures and all(report.get("basis") == "recipe_numeric_rejected" for report in reports)
+            if (row.get('execution_release',{}).get('status')=='failed' and reports and failures and all(report.get("basis") == "recipe_numeric_rejected" for report in reports)
                     and all(failure.get("rule") == "recipe_score_below_single_source"
                             and not failure.get("unscored") for failure in failures)):
                 numeric.append(row)
+            elif reports and all(report.get('basis')=='recipe_scoring_reference_insufficient' for report in reports):
+                unscored=[unit for report in reports for unit in report.get('acceptance_sampling',{}).get('unscored_units',())]
+                if unscored and all(unit.get('rule') in UNSCORED for unit in unscored):
+                    numeric.append(row)
         if not numeric:
             continue
         preparation = continuation_steps(task, numeric[0])
         if preparation is None:
             continue
+        insufficient=any(r.get('execution_release',{}).get('status')=='pending' for r in numeric)
         admission = dict(protocol="rejected-recipe-search-v1", route=task["route"],
                          rejected_ids=[row["id"] for row in numeric],
-                         status="SEARCH_ONLY", reason="numeric_recipe_failure_not_task_incompatibility")
+                         status="SEARCH_ONLY", reason="insufficient_reference_exploration_only" if insufficient else "numeric_recipe_failure_not_task_incompatibility")
         task["search_after_rejection"] = admission
         rows.append(dict(task=task_id, id="legal_candidate_search", steps=preparation,
                          name="合法候选变异寻优（推荐未通过）",
-                         description="原推荐评分失败并保留；从其他合法候选搜索，最终仍须质量检查和独立复核，不保证融合胜出。",
+                         description="原推荐未通过或评分证据不足，记录保留；从其他合法候选搜索，真实数值目标和最终复核仍须满足契约，不保证融合胜出。",
                          reason="允许继续搜索不等于放行原推荐；拒绝推荐不作为搜索种子或偏好。",
                          recommendation_origin="platform_search_continuation", search_admission=admission,
                          execution_release=dict(status="search_only", checks=[], blockers=[]),

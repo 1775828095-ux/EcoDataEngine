@@ -1,0 +1,13 @@
+{
+  "src/ecodata/desktop/release_gate.py": "0ae2050ee2940683d86192f48044425926dcceb4e5e8d7f5d7fa303909595d5f",
+  "src/ecodata/desktop/fallback_evidence.py": "9e9aaf4376657b631b3ca8e2379256bf896ebefb4edbac40b4a4519229fd320e",
+  "src/ecodata/desktop/station_grid.py": "75ab264c26a0e79e83ffea4673cb8b3e546bbe4d2564d2edfd826f766412deec",
+  "src/ecodata/desktop/local_search.py": "c373fabb51dc48a829619e10b34eff4c054e8c7b5f2cf1f8ed97ca0841d0e566",
+  "src/ecodata/desktop/selected_processing.py": "6efd55a147b59ebd13afea029288bd1ce0b4c90d7919e82c649e35c0288762f5",
+  "src/ecodata/desktop/output_review.py": "0d92e0acb60ec8158dbea07a955e975a36f0672856e6b22db1076eae4e9b9a2a",
+  "src/ecodata/desktop/__main__.py": "8ceb862175c7651aed2b6feeff5ef30f98bf751af76a43c686693e219b56c971",
+  "src/ecodata/desktop/discovery.py": "9963cb1dfbaab504d6f63dd6020122e90d519af3493ede1b907493bbfc1b0579",
+  "src/ecodata/desktop/recommendations.py": "138e50eca7da3ec0ad60a9f9d6d8d91d0c2bf7a24638b98229d3273638ab80d1",
+  "src/ecodata/models/engineering/native.py": "c2d3c8e50e7a4584bb55e26c49e58d853d629ab3548c7ddc72ff3c5ad355a9a5",
+  "src/ecodata/recognition.py": "77db983163f90207b42cd2807e40e22a7822c78f90d03ca5d3f4a5e5d1b5cadd"
+}

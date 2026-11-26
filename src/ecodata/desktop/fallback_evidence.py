@@ -420,7 +420,7 @@ def supplement(scan, fields, targets=None):
 def targeted_table(row, field, sample, target):
     from itertools import islice
     from .csv_index import indexed_records, load, month
-    from .sample_values import numeric
+    from .sample_values import field_values
     from .sampling_plan import PROBE_LIMIT, station_reserved
 
     kind, group = target
@@ -461,7 +461,7 @@ def targeted_table(row, field, sample, target):
                         continue
                     if not (indexed or alternate and alternate != field.get("sheet")) and station is None and clock is None and (number // 8) % 4 == 3:
                         continue
-                    value = next(numeric([record[column]]))
+                    value = next(field_values([record[column]],field))
                     if value is not None:
                         values.append(value)
                     if len(values) >= 32:

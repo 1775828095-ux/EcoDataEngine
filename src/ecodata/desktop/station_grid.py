@@ -42,7 +42,8 @@ def task_for(scan,pair,action,units):
     from ecodata.models.scientific_schema import identity
     quantity,_=identity(grid[2]['name'],grid[2])
     description=str(grid[2].get('long_name','')).casefold()
-    if (units['quantity']=='wind_speed' and (quantity in {'eastward_wind','northward_wind'}
+    observation_quantity,_=identity(station[2]['name'],station[2])
+    if ((units['quantity']=='wind_speed' or observation_quantity=='wind_speed' or station[2].get('standard_name')=='wind_speed') and (quantity in {'eastward_wind','northward_wind'}
             or 'wind component' in description or 'component of wind' in description
             or grid[2]['name'] in {'u10','v10','U10','V10'})):
         raise ValueError('风分量不能作为标量风速直接融合；跳过本项，保留原背景场及其他合法任务。需要已登记的分量合成及方向契约。')
@@ -185,6 +186,9 @@ def load(scan,task, *, table_data=None, keep_missing=False, minimum_grid_index=0
             frame["grid_time"]=time[indices[keep]]
             frame["grid_lon"]=lon[yy[keep],xx[keep]]
             frame["grid_lat"]=lat[yy[keep],xx[keep]]
+            frame['native_t']=indices[keep]
+            frame['native_y']=yy[keep]+offsets[0]
+            frame['native_x']=xx[keep]+offsets[1]
             center=(0,)*(var.ndim-3)
             values=[var[(int(indices[i]),*center,int(yy[i])+offsets[0],int(xx[i])+offsets[1])] for i in keep]
             frame["background"]=[float(value) if not np.ma.is_masked(value) else np.nan for value in values]
@@ -198,6 +202,7 @@ def load(scan,task, *, table_data=None, keep_missing=False, minimum_grid_index=0
             out[method]=frame.groupby(["station","grid_time"],as_index=False).agg(
                 time=("time","first"),observed=("observed","mean"),background=("background","first"),
                 grid_lon=("grid_lon","first"),grid_lat=("grid_lat","first"),
+                native_t=('native_t','first'),native_y=('native_y','first'),native_x=('native_x','first'),
                 longitude=("longitude","first"),latitude=("latitude","first"),matched_observations=("observed","size"))
             out[method].attrs['matching_audit']=dict(identical_duplicate_columns=duplicate_columns,
                 valid_observations_in_hull=len(observation),
@@ -384,6 +389,21 @@ def review(scan, task, steps, *, independent=False):
         return recipe_trials.audit(len(keys), f"withheld_{source.category}", trial)
 
 
+def native_update(scan,task,frame,values,delivery_status,task_id,*,purpose='selected_product'):
+    """The writer receives indices of the actual sampled native parent."""
+    import hashlib
+    source=scan['rows'][task['grid_index']]
+    native_field=next(f for f in source['fields'] if f['name']==task['grid_name'])
+    rank=len(native_field['dimensions'])
+    if len(frame)!=len(values):raise ValueError('原生写回索引和实际产品长度不符')
+    with local_member(source) as original,original.open('rb') as stream:
+        digest=hashlib.file_digest(stream,'sha256').hexdigest()
+    return dict(source_sha256=digest,variable=task['grid_name'],unit=task['unit'],task=task_id,
+        delivery_status=delivery_status,purpose=purpose,points=[dict(
+            index=[int(row.native_t),*[0]*(rank-3),int(row.native_y),int(row.native_x)],
+            expected=float(row.background),value=float(value)) for row,value in zip(frame.itertuples(),values)])
+
+
 def run_fixed(scan,task_id,task,folder,model_id,progress):
     from ecodata.io.structures import export_structure, read_structure, table_dataset
 
@@ -392,6 +412,7 @@ def run_fixed(scan,task_id,task,folder,model_id,progress):
     requested={next(step for step in recipe if step in {EXACT,NEAREST}) for recipe in task["recipe_steps"]}
     rows,queue_audit=common_queue({method:rows[method] for method in sorted(requested)})
     files,artifacts,reports=[],[],[]
+    native_updates=[]
     for index,recipe in enumerate(task["recipes"],1):
         if recipe not in task["recipe_steps"]:
             raise ValueError("方案未登记")
@@ -414,9 +435,11 @@ def run_fixed(scan,task_id,task,folder,model_id,progress):
         files.append((name,raw))
         artifacts.append(dict(name=name,dimensions=dict(ds.sizes),fields=list(ds.data_vars)))
         reports.append(report)
+        if model_id and model_id!='data_only' and BIAS not in recipe:
+            native_updates.append(native_update(scan,task,frame,frame.background.to_numpy(),'BASELINE_RETAINED',task_id,purpose='comparison_passthrough'))
     return dict(files=files,source_formats=[scan["rows"][i]["format"] for i in (task["grid_index"],task["table_index"])],
                 target_format="Parquet",original_report=reports,local=dict(artifacts=artifacts,
-                     reason="已导出站点与网格的配对记录及所选方案的核验结果。"))
+                     reason="已导出站点与网格的配对记录及所选方案的核验结果。"),native_updates=native_updates)
 
 
 

@@ -1,0 +1,40 @@
+{
+  "s0": {
+    "operation": "source",
+    "parents": [],
+    "parameters": {
+      "source": "source0"
+    }
+  },
+  "m690aa58d0dbe09815452a550c787b79a8e7f9d46a056309e799edc1f1f920c14": {
+    "operation": "bias.prior_series_ratio",
+    "parents": [
+      "s0"
+    ],
+    "parameters": {}
+  },
+  "m912bdea5c67a22f3e4a0f9a14588dd571b7f4eb612ca1f79bc475aaedc0a8e9d": {
+    "operation": "bias.prior_series_affine",
+    "parents": [
+      "s0"
+    ],
+    "parameters": {}
+  },
+  "m002a762cb6533ff618df7315d3544b72fc7443d6997132490ad8dbefbc4b9683": {
+    "operation": "bias.prior_series_affine",
+    "parents": [
+      "m912bdea5c67a22f3e4a0f9a14588dd571b7f4eb612ca1f79bc475aaedc0a8e9d"
+    ],
+    "parameters": {}
+  },
+  "m62599366269403c5df6078c0105ca4996c779b12adb117086fce46acc482b749": {
+    "operation": "fusion.series_missing_fallback",
+    "parents": [
+      "m912bdea5c67a22f3e4a0f9a14588dd571b7f4eb612ca1f79bc475aaedc0a8e9d",
+      "m690aa58d0dbe09815452a550c787b79a8e7f9d46a056309e799edc1f1f920c14"
+    ],
+    "parameters": {
+      "primary_index": 0
+    }
+  }
+}

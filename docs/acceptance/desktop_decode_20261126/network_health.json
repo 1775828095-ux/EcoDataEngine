@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "elapsed": 5.39100000000326,
+  "response": "{\"status\":\n\n\n\"ok\"}",
+  "receipt": {
+    "model": "deepseek-flash",
+    "id": "1ed76d72-aedc-4b5c-bcef-b46ce95c7e0e",
+    "usage": {
+      "prompt_tokens": 38,
+      "completion_tokens": 7,
+      "total_tokens": 45,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 38
+    }
+  }
+}
