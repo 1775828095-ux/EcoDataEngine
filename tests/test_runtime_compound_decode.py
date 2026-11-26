@@ -97,4 +97,3 @@ def test_numeric_station_product_binds_back_to_actual_native_indices(tmp_path,st
     assert result['original_report'][0]['mutation_search']['station']==station
     for point in update['points']:
         assert len(point['index'])==3 and point['expected']==280.
-
