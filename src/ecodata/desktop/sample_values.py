@@ -8,6 +8,8 @@ from secrets import randbelow
 from .scan import AXES, local_member, open_tabular_member
 
 SAMPLE_SIZE = 16
+RECOMMENDATION_SAMPLE_LIMIT = 48
+RECOMMENDATION_SAMPLE_POOL = 64
 PROBE_ROWS = 4096
 MAX_SAMPLE_MATERIALIZATION = 8 * 1024**2
 IDENTIFIER_COLUMNS = {"id", "station_id", "site_id", "sensor_id", "object_id"}
@@ -200,10 +202,10 @@ def field_sample(row,field,*,outbound=False):
         return raw_sample(path,row,field,outbound=outbound)
 
 
-def export_sample(values):
+def export_sample(values, *, limit=SAMPLE_SIZE):
     if values is None:
         return dict(status="unavailable",basis="sample_format_unavailable")
-    sample=perturb(islice((value for value in values if value is not None),SAMPLE_SIZE))
+    sample=perturb(islice((value for value in values if value is not None),limit))
     return dict(status="checked" if sample else "unavailable",
                 basis="random_decimal_perturbation" if sample else "no_numeric_samples",
                 perturbed_samples=sample)

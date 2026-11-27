@@ -198,10 +198,11 @@ def fill(aligned, primary, variable):
     return dataset, dict(output.report, unresolved=int((availability == 0).sum()), fused=False)
 
 
-def trial_recipe(aligned, primary, steps, variable="precipitation", *, scoring_request=None, native=None):
+def trial_recipe(aligned, primary, steps, variable="precipitation", *, scoring_request=None, native=None,
+                 mask_phase=None, mask_seed=0):
     """Run the frozen recipe and score a fixed reduced-grid reconstruction proxy."""
     from ecodata.algorithms.spatial_fusion_task import blend_fields
-    from .recipe_trials import score
+    from .recipe_trials import reference_positions, score
 
     output, evidence = fill(aligned, primary, variable)
     if evidence["unresolved"]:
@@ -222,7 +223,10 @@ def trial_recipe(aligned, primary, steps, variable="precipitation", *, scoring_r
         available = np.flatnonzero(paired.values)
         if len(available) < 2:
             return output, evidence, None, "insufficient_score_support"
-        withheld = available[::2]
+        withheld = available[::2] if mask_phase is None else available[
+            reference_positions(len(available), mask_phase, mask_seed)]
+        if not len(withheld):
+            return output, evidence, None, "insufficient_score_support"
         masked = aligned[primary].copy()
         values = observed.copy()
         values.flat[withheld] = np.nan
@@ -244,6 +248,11 @@ def trial_recipe(aligned, primary, steps, variable="precipitation", *, scoring_r
         return output, evidence, None, "insufficient_score_support"
     estimates = cohort["inputs"]
     truth = cohort["reference"]
+    # Stable fine-reference positions are assigned to disjoint assessment phases.
+    if mask_phase is not None:
+        positions = reference_positions(truth.shape[1], mask_phase, mask_seed)
+        estimates = [values[:, positions] for values in estimates]
+        truth = truth[:, positions]
     mask = np.isfinite(truth) & np.isfinite(estimates[0]) & np.isfinite(estimates[1])
     if not bool(mask.any()):
         return output, evidence, None, "insufficient_score_support"
@@ -253,5 +262,6 @@ def trial_recipe(aligned, primary, steps, variable="precipitation", *, scoring_r
                              "REDUCED_SCALE_PRODUCT_RECONSTRUCTION_PROXY", retained=np.stack(estimates),
                              request=scoring_request)
     if metrics:
-        metrics["evaluation_protocol"] = protocol
+        metrics["evaluation_protocol"] = dict(protocol, assessment_phase=mask_phase,
+                                              selection_count=int(mask.sum()))
     return output, evidence, metrics, failure

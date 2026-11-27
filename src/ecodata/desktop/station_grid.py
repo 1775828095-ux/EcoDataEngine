@@ -19,6 +19,67 @@ NAMES={
     MATCH:"使用原生网格坐标匹配最近格点", BIAS:"站点偏差订正与时间留出评分",
 }
 
+WIND_SPEED_UNIT = "m/s"
+CAMX_WIND = {"u10": "longitudinal wind at 10 m", "v10": "latitudinal wind at 10 m"}
+
+
+def wind_components(row, field):
+    """Bind the two collocated 10 m CAMx components from the same member."""
+    if row["format"] != "NetCDF" or field["name"] not in CAMX_WIND:
+        return ()
+    fields = {item["name"]: item for item in row.get("fields", ())}
+    components = []
+    from ecodata.models.scientific_schema import compare_units
+
+    for name, description in CAMX_WIND.items():
+        item = fields.get(name, {})
+        units = compare_units("wind_speed", WIND_SPEED_UNIT, "wind_speed", item.get("unit"))
+        if (not item or item.get("dimensions") != field.get("dimensions")
+                or description not in {(item.get(key) or "").strip().casefold() for key in ("long_name", "var_desc")}
+                or units["status"] not in {"equivalent", "convertible"} or units["offset"] != 0):
+            return ()
+        components.append(name)
+    return tuple(components)
+
+
+def background_fields(scan, task):
+    row = scan["rows"][task["grid_index"]]
+    names = task.get("wind_components") or (task["grid_name"],)
+    return [next(field for field in row["fields"] if field["name"] == name) for name in names]
+
+
+def wind_variables(grid, names):
+    from ecodata.models.scientific_schema import compare_units
+
+    # WRFCAMx 2-D U10/V10 are cell-centred. ISTAG applies to the 3-D winds.
+    if (str(getattr(grid, "CAMx_NAME", "")).strip().upper() != "2D METEOROLOGY"
+            or "TFLAG" not in grid.variables or getattr(grid, "ITZON", None) != 0):
+        raise ValueError("风速合成需要声明为 UTC 的 CAMx 二维气象网格")
+    primary, secondary = (grid.variables[name] for name in names)
+    if (primary.dimensions != secondary.dimensions or primary.shape != secondary.shape
+            or getattr(primary, "coordinates", "").split() != getattr(secondary, "coordinates", "").split()):
+        raise ValueError("CAMx 风分量的网格、层或坐标声明不一致")
+    listed = getattr(grid, "VAR-LIST", "").split()
+    for flag in ("TFLAG", "ETFLAG"):
+        if flag not in grid.variables:
+            continue
+        clock = grid.variables[flag]
+        if any(listed.count(name) != 1 for name in names) or clock.shape != (primary.shape[0], len(listed), 2):
+            raise ValueError("无法将 CAMx 风分量绑定到原生时间轴")
+        reference = clock[:, 0, :]
+        for name in names:
+            times = clock[:, listed.index(name), :]
+            if (np.ma.getmaskarray(times).any() or np.ma.getmaskarray(reference).any()
+                    or not np.ma.allequal(times, reference)):
+                raise ValueError("CAMx 风分量的时间标记不一致")
+    scales = []
+    for variable in (primary, secondary):
+        report = compare_units("wind_speed", WIND_SPEED_UNIT, "wind_speed", getattr(variable, "units", None))
+        if report["status"] not in {"equivalent", "convertible"} or report["offset"] != 0:
+            raise ValueError("CAMx 风分量的原生单位无法换算为 m/s")
+        scales.append(report["scale"])
+    return primary, secondary, scales
+
 
 def eligible(grid,field,table):
     names={value["name"].casefold() for value in table["fields"]}
@@ -43,14 +104,19 @@ def task_for(scan,pair,action,units):
     quantity,_=identity(grid[2]['name'],grid[2])
     description=str(grid[2].get('long_name','')).casefold()
     observation_quantity,_=identity(station[2]['name'],station[2])
+    components = ()
     if ((units['quantity']=='wind_speed' or observation_quantity=='wind_speed' or station[2].get('standard_name')=='wind_speed') and (quantity in {'eastward_wind','northward_wind'}
             or 'wind component' in description or 'component of wind' in description
             or grid[2]['name'] in {'u10','v10','U10','V10'})):
-        raise ValueError('风分量不能作为标量风速直接融合；跳过本项，保留原背景场及其他合法任务。需要已登记的分量合成及方向契约。')
+        components = wind_components(rows[grid[0]], grid[2])
+        if not components:
+            raise ValueError('风分量不能作为标量风速直接融合。需要同一 CAMx 网格中方向、10 米高度和单位均可核对的 u10、v10。')
     return dict(action=action,route="station_grid",grid_index=grid[0],table_index=station[0],
-                grid_name=grid[2]["name"],table_name=station[2]["name"],
-                table_header=station[2].get("original_header",station[2]["name"]),unit=grid[2]["unit"],
-                obs_unit=station[2]["unit"],quantity=units["quantity"])
+                grid_name=components[0] if components else grid[2]["name"],table_name=station[2]["name"],
+                table_header=station[2].get("original_header",station[2]["name"]),
+                unit=WIND_SPEED_UNIT if components else grid[2]["unit"],
+                obs_unit=station[2]["unit"],quantity="wind_speed" if components else units["quantity"],
+                **({"wind_components": components} if components else {}))
 
 def xyz(lon,lat):
     lon,lat=np.deg2rad(lon),np.deg2rad(lat)
@@ -155,6 +221,8 @@ def load(scan,task, *, table_data=None, keep_missing=False, minimum_grid_index=0
         raise ValueError("站点表缺少有效时刻、坐标或数值")
     with local_member(rows[grid_idx]) as source, Dataset(str(source)) as grid:
         var=grid.variables[grid_name]
+        if task.get("wind_components"):
+            var, companion, scales = wind_variables(grid, task["wind_components"])
         lon,lat,time,dims,offsets=coordinates(grid,var)
         if len(time)!=var.shape[0] or not len(time) or time.has_duplicates or not time.is_monotonic_increasing:
             raise ValueError("网格时间轴缺失、重复或未排序")
@@ -190,8 +258,15 @@ def load(scan,task, *, table_data=None, keep_missing=False, minimum_grid_index=0
             frame['native_y']=yy[keep]+offsets[0]
             frame['native_x']=xx[keep]+offsets[1]
             center=(0,)*(var.ndim-3)
-            values=[var[(int(indices[i]),*center,int(yy[i])+offsets[0],int(xx[i])+offsets[1])] for i in keep]
-            frame["background"]=[float(value) if not np.ma.is_masked(value) else np.nan for value in values]
+            points = [(int(indices[i]), *center, int(yy[i])+offsets[0], int(xx[i])+offsets[1]) for i in keep]
+            def values(variable):
+                return np.array([float(value) if not np.ma.is_masked(value) else np.nan
+                                 for value in (variable[point] for point in points)])
+
+            background = values(var)
+            if task.get("wind_components"):
+                background = np.hypot(background * scales[0], values(companion) * scales[1])
+            frame["background"] = background
             missing_background=int((~np.isfinite(frame.background)).sum())
             frame=frame[np.isfinite(frame.background)]
             frame=frame.assign(delta_seconds=(frame.time-frame.grid_time).dt.total_seconds())
@@ -210,6 +285,8 @@ def load(scan,task, *, table_data=None, keep_missing=False, minimum_grid_index=0
                 unmatched_observations=len(observation)-len(keep),
                 aggregation='Closest observation per station/model time; same-distance ties averaged and counted',
                 matched_station_times=len(out[method]),tolerance_seconds=float(tolerance.total_seconds()) if method==NEAREST else 0.)
+            if task.get("wind_components"):
+                out[method].attrs["matching_audit"]["wind_speed_components"] = list(task["wind_components"])
     return out
 
 
@@ -314,19 +391,28 @@ def corrected_frame(frame):
 
 
 def station_holdout(scan, task, source, field):
-    from .holdout_plan import exposures, table_groups, time_boundary
+    from dataclasses import replace
+    from .holdout_plan import exposures, field_key, table_groups, time_boundary
     from netCDF4 import Dataset
 
     index = task["grid_index"]
     grid = scan["rows"][index]
-    grid_field = next(item for item in grid["fields"] if item["name"] == task["grid_name"])
-    events = exposures(scan, index, grid_field)
+    events = {(grid_field["name"], phase): event for grid_field in background_fields(scan, task)
+              for phase, event in exposures(scan, index, grid_field).items()}
     minimum = 0
     if events:
         with local_member(grid) as path, Dataset(str(path)) as dataset:
             axis = dataset.variables[task["grid_name"]].dimensions[0]
         minimum = time_boundary(events, axis)
-    return {"groups": sorted(table_groups(source, exposures(scan, task["table_index"], field))),
+    table_index = task["table_index"]
+    if field_key(table_index, field) in scan.get("station_reserved_fields", ()):
+        source = replace(source, held=set(source.groups))
+    table_events = dict(exposures(scan, table_index, field))
+    if task.get("wind_components") and field.get("source_column"):
+        for item in scan["rows"][table_index]["fields"]:
+            if item["name"] == field["source_column"]:
+                table_events.update({("raw", phase): event for phase, event in exposures(scan, table_index, item).items()})
+    return {"groups": sorted(table_groups(source, table_events)),
             "minimum_grid_index": minimum}
 
 
@@ -362,6 +448,8 @@ def review(scan, task, steps, *, independent=False):
             if station_holdout(scan, task, source, field) != plan:
                 raise ValueError("锁定的站点回检范围与当前外发记录不一致")
             keys, minimum = plan["groups"], plan["minimum_grid_index"]
+        scope = task.get("bayesian_review_scope")
+        phase = scope["mask_phase"] if scope else None if independent else task.get("bayesian_mask_phase")
 
         def trial(index):
             data = pd.DataFrame(source.read(keys[index]), columns=source.header)
@@ -370,7 +458,11 @@ def review(scan, task, steps, *, independent=False):
             matched = load(scan, task, table_data=data, keep_missing=True, minimum_grid_index=minimum)[method]
             if len(matched) < 6:
                 return index, None, "insufficient_score_support"
+            if phase is not None:
+                matched = matched.sort_values(["grid_time", "station"]).reset_index(drop=True)
             if BIAS not in steps:
+                if phase is not None:
+                    matched = matched.iloc[phase::4]
                 values=matched.background.to_numpy()
                 metrics,reason=recipe_trials.score(values,values,matched.observed.to_numpy(),
                     'heldout_station_observations_comparison_only',retained=values,
@@ -378,6 +470,8 @@ def review(scan, task, steps, *, independent=False):
                 return index,metrics,reason
             frame, held, training = corrected_frame(matched)
             frame = frame[frame.grid_time.isin(held)]
+            if phase is not None:
+                frame = frame[frame.index % 4 == phase]
             if not np.isfinite(training).any():
                 return index, None, "insufficient_score_support"
             values = frame.corrected.fillna(frame.background).to_numpy()
@@ -386,12 +480,14 @@ def review(scan, task, steps, *, independent=False):
                                                   request=task.get("scoring_request"))
             return index, metrics, reason
 
-        return recipe_trials.audit(len(keys), f"withheld_{source.category}", trial)
+        return recipe_trials.audit(len(keys), f"withheld_{source.category}", trial, scope=scope)
 
 
 def native_update(scan,task,frame,values,delivery_status,task_id,*,purpose='selected_product'):
     """The writer receives indices of the actual sampled native parent."""
     import hashlib
+    if task.get("wind_components"):
+        raise ValueError("标量风速没有可直接写回的 CAMx 风分量字段")
     source=scan['rows'][task['grid_index']]
     native_field=next(f for f in source['fields'] if f['name']==task['grid_name'])
     rank=len(native_field['dimensions'])
@@ -409,7 +505,9 @@ def run_fixed(scan,task_id,task,folder,model_id,progress):
 
     from .recipe_trials import FILL
     rows=load(scan,task,keep_missing=any(FILL in recipe for recipe in task["recipes"]))
-    requested={next(step for step in recipe if step in {EXACT,NEAREST}) for recipe in task["recipe_steps"]}
+    baseline = task.get("station_baseline")
+    matching_recipes = task["recipes"] if baseline else task["recipe_steps"]
+    requested={next(step for step in recipe if step in {EXACT,NEAREST}) for recipe in matching_recipes}
     rows,queue_audit=common_queue({method:rows[method] for method in sorted(requested)})
     files,artifacts,reports=[],[],[]
     native_updates=[]
@@ -422,6 +520,12 @@ def run_fixed(scan,task_id,task,folder,model_id,progress):
         if BIAS in recipe:
             frame,evaluation=evaluate_correction(frame)
             report.update(evaluation)
+        if baseline:
+            measured = np.isfinite(frame.observed)
+            frame["selected"] = frame.observed.where(measured, frame.background)
+            report.update(delivery_status="BASELINE_RETAINED",
+                          gap_filled=int((~measured & frame.selected.notna()).sum()),
+                          unresolved=int(frame.selected.isna().sum()))
         report['queue_audit']=queue_audit[method]
         ds=table_dataset(frame)
         for name in ("observed","background","corrected","selected"):
@@ -435,19 +539,23 @@ def run_fixed(scan,task_id,task,folder,model_id,progress):
         files.append((name,raw))
         artifacts.append(dict(name=name,dimensions=dict(ds.sizes),fields=list(ds.data_vars)))
         reports.append(report)
-        if model_id and model_id!='data_only' and BIAS not in recipe:
+        if model_id and model_id!='data_only' and not baseline and BIAS not in recipe and not task.get("wind_components"):
             native_updates.append(native_update(scan,task,frame,frame.background.to_numpy(),'BASELINE_RETAINED',task_id,purpose='comparison_passthrough'))
     return dict(files=files,source_formats=[scan["rows"][i]["format"] for i in (task["grid_index"],task["table_index"])],
                 target_format="Parquet",original_report=reports,local=dict(artifacts=artifacts,
-                     reason="已导出站点与网格的配对记录及所选方案的核验结果。"),native_updates=native_updates)
+                     reason=("已保留原网格，导出站点配对与补缺结果。"
+                             if baseline else "已导出站点与网格的配对记录及所选方案的核验结果。")),
+                native_updates=native_updates)
 
 
 
 def run(scan,task_id,task,folder,model_id,progress):
-    """Production fusion always reaches the public mutation orchestration."""
-    if task['action']!='fusion':return run_fixed(scan,task_id,task,folder,model_id,progress)
+    """Station correction reaches mutation; verified baseline uses fixed pairing."""
+    if task['action']!='fusion' or task.get("station_baseline"):
+        return run_fixed(scan,task_id,task,folder,model_id,progress)
     rows=load(scan,task)
-    methods={next(step for step in recipe if step in {EXACT,NEAREST}) for recipe in task['recipe_steps']}
+    matching_recipes = task["recipes"] if task.get("station_two_stage") else task["recipe_steps"]
+    methods={next(step for step in recipe if step in {EXACT,NEAREST}) for recipe in matching_recipes}
     rows,queues=common_queue({method:rows[method] for method in sorted(methods)})
     # Same fixed common labels/background values: time-matching options are
     # preparation controls, not distinct new scientific information sources.
@@ -461,6 +569,11 @@ def run(scan,task_id,task,folder,model_id,progress):
     request=dict(task='temporal',adapter='paired_station_calibration',variable=task['quantity'],unit=task['unit'],
         recommended_recipes=recipes,evaluation_protocol=task.get('evaluation_protocol','blocked_confirmation_v1'))
     if task.get('recommended_graphs'):request['recommended_graphs']=task['recommended_graphs']
+    if task.get("station_two_stage"):
+        request["station_two_stage"] = True
+        # This later search uses the same source files. Its review cannot
+        # independently confirm improvements after model selection.
+        request["recommendation_isolation"] = task["mutation_reservation"]
     if task.get('search_after_rejection'):
         request['recommended_recipes'] = []
         request['recommendation_isolation'] = task.get('mutation_reservation', dict(

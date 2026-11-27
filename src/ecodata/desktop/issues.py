@@ -67,6 +67,10 @@ def recommendation_checks(rows):
     result = []
     for row in rows:
         release = row.get("execution_release")
+        if row.get("baseline_block_reason"):
+            result.append(item("算法验收", row["task"], row["baseline_block_reason"],
+                               "在方案卡片查看融合候选的分时段试跑记录。"))
+            continue
         if not release or row.get("advisory_only") or allowed(row):
             continue
         if release["status"] == "released" and row.get("requires_final_confirmation"):

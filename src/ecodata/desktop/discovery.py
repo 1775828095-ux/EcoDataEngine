@@ -89,6 +89,18 @@ def pair_units(ar, a, br, b, inferred_quantity=None):
     return compare_units(None,a["unit"],None,b["unit"])
 
 
+def station_wind_components(grid, component, table, observation):
+    from .station_grid import CAMX_WIND, eligible, wind_components
+
+    if grid["format"] != "NetCDF" or component["name"] not in CAMX_WIND:
+        return ()
+    quantity, _ = field_identity(table, observation)
+    raw_wind = observation["name"] == "WND" and observation.get("noaa_compound")
+    if (quantity == "wind_speed" or raw_wind) and eligible(grid, component, table):
+        return wind_components(grid, component)
+    return ()
+
+
 def public_unit(value):
     if value in PUBLIC_UNITS:
         return value
@@ -214,6 +226,8 @@ def field_references(field,fid):
 
 
 def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
+    from .station_grid import wind_components
+
     family=physical(field)
     roles=[ROLE_LABELS[r] for r in row["roles"] if r in ROLE_LABELS]
     t,g=resolution(row)
@@ -223,11 +237,14 @@ def describe_field(row,fid,field,model_id,*,native_role=None,model_matches=()):
     native_labels={"engineering_dependency":"原版识别为工程依赖","reference_output":"原版识别为模型参考输出",
                    "engineering_configuration":"原版识别为工程配置"}
     native_use=native_labels.get(native_role)
+    wind = wind_components(row, field)
     return dict(id=fid, header=field.get("original_header",field["name"]), variable_name=field["name"],
                 type=field_type(field["type"]), unit=field["unit"] or None,
                 physical_family=field_identity(row,field)[0] or family or None,
                 standard_name=field.get("standard_name") or None, physical_variable=field.get("physical_variable") or None,
                 long_name=field.get("long_name") or None, var_desc=field.get("var_desc") or None,
+                **({"wind_speed_preparation": {"components": wind, "method": "vector_magnitude", "unit": "m/s"}}
+                   if wind else {}),
                 temporal_semantics=field.get("temporal_semantics") or None,
                 **({"time_cell_methods":field["time_cell_methods"],"time_cell_methods_basis":"CF cell_methods"}
                    if field.get("time_cell_methods") else {}),
@@ -362,6 +379,7 @@ def describe_pair(scan,cid,left,right,model_id,details):
     if "align_space" not in actions and (grid_spacing=="different" or (g1 and g2 and grid_spacing in {"unknown","not_comparable"})):
         actions.append("align_space")
     unit_check=pair_units(ar,a,br,b)
+    wind = station_wind_components(ar, a, br, b) or station_wind_components(br, b, ar, a)
     soil={}
     if a.get("soil_depth") or b.get("soil_depth"):
         from .soil_depth import compare
@@ -374,6 +392,9 @@ def describe_pair(scan,cid,left,right,model_id,details):
               match_basis="deepseek_catalog",roles=[ar["roles"],br["roles"]],
               engineering_reference=bool(ar["evidence"] or br["evidence"]),
               unit_check=public_unit_report(unit_check),units_equal=unit_check["status"]=="equivalent",**soil)
+    if wind:
+        pair["wind_speed_preparation"] = dict(components=wind, unit="m/s", method="vector_magnitude",
+                                               note="同一 CAMx 网格的 10 米风分量合成后与站点风速比较")
     return pair,(left,right,actions)
 
 def local_overview(scan,candidates):
@@ -639,6 +660,9 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None,sampled_
             if not field.get('noaa_compound'):continue
             other_row=br if side=='left' else ar
             wanted,_=field_identity(other_row,other)
+            if (action in {"fusion", "compare_station_grid", "align_space", "align_time"}
+                    and station_wind_components(other_row, other, scan['rows'][index], field)):
+                wanted = "wind_speed"
             declared=proposed_quantities.get(cid,set())
             if wanted is None and len(declared)==1:wanted=next(iter(declared))
             options=[(j,f) for j,f in enumerate(scan['rows'][index]['fields'],1)
@@ -670,6 +694,16 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None,sampled_
         unit_check=pair_units(ar,a,br,b,inferred)
         _,basis_a=field_identity(ar,a)
         _,basis_b=field_identity(br,b)
+        wind = ()
+        if "compare_station_grid" in detected and action in {"fusion", "compare_station_grid", "align_space", "align_time"}:
+            wind = station_wind_components(ar, a, br, b) or station_wind_components(br, b, ar, a)
+            if wind:
+                from .station_grid import WIND_SPEED_UNIT
+
+                obs = b if ar["format"] == "NetCDF" else a
+                unit_check = compare_units("wind_speed", WIND_SPEED_UNIT, "wind_speed", obs.get("unit"))
+                unit_check["identity_basis"] = "camx_10m_vector_magnitude"
+                row["wind_speed_preparation"] = dict(components=wind, unit=WIND_SPEED_UNIT, method="vector_magnitude")
         same_quantity=bool(unit_check["quantity"])
         cf_daily_pair = (action in {"align_space", "fusion"} and (not delegated or try_sampled)
                          and unit_check.get("quantity") == "precipitation"
@@ -711,7 +745,7 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None,sampled_
             row["reason"]="I/O API 边界和内部字段承担不同模型角色。只有经工程确认来源及角色后才能拿来比较或融合。"
             continue
         try:
-            if delegated and not try_sampled:
+            if delegated and not try_sampled and not wind:
                 prepared[(cid,action)]=dict(action=action,route='original_engineering',fields=[(ai,a['name']),(bi,b['name'])])
                 row.update(status='待工程核验',next_step='original_workbench',reason='已识别实际工程控制与同物理量候选；交由公共工程输入端口服务核验日界、依赖、拟合隔离及真实数值效果。此状态不是融合或质量PASS。')
                 continue
@@ -737,8 +771,16 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None,sampled_
             if "compare_station_grid" in detected and action in {"compare_station_grid","align_time","align_space","fusion"}:
                 from .station_grid import BIAS, EXACT, FORMAT_STEP, MATCH, NEAREST, UNIT_STEP, load, plan, task_for
                 if unit_check["status"] not in {"equivalent","convertible"}:
-                    row["block_code"]="quantity_unknown"
-                    raise ValueError("请识别共同物理量并检查单位后进行站点配对")
+                    status = unit_check["status"]
+                    grid_pair = f"{a['name']}（{a.get('unit') or '单位未声明'}）与 {b['name']}（{b.get('unit') or '单位未声明'}）"
+                    reasons = {
+                        "physical_identity_unconfirmed": "表头尚不能确认两字段表示同一个物理量",
+                        "quantity_conflict": "两字段声明的物理量不同",
+                        "unit_unknown": "至少一个字段缺少单位",
+                        "unit_not_convertible": "两字段的单位无法换算",
+                    }
+                    row["block_code"] = "quantity_unknown" if status == "physical_identity_unconfirmed" else status
+                    raise ValueError(f"{grid_pair}。{reasons.get(status, '物理量或单位尚未通过核验')}，暂无法进行站点配对。")
                 task=task_for(scan,(left,right),action,unit_check)
                 if action == "fusion":
                     from .recipe_trials import FILL
@@ -748,6 +790,8 @@ def check(scan,candidates,reply,approved_summary,*,station_matches=None,sampled_
                                             for method in (EXACT, NEAREST)]
                     prepared[(cid,action)] = task
                     row.update(status="通过", reason="按表格索引留出站点或月份，在实际网格位置和时间上试跑订正与补位。")
+                    if wind:
+                        row["reason"] = "合成 CAMx 10 米风速后，与站点实测配对并做试跑和留出评分。"
                     continue
                 evidence_key=tuple(item[1] for item in (left,right)),unit_check["quantity"]
                 if evidence_key not in station_matches:

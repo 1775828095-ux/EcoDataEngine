@@ -17,6 +17,13 @@ VERSION='paired_station_mutation_v2_blocked_confirmation'
 DEFAULT_BUDGET=dict(objective_limit=80,total_call_limit=120,proposal_limit=256,wall_seconds=30)
 
 
+def correction_coefficients(training):
+    offset = float((training.observed - training.background).mean())
+    denominator = float(training.background.sum())
+    ratio = float(training.observed.sum()) / denominator if denominator else np.nan
+    return offset, ratio
+
+
 def prepare(frame,variable,unit,*,temporal_semantics='instantaneous',unlocated_series=False):
     required={'station','grid_time','observed','background','unit'}
     if not unlocated_series:required.update({'longitude','latitude'})
@@ -71,15 +78,14 @@ def prepare(frame,variable,unit,*,temporal_semantics='instantaneous',unlocated_s
     fit_start=perf_counter()
     # Same existing fixed mean-residual correction expressed as affine state
     # with slope 1; the Registry's prior calibration kernel applies it.
-    intercept=float((train.observed-train.background).mean())
+    intercept,ratio=correction_coefficients(train)
     state=xr.Dataset(dict(affine_slope=xr.DataArray(1.),affine_intercept=xr.DataArray(intercept)),
         attrs=dict(calibration_source_id=source_id,training_end=str(clock[cut-1]),
             fitting='Mean training residual; affine slope fixed to 1, not a new regression algorithm',
             station=str(frame.station.iloc[0]),unit=unit))
     # Existing ratio alternative is only available where its training statistic
     # is identifiable. Missing monthly coefficients are never fabricated.
-    denominator=float(train.background.sum())
-    if denominator!=0:state['mean_ratio']=xr.DataArray(float(train.observed.sum())/denominator)
+    if np.isfinite(ratio):state['mean_ratio']=xr.DataArray(ratio)
     protocol=dict(version=VERSION,unlocated_series=unlocated_series,temporal_semantics=temporal_semantics,intervals_verified=temporal_semantics!='instantaneous',station=str(frame.station.iloc[0]),unit=unit,
         source_id=source_id,train_times=[str(t) for t in clock[:cut]],
         validation_times=[str(t) for t in clock[cut:end]],test_times=[str(t) for t in clock[end:]],
@@ -148,6 +154,9 @@ def submit(inputs,request,folder,*,budget=None,seed=11,progress=None):
                 steps=[]
                 for operation in recipe['steps']:
                     if operation in {'units.harmonize','format.normalize','station.time.exact','station.time.nearest','station.grid.nearest'}:continue
+                    # This adapter supplies a single background for masked
+                    # periods. Observation fallback is not a unary graph node.
+                    if request.get('station_two_stage') and operation=='fusion.series_missing_fallback':continue
                     steps.append('bias.prior_series_affine' if operation=='station.bias.holdout' else operation)
                 if steps:compiled.append(dict(recipe,steps=steps))
             if compiled:application['recommended_recipes']=compiled

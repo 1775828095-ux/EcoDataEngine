@@ -17,7 +17,7 @@ def normal(value):
 QUANTITIES = {
     'leaf_area_index': ('LAI', 'leaf area index'),
     'sea_surface_temperature': ('sst', 'sea surface temperature'),
-    'air_temperature': ('air temperature',),
+    'air_temperature': ('air temperature', 'temperature at 2 m', '2 m air temperature'),
     'eastward_wind': ('eastward wind',),
     'northward_wind': ('northward wind',),
     'geopotential_height': ('geopotential height',),

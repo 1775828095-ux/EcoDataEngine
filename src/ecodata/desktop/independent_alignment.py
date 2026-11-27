@@ -273,34 +273,39 @@ def review(scan, task_id, task, steps=(), *, independent=False):
             return dict(status="pending", basis="no_shared_holdout_days", count=0, checks=[],
                         population=0, unit="withheld_utc_day", date_coverage=coverage)
         return review_recipe(reserved, read_aligned, primary, alignment, steps,
-                             scoring_request=task.get("scoring_request"), read_native=read_native)
+                             scoring_request=task.get("scoring_request"), read_native=read_native,
+                             scope=task.get("bayesian_review_scope"),
+                             mask_phase=None if independent else task.get("bayesian_mask_phase"))
 
 
-def review_recipe(reserved, read_aligned, primary, alignment, steps, *, scoring_request=None, read_native=None):
+def review_recipe(reserved, read_aligned, primary, alignment, steps, *, scoring_request=None, read_native=None,
+                  excluded=(), scope=None, mask_phase=None):
     import numpy as np
     from .grid_preparation import trial_recipe
-    from .sampling_risk import evaluate_recipe, recipe_settings
+    from .recipe_trials import sample_acceptance, score_cohort
 
     count = filled = unresolved = 0
     scores = []
     unavailable_protocols = []
+    phase = scope["mask_phase"] if scope else mask_phase
     def check_day(index):
         nonlocal count, filled, unresolved
         date = reserved[index]
         output, evidence, metrics, failure = trial_recipe(read_aligned(date), primary, steps,
-            scoring_request=scoring_request, native=read_native(date) if read_native else None)
+            scoring_request=scoring_request, native=read_native(date) if read_native else None,
+            mask_phase=phase, mask_seed=index)
         count += int(np.isfinite(output.precipitation).sum())
         filled += evidence["filled"]
         unresolved += evidence["unresolved"]
         if metrics:
-            scores.append(dict(day=str(date), **metrics))
+            scores.append(dict(day=str(date), **score_cohort(scope, index), **metrics))
         elif evidence.get("evaluation_protocol"):
             unavailable_protocols.append(dict(day=str(date), **evidence["evaluation_protocol"]))
         if failure:
             return dict(unit=str(date), rule=failure, unscored=failure == "insufficient_score_support")
         return None
 
-    report = evaluate_recipe(len(reserved), "withheld_utc_day", check_day, **recipe_settings())
+    report = sample_acceptance(len(reserved), "withheld_utc_day", check_day, excluded=excluded, scope=scope)
     failures = {row["rule"] for row in report["failures"]}
     if report["status"] == "checked" and "spatial.blend" in steps and not scores:
         basis = "recipe_coverage_budget_insufficient"
@@ -317,8 +322,10 @@ def review_recipe(reserved, read_aligned, primary, alignment, steps, *, scoring_
                 output_valid_count=count, unavailable_evaluation_protocols=unavailable_protocols,
                 sampled_days=report["inspected"], gap_filling=dict(filled=filled, unresolved=unresolved),
                 acceptance_sampling=report, sampled_scores=scores, fusion_score_groups=len(scores), alignment=alignment,
-                reason="部分留出 UTC 日缺少可比较的双源网格或评分参考。"
-                       if basis == "recipe_scoring_reference_insufficient" else "")
+                reason=("部分留出 UTC 日缺少可比较的双源网格或评分参考。"
+                        if basis == "recipe_scoring_reference_insufficient" else
+                        "两类可同量抽取的回检组不足，全部通过也无法达到后验放行阈值。"
+                        if scope and not report["development_only"] and report["status"] == "pending" else ""))
 
 
 def run(scan, tasks, folder, progress=None, *, model_id=None):
@@ -343,6 +350,8 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
         fusion_requested = task.get("route") == "independent_grid_search"
         gap_report = None
         fallback_only = (not task.get("search_after_rejection")
+                         and not task.get("autonomous_recommendation")
+                         and not task.get("recommended_graphs")
                          and not any("spatial.blend" in recipe for recipe in task.get("recipes", ())))
         if fusion_requested and (has_gaps or fallback_only):
             output, gap_report = fill(aligned, primary, "precipitation")

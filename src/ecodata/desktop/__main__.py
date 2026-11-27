@@ -1516,12 +1516,16 @@ class Window(QMainWindow):
                                                   local_checks=reply.get("local_checks",[]),sampled_workflow=True)
                 feedback(dict(phase=4, notice="正在后台请求 DeepSeek 推荐算法…"))
                 rows,receipt=recommendations.recommend_plan(plan,reply['decisions'],mock=mock,api_key=key,
-                                                             progress=log)
+                                                             progress=log,scan=full_scan,gated=gated)
                 notices={'SIMULATED':'模拟推荐，未联网。','COMPLETED':'已收到 DeepSeek 算法推荐。',
+                         'STATION_PENDING':'站点融合暂待核验，请查看检查详情。',
                          'PLATFORM_FALLBACK':'线上推荐未完成，保留平台已有候选。'}
                 feedback(dict(phase=4, notice=notices[receipt['status']]))
                 log("正在本地复查留出的数据窗口…")
                 recommendations.review_holdouts(full_scan,approved,plan,rows,gated)
+                revisions = recommendations.retry_bayesian_reviews(full_scan, approved, plan, rows, gated,
+                                                                  mock=mock, api_key=key, progress=log)
+                receipt["api_receipts"].extend(revisions)
                 reply['algorithm_recommendation']=receipt
                 reply['api_receipts']=[*reply.get('api_receipts',[]),*receipt['api_receipts']]
                 final_receipt = recommendations.finalize_recipes(plan, rows, mock=mock, api_key=key, progress=log)
@@ -1648,7 +1652,8 @@ class Window(QMainWindow):
         steps=recipe["steps"]
         kind="算法组合" if len(steps)>1 else "算法"
         title=QLabel('自动比较合法处理方案' if recipe.get('search_admission') else "融合方案待核验" if private else
-                     recipe["name"] if recipe.get("advisory_only") else f"{kind} · {recommendations.recipe_name(steps)}")
+                     recipe["name"] if recipe.get("station_baseline") or recipe.get("advisory_only")
+                     else f"{kind} · {recommendations.recipe_name(steps)}")
         title.setObjectName("recommendationTitle")
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setWordWrap(True)
@@ -1677,7 +1682,7 @@ class Window(QMainWindow):
                     check.hide()
             audit = next((item["acceptance_sampling"] for item in row.get("local_holdout_review", ())
                           if "allowed_failures" in item.get("acceptance_sampling", {})), None)
-            if audit and details:
+            if audit and (details or row.get("station_baseline")):
                 from .sampling_risk import recipe_summary
                 sampling_label = QLabel(recipe_summary(audit))
                 sampling_label.setWordWrap(True)
@@ -1697,7 +1702,8 @@ class Window(QMainWindow):
                 from .release_gate import explanation
                 from .fallback_evidence import approved_fields, eligible
                 pending_final = row.get("requires_final_confirmation") and row["execution_release"]["status"] == "released"
-                gate = QLabel("留出评分已通过，等待 DeepSeek 最终确认。" if pending_final else explanation(row["execution_release"]))
+                gate = QLabel(row.get("baseline_block_reason") or (
+                    "留出评分已通过，等待 DeepSeek 最终确认。" if pending_final else explanation(row["execution_release"])))
                 gate.setWordWrap(True)
                 gate.setTextFormat(Qt.TextFormat.PlainText)
                 layout.addWidget(gate)
@@ -1715,9 +1721,9 @@ class Window(QMainWindow):
                         button = QPushButton("补充样本或审核全量副本")
                         button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_full_fallback(item)))
                         layout.addWidget(button)
-                if row.get("independent_required") or (row.get("requires_final_confirmation") and any(
+                if not row.get("station_two_stage") and (row.get("independent_required") or (row.get("requires_final_confirmation") and any(
                         item.get("basis") in {"no_shared_holdout_days", "no_disjoint_partition"}
-                        for item in row.get("local_holdout_review", ()))):
+                        for item in row.get("local_holdout_review", ())))):
                     validation_button = QPushButton("选择新的独立数据复验")
                     validation_button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_new_independent_data(item)))
                     layout.addWidget(validation_button)

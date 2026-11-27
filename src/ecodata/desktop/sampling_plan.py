@@ -78,6 +78,8 @@ def open_netcdf_for_sampling(path):
 
 
 def netcdf(row, field, holdout, spatial=False):
+    from math import prod
+
     import numpy as np
 
     with local_member(row) as path, open_netcdf_for_sampling(path) as dataset:
@@ -105,8 +107,16 @@ def netcdf(row, field, holdout, spatial=False):
             if boundary == 0:
                 return dict(basis="no_disjoint_partition", values=[])
         spacing = row.get("declared_time_resolution")
-        tile_axes = [dim for dim in dims if dim not in {partition, temporal} and array.sizes[dim] >= 4][:2]
-        width = min(16 // 2**len(tile_axes), reserved if holdout else max(1, boundary // 4))
+        limits = {dim: (size_dim - max(1, size_dim // 5) if size_dim > 1 and dim == spatial_axis else size_dim)
+                  for dim, size_dim in array.sizes.items() if dim != partition}
+        tile_axes = [dim for dim in limits if dim != temporal and array.sizes[dim] >= 4][:2]
+        tiles = dict.fromkeys(tile_axes, 2)
+        width = min(16 // prod(tiles.values()), reserved if holdout else max(1, boundary // 4))
+        # Increase spatial coverage for short histories without shortening time
+        # windows used to check cadence or changing the held-out partition.
+        if not holdout and width * prod(tiles.values()) < 16:
+            tile_axes = [dim for dim in limits if dim != temporal and limits[dim] >= 3][:2]
+            tiles = {dim: min(4, limits[dim]) for dim in tile_axes}
         start, stop = (boundary, size) if holdout else (0, boundary)
         coordinate = dataset.coords.get(temporal) if partition == temporal else None
         windows, frequency_scope = frequency_windows(coordinate, partition, start, stop, width)
@@ -114,12 +124,8 @@ def netcdf(row, field, holdout, spatial=False):
         for index, (lower, upper, interval) in enumerate(windows):
             portion = index / max(1, len(windows) - 1)
             selection = {}
-            for dim in dims:
-                if dim == partition:
-                    continue
-                size_dim = array.sizes[dim]
-                limit = size_dim - max(1, size_dim // 5) if size_dim > 1 and dim == spatial_axis else size_dim
-                tile = 2 if dim in tile_axes else 1
+            for dim, limit in limits.items():
+                tile = tiles.get(dim, 1)
                 position = int((limit - tile) * (0.5 if holdout else portion))
                 selection[dim] = slice(position, position + tile) if tile > 1 else position
             selection[partition] = slice(lower, upper)
@@ -604,17 +610,19 @@ def latest_month_review(prefix, remainder, time, station, column, prefix_holdout
     return reservoir.result(partition)
 
 
-def export_field(row, field, *, require_partition=False, record=None):
-    from .sample_values import export_sample, field_sample
+def export_field(row, field, *, require_partition=False, record=None, limit=None):
+    from .sample_values import SAMPLE_SIZE, export_sample, field_sample
+
+    limit = SAMPLE_SIZE if limit is None else limit
 
     if row["format"] not in SUPPORTED or row.get("original_reader") or field.get("noaa_component"):
         if require_partition:
             return dict(status="unavailable", basis="holdout_partition_unavailable", perturbed_samples=[])
-        return export_sample(field_sample(row, field, outbound=True))
+        return export_sample(field_sample(row, field, outbound=True), limit=limit)
     record = sample(row, field) if record is None else record
     if require_partition and not record.get("partition"):
         return dict(status="unavailable", basis="holdout_partition_unavailable", perturbed_samples=[])
-    payload = export_sample(record["values"])
+    payload = export_sample(record["values"], limit=limit)
     windows = [dict(axis=window.get("axis"), points=window["stop_index"] - window["start_index"],
                     interval=window.get("interval"),
                     time={key: value for key, value in window.get("time", {}).items()
