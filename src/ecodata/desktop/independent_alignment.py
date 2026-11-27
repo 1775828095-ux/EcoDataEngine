@@ -387,6 +387,8 @@ def run(scan, tasks, folder, progress=None, *, model_id=None):
                 scope=dict(variable='precipitation'))
                 for i,recipe in enumerate(task['recipes'])
                 if "spatial.blend" in recipe and not task.get("search_after_rejection")])
+            if task.get('recommended_graphs'):
+                request=with_recommendations(request,task['recommended_graphs'])
             if task.get('mutation_reservation'):
                 request['recommendation_isolation']=task['mutation_reservation']
                 request['confirmation_times']=task.get('mutation_confirmation_times',[])

@@ -1,0 +1,17 @@
+{
+  "routes": [
+    {
+      "route": "windowed_grid_recipe",
+      "status": "LEGACY_RECOMMENDATION_PROTOCOL",
+      "reason": "Native window/alignment preparation still consumes ordered steps; arbitrary graph recommendation is not advertised"
+    },
+    {
+      "route": "pair_processing / observation_gap_search / original_engineering / native_reference_search",
+      "status": "LEGACY_RECOMMENDATION_PROTOCOL",
+      "reason": "Existing execution retained; arbitrary Registry graph transport not migrated in this acceptance"
+    }
+  ],
+  "interpretation": "Every registration is discovered; conditional public field dispatch does not prove every plugin ran, nor every specialized frontend supports arbitrary graphs",
+  "spatial_condition": "Station plugins bind actual retained observations; auxiliary regression/3D still require lawful covariates/z resources; missing resources fail explicitly",
+  "model_condition": "No new checkpoint, auxiliary dataset, solver or training run supplied"
+}

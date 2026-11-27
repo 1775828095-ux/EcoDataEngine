@@ -105,7 +105,7 @@ def attach_samples(scan, pairs):
             field["perturbed_samples"]=samples[fid]
 
 
-def make_request(scan, approved, checked, gated, *, local_checks=(), include_samples=True, sampled_workflow=False):
+def make_request(scan, approved, checked, gated, *, local_checks=(), include_samples=True, sampled_workflow=False,prepared_graph_service=True):
     from .sampling_plan import recommendation_metadata
     from .discovery import engineering_fusion_targets
     from .recipe_trials import BLEND, FILL
@@ -232,6 +232,29 @@ def make_request(scan, approved, checked, gated, *, local_checks=(), include_sam
             "align_space", "align_time", "compare_station_grid"}]
     elif include_samples:
         attach_samples(scan,[task["context"] for task in tasks])
+    for task in tasks:
+        bound=gated.get((task['candidate'],task['operation']),{})
+        from .recipe_trials import PUBLIC_SEARCH_ROUTES
+        if prepared_graph_service and task['operation']=='fusion' and task['route'] in PUBLIC_SEARCH_ROUTES and not task.get('advisory_only'):
+            task['prepared_graph_service']=True
+        if task['route'] in {'station_grid','indexed_table_recipe'} and task['operation']=='fusion' and not task.get('advisory_only'):
+            task['graph_protocol']=dict(version='registered_graph_v1',source_count=1,
+                variable=bound.get('quantity'),
+                sources=[dict(id='source:0',role='prepared_station_background')],
+                state='Chronological training state fitted by the public paired adapter; never a supplied parameter',
+                evaluation='Disjoint reference remains local; all proposed graphs require actual execution and final review',
+                node_fields=['id','algorithm','parents','parameters'],output='algorithm node id',
+                legacy_recipes='Compatibility examples only; not an algorithm whitelist')
+        elif task['route']=='independent_grid_search' and task['operation']=='fusion' and not task.get('advisory_only'):
+            from ecodata.algorithms.platform_search import platform_registry
+            from ecodata.algorithms.spatial_fusion_task import graph_components
+            task['graph_protocol']=dict(version='registered_graph_v1',source_count=2,
+                variable='precipitation',
+                sources=[dict(id='source:0',role='prepared_primary'),dict(id='source:1',role='prepared_background')],
+                resources=['observations'],components=graph_components(platform_registry()),
+                resource_meaning='observations contains only retained training positions in each local fold',
+                evaluation='Same fixed spatial/date folds and final independent review; no reference leaves machine',
+                legacy_recipes='Examples only; DS proposes explicit parent edges')
     request=dict(stage="recommendation",target_model=approved["target_model"],tasks=recommendation_metadata(tasks),
                  shared_algorithm_catalogue=shared_algorithm_catalogue(),
                  task_requirements=approved.get('task_requirements',{}),
@@ -248,15 +271,13 @@ def algorithm_registry():
 
 def shared_algorithm_catalogue():
     from ecodata.algorithms.platform_search import platform_registry
+    from ecodata.algorithms.registered_graph import catalogue
 
-    catalogue = {
-        spec.id: dict(name=ALGORITHM_NAMES.get(spec.id, spec.name), status=spec.status,
-                      category=spec.category, input_kinds=list(spec.input_kinds))
-        for spec in platform_registry().specs()
-    }
-    if "fusion.residual" in catalogue:
-        catalogue["fusion.residual"]["station_fit_variants"] = ["linear", "rf"]
-    return catalogue
+    entries=catalogue(platform_registry())
+    for identifier,entry in entries.items():entry['name']=ALGORITHM_NAMES.get(identifier,entry['name'])
+    if "fusion.residual" in entries:
+        entries["fusion.residual"]["station_fit_variants"] = ["linear", "rf"]
+    return entries
 
 
 def recommend_plan(plan, decisions, *, mock=False, api_key=None, progress=None, on_request=None):
@@ -304,6 +325,25 @@ def review_holdouts(scan, approved, plan, recommendations, gated):
             continue
         refs = [originals[fid] for fid in task["context"]["fields"] if fid in originals]
         execution = gated.get((task["candidate"], task["operation"]))
+        if recommendation.get('autonomous_recommendation') and task.get('prepared_graph_service'):
+            recommendation.update(requires_final_confirmation=False,local_holdout_review=[],
+                execution_release=dict(status='search_only',checks=[],blockers=[]),
+                search_admission=dict(protocol='prepared-registry-search-v2',route=execution.get('route','local'),status='SEARCH_ONLY'),
+                execution_fields=[(index,field['name'],fid) for index,fid,field in refs],local_recipe_options=[])
+            continue
+        if recommendation.get('graph') is not None:
+            # Admission to search is not release of this unmeasured recommendation.
+            # The public paired adapter owns isolated fitting, graph compatibility,
+            # numerical validation and final independent acceptance.
+            if task.get('graph_protocol') and (execution or {}).get('route') in {'station_grid','independent_grid_search','indexed_table_recipe'}:
+                recommendation.update(requires_final_confirmation=False,
+                    local_holdout_review=[],execution_release=dict(status='search_only',checks=[],blockers=[]),
+                    search_admission=dict(protocol='registered-graph-search-v1',route=execution['route'],
+                        status='SEARCH_ONLY',reason='Explicit graph requires public numerical and final acceptance'),
+                    execution_fields=[(index,field['name'],fid) for index,fid,field in refs],
+                    local_recipe_options=[])
+                continue
+            raise ValueError('Explicit Registry graph has no prepared execution binding for this route')
         missing_input = None
         if task.get("requires_sample_acceptance"):
             recommendation["requires_final_confirmation"] = True
@@ -585,7 +625,25 @@ def validate(raw, summary):
             continue
         if final and (key not in options or key[0] in confirmed):
             continue
-        if key in options:
+        if key[0] in tasks and key[1]=='generated_graph' and tasks[key[0]].get('graph_protocol') and not final:
+            from ecodata.algorithms.platform_search import platform_registry
+            from ecodata.algorithms.registered_graph import validate as validate_graph
+            task=tasks[key[0]]
+            graph=validate_graph(entry.get('graph'),platform_registry(),task['graph_protocol']['source_count'],
+                components=task['graph_protocol'].get('components'),resources=task['graph_protocol'].get('resources',()))
+            quantities={f.get('physical_family') for f in task['context'].get('pair_details',[])}-{None,'UNKNOWN'}
+            variable=task['graph_protocol'].get('variable')
+            if not variable and len(quantities)!=1:raise ValueError('Generated graph needs one confirmed physical variable scope')
+            steps=[node['algorithm'] for node in graph['nodes']]
+            reason=str(entry.get('reason',''))[:600]
+            recommendations.append(dict(task=key[0],id=key[1],graph=graph,steps=steps,
+                name=recipe_name(steps) or '保留已满足要求的输入来源',
+                description='DS自主构图 · 尚需真实执行与最终复核',scope=dict(variable=variable or next(iter(quantities))),
+                reason=reason,explanation=explanation(task,reason)))
+            if task.get('prepared_graph_service'):
+                recommendations[-1]['autonomous_recommendation']=True
+            seen.add(key);confirmed.add(key[0])
+        elif key in options:
             if tasks[key[0]].get("operation") == "fusion" and key[0] in confirmed:
                 continue
             seen.add(key)
@@ -595,6 +653,9 @@ def validate(raw, summary):
             scope=dict(variable=next(iter(quantities))) if len(quantities)==1 else {}
             reason=str(entry.get('reason',''))[:600]
             recommendations.append(dict(task=key[0],**options[key],scope=scope,reason=reason,explanation=explanation(task,reason)))
+            if task.get('prepared_graph_service'):
+                recommendations[-1].update(autonomous_recommendation=True,
+                    description='确认前处理条件；准备完成后由DS根据真实输入自主构图，经数值验收后再变异，不固定使用此处示例融合算法。')
         elif key[0] in tasks and key[1] == "registry_advice":
             ids = entry.get("algorithms")
             if not isinstance(ids, list) or not 1 <= len(ids) <= 8:

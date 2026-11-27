@@ -1,0 +1,18 @@
+{
+  "input": "output\\legacy_entry_unification_20261127\\real_local\\input.nc",
+  "sha256": "869f400eba80d4be6d3bb33f10c28600f06cca45c5d3b47e8932d1dabf97d427",
+  "unchanged": true,
+  "products": [
+    {
+      "name": "group-1-station-1-ecodata_result.nc",
+      "dimensions": {
+        "time": 6,
+        "lat": 6,
+        "lon": 6
+      },
+      "finite": true
+    }
+  ],
+  "failures": [],
+  "scope": "Actual legacy desktop handler with online prepared DS recommendation; not manual GUI acceptance"
+}

@@ -1,0 +1,19 @@
+{
+  "graph": {
+    "nodes": [],
+    "output": "source:0"
+  },
+  "reason": "输入证据：source:0 已确认为连续温度场，单位 K，时间分辨率 6 小时且为瞬时语义，CRS 为 EPSG:4326，有限值 112 个、缺失 0 个，质量门状态 PASS。requirements.required、hard_constraints、soft_objectives 均为空；target 未给出目标网格、目标时间频率或空间重建目标。因此没有缺失恢复、重采样、融合或偏置订正的必要任务。图中不添加算法节点，也没有实际父边；输出直接保持 source:0。可用 observations 与 components（如 spatial.idw、station.*、fusion.idw）具备观测条件端口，但当前没有显式空间插值/重建要求，主动调用会产生未请求的估计，故不构图。validation 由平台自动质量门执行，不作为节点加入。未执行任何数值处理，不声称数值收益或未验证精度。",
+  "api_receipts": [
+    {
+      "stage": "registered_graph",
+      "id": "5ef3ae3d-81b1-449b-9324-b6b823c0cc54",
+      "model": "deepseek-flash",
+      "usage": {
+        "prompt_tokens": 62855,
+        "completion_tokens": 881,
+        "total_tokens": 63736
+      }
+    }
+  ]
+}

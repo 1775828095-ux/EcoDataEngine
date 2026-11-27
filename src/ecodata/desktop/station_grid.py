@@ -454,11 +454,13 @@ def run(scan,task_id,task,folder,model_id,progress):
     frame=rows[sorted(rows)[0]].copy();frame['unit']=task['unit']
     recipes=[]
     for index,steps in enumerate([] if task.get('search_after_rejection') else task['recipes']):
+        if not steps:continue
         if steps not in task['recipe_steps']:raise ValueError('Unregistered confirmed recipe')
         recipes.append(dict(id=f'confirmed-{index+1}',steps=steps,scope=dict(variable=task['quantity']),
             origin=task.get('recommendation_origin','confirmed_registered_recipe')))
     request=dict(task='temporal',adapter='paired_station_calibration',variable=task['quantity'],unit=task['unit'],
         recommended_recipes=recipes,evaluation_protocol=task.get('evaluation_protocol','blocked_confirmation_v1'))
+    if task.get('recommended_graphs'):request['recommended_graphs']=task['recommended_graphs']
     if task.get('search_after_rejection'):
         request['recommended_recipes'] = []
         request['recommendation_isolation'] = task.get('mutation_reservation', dict(

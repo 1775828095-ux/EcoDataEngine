@@ -1,0 +1,568 @@
+{
+  "protocol": "spatial_selection_assessment_v2",
+  "evaluation_protocol": {
+    "version": "fusion_evidence_v2_target_domain",
+    "mode": "REDUCED_SCALE_PRODUCT_RECONSTRUCTION",
+    "accuracy_established": false,
+    "source_bonus": 0,
+    "metric": "RMSE",
+    "selection_meaning": "RMSE against withheld native finer product after degrading ALL input sources",
+    "missing_evidence": [],
+    "independence": "UNKNOWN",
+    "cost_seconds": 0.010784499999999753,
+    "sources": [
+      {
+        "source_id": "NCEP-real-existing-subset",
+        "role": "primary",
+        "physical_variable": "air_temperature",
+        "unit": "K",
+        "support": "cell_mean",
+        "temporal_semantics": "instantaneous",
+        "crs": "EPSG:4326",
+        "crs_evidence": "UNKNOWN",
+        "independence": "UNKNOWN",
+        "training_role": "Input only; no fine assessment labels"
+      }
+    ],
+    "method_sources": [
+      "https://github.com/liangjiandeng/DLPan-Toolbox",
+      "https://github.com/rvalavi/blockCV"
+    ],
+    "reuse": "Existing spherical area operator and sklearn spatial block splitter; no imagery metric or third-party optimizer copied",
+    "reference_source": "NCEP-real-existing-subset",
+    "reference_role": "Original native finer product, not independent environmental truth",
+    "factor": 2,
+    "operator": "Existing spherical area overlap, complete native cells, no interpolation truth",
+    "degradation_note": "Nominal factor 2; common edge footprint and integer cell counts determine actual axis factors",
+    "degraded_axes": [
+      {
+        "source_id": "NCEP-real-existing-subset",
+        "lat": [
+          33.75,
+          38.75,
+          43.75
+        ],
+        "lon": [
+          -116.25,
+          -111.25,
+          -106.25
+        ]
+      }
+    ],
+    "reference_shape": [
+      4,
+      36
+    ],
+    "degraded_shapes": [
+      [
+        4,
+        3,
+        3
+      ]
+    ],
+    "target_grid_shape": [
+      6,
+      6
+    ],
+    "fixed_support_sha256": "a7290bb09b3d9b5b307db777f8fd6748f721d4c075bba8ff728f3e0e32aa48f4",
+    "location_split": {
+      "selection_ids": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "18",
+        "19",
+        "20",
+        "21",
+        "24",
+        "25",
+        "26",
+        "27",
+        "30",
+        "31",
+        "32",
+        "33"
+      ],
+      "test_ids": [
+        "16",
+        "17",
+        "22",
+        "23",
+        "28",
+        "29",
+        "34",
+        "35"
+      ],
+      "folds": [
+        [
+          [
+            "2",
+            "3",
+            "8",
+            "9",
+            "12",
+            "13",
+            "14",
+            "15",
+            "18",
+            "19",
+            "20",
+            "21",
+            "24",
+            "25",
+            "26",
+            "27",
+            "30",
+            "31",
+            "32",
+            "33"
+          ],
+          [
+            "0",
+            "1",
+            "4",
+            "5",
+            "6",
+            "7",
+            "10",
+            "11"
+          ]
+        ],
+        [
+          [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "18",
+            "19",
+            "20",
+            "21",
+            "24",
+            "25",
+            "30",
+            "31"
+          ],
+          [
+            "26",
+            "27",
+            "32",
+            "33"
+          ]
+        ],
+        [
+          [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "18",
+            "19",
+            "24",
+            "25",
+            "26",
+            "27",
+            "30",
+            "31",
+            "32",
+            "33"
+          ],
+          [
+            "14",
+            "15",
+            "20",
+            "21"
+          ]
+        ],
+        [
+          [
+            "0",
+            "1",
+            "4",
+            "5",
+            "6",
+            "7",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "18",
+            "19",
+            "20",
+            "21",
+            "24",
+            "25",
+            "26",
+            "27",
+            "30",
+            "31",
+            "32",
+            "33"
+          ],
+          [
+            "2",
+            "3",
+            "8",
+            "9"
+          ]
+        ],
+        [
+          [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "18",
+            "19",
+            "20",
+            "21",
+            "26",
+            "27",
+            "32",
+            "33"
+          ],
+          [
+            "24",
+            "25",
+            "30",
+            "31"
+          ]
+        ],
+        [
+          [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "14",
+            "15",
+            "20",
+            "21",
+            "24",
+            "25",
+            "26",
+            "27",
+            "30",
+            "31",
+            "32",
+            "33"
+          ],
+          [
+            "12",
+            "13",
+            "18",
+            "19"
+          ]
+        ]
+      ],
+      "reason": "AUTOMATIC_SPATIAL_BLOCK_HOLDOUT",
+      "backend": "sklearn GroupShuffleSplit / GroupKFold",
+      "block_by_station": {
+        "0": 0,
+        "1": 0,
+        "2": 4,
+        "3": 4,
+        "4": 8,
+        "5": 8,
+        "6": 0,
+        "7": 0,
+        "8": 4,
+        "9": 4,
+        "10": 8,
+        "11": 8,
+        "12": 1,
+        "13": 1,
+        "14": 5,
+        "15": 5,
+        "16": 9,
+        "17": 9,
+        "18": 1,
+        "19": 1,
+        "20": 5,
+        "21": 5,
+        "22": 9,
+        "23": 9,
+        "24": 2,
+        "25": 2,
+        "26": 6,
+        "27": 6,
+        "28": 10,
+        "29": 10,
+        "30": 2,
+        "31": 2,
+        "32": 6,
+        "33": 6,
+        "34": 10,
+        "35": 10
+      },
+      "limitation": "Quantile geographic blocks (singleton locations for fewer than six); correlation length and upstream independence unknown"
+    },
+    "conditioning_count": 9,
+    "spatial_domain": {
+      "rule": "Complete reference cell support inside application target edges; halo remains input-only",
+      "reference_cells_before": 36,
+      "reference_cells_retained": 36,
+      "application_bounds": {
+        "lat": [
+          31.25,
+          46.25
+        ],
+        "lon": [
+          -118.75,
+          -103.75
+        ]
+      },
+      "evaluation_bounds": {
+        "lat": [
+          31.25,
+          46.25
+        ],
+        "lon": [
+          -118.75,
+          -103.75
+        ]
+      },
+      "reference_axes": {
+        "lat": [
+          32.5,
+          35.0,
+          37.5,
+          40.0,
+          42.5,
+          45.0
+        ],
+        "lon": [
+          -117.5,
+          -115.0,
+          -112.5,
+          -110.0,
+          -107.5,
+          -105.0
+        ]
+      },
+      "outside_cells": 0
+    },
+    "selection_count": 112,
+    "test_count": 32,
+    "limitations": [
+      "Scale transfer is an assumption; degradation is not the true sensor error model",
+      "Shared upstream observations may correlate product errors",
+      "Fine reference values are absent from assessment conditioning and source arrays; only their prescribed aggregates are inputs",
+      "Geographic blocks are not a proof of independent repeats; one date cannot establish temporal robustness"
+    ],
+    "native_input_sha256": [
+      "e5e1026eb53a1b137f08e3c69f211955d0901f3fa36f2d04a77bb001539c5fab"
+    ],
+    "degraded_input_sha256": [
+      "0ab0ead4c397f6d3b1d975defc3f03b27226cb59f9803396107fdd794081954c"
+    ]
+  },
+  "decision_after_scoring": true,
+  "selection_metric": "equal_date_region_RMSE",
+  "fixed_support_sha256": [
+    "761ecb441970719c4ddeb09b15aebf6c785dbf769f8d6d8c9ebb9a0b1a168fcb",
+    "9931bf72a1010468e35daaaaf83c9a4bb15601b79e3c85a0003d47e2185f935c",
+    "364bc84cbf0c4e57fef3bf974497d9024ae5408662bbe45950bef12cb0aa58b6",
+    "fea37ef32a48b11d65eb9f8ed0cf842cc4724f8724a5fa908bc5ad0498edfb0a",
+    "bb07198e18c480eda7c24bfc9f824d0b7870beb80fd0a1144bf201082ceb2276",
+    "8fe036653608d105df72f68d59c1818c6de5a2b7cfdd3e67edccda6f9ad64371"
+  ],
+  "families": {
+    "SINGLE_SOURCE": {
+      "evaluated": 11,
+      "passed": 8,
+      "best_key": "2c053fcc74e3d7f35328",
+      "metrics": {
+        "objective": 2.0472652853551936,
+        "RMSE": 2.136368027941356,
+        "MAE": 1.7166896724216572,
+        "Bias": 0.1570390474994746,
+        "coverage": 1.0,
+        "failure_rate": 0.0,
+        "count": 112,
+        "objective_name": "equal_date_region_RMSE"
+      },
+      "coarse_reference_diagnostic": {
+        "RMSE": 3.815950778035314,
+        "MAE": 2.8173240814349776,
+        "Bias": -0.9388548700465067,
+        "count": 112,
+        "used_for_selection": false,
+        "meaning": "Held primary coarse product reconstruction, not independent truth"
+      },
+      "blocked_validation": {
+        "objective": 2.0472652853551936,
+        "objective_name": "equal_date_region_RMSE",
+        "pooled": {
+          "RMSE": 2.136368027941356,
+          "MAE": 1.7166896724216572,
+          "Bias": 0.1570390474994746,
+          "count": 112
+        },
+        "blocks": [
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 0,
+            "metrics": {
+              "RMSE": 3.3426181512507855,
+              "MAE": 2.63337401136711,
+              "Bias": -2.208087226388976,
+              "count": 16
+            }
+          },
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 1,
+            "metrics": {
+              "RMSE": 2.3952239886242017,
+              "MAE": 2.036515363169464,
+              "Bias": 1.9312242941012485,
+              "count": 16
+            }
+          },
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 2,
+            "metrics": {
+              "RMSE": 1.814837903035216,
+              "MAE": 1.5133415027123736,
+              "Bias": -0.5440768365254041,
+              "count": 16
+            }
+          },
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 4,
+            "metrics": {
+              "RMSE": 1.3101379024271973,
+              "MAE": 1.141805652308033,
+              "Bias": 0.5445537442650696,
+              "count": 16
+            }
+          },
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 5,
+            "metrics": {
+              "RMSE": 1.6655626369561112,
+              "MAE": 1.4726627843159488,
+              "Bias": 1.0340956253053317,
+              "count": 16
+            }
+          },
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 6,
+            "metrics": {
+              "RMSE": 2.0123105164215955,
+              "MAE": 1.591910525778582,
+              "Bias": 0.8095647984496441,
+              "count": 16
+            }
+          },
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 8,
+            "metrics": {
+              "RMSE": 1.7901658987712479,
+              "MAE": 1.6272178673000894,
+              "Bias": -0.46800106671059183,
+              "count": 16
+            }
+          }
+        ],
+        "block_count": 7,
+        "date_count": 1,
+        "region_count": 7,
+        "RMSE_block_std": 0.6105515557179055,
+        "worst_block_RMSE": 3.3426181512507855,
+        "source_bonus": 0,
+        "uncertainty": "Descriptive date-region variability, not a confidence interval",
+        "robustness_status": "INSUFFICIENT_DATE_OR_REGION_REPLICATION"
+      }
+    },
+    "MULTISOURCE": {
+      "evaluated": 0,
+      "passed": 0,
+      "best_key": null,
+      "metrics": null,
+      "coarse_reference_diagnostic": null,
+      "blocked_validation": null
+    }
+  },
+  "selected_key": "2c053fcc74e3d7f35328",
+  "selected_family": "SINGLE_SOURCE",
+  "comparison_status": "COMPARISON_INCOMPLETE_OR_SINGLE_SOURCE_ONLY",
+  "reference_basis": "PRIMARY_GRID_RECONSTRUCTION_PROXY",
+  "selection_reference_basis": "REDUCED_SCALE_PRODUCT_RECONSTRUCTION",
+  "source_ablations": [
+    {
+      "omitted_source": "field:NCEP-real-existing-subset",
+      "status": "NOT_EVALUATED",
+      "best_key": null,
+      "metrics": null,
+      "scope": "Best among actually evaluated graphs excluding this source; not exhaustive"
+    }
+  ],
+  "paired_selection": null,
+  "paired_date_regions": null,
+  "accuracy_improvement": "NOT_ESTABLISHED",
+  "source_identity_scope": "Declared source identities, not proof of statistical independence"
+}

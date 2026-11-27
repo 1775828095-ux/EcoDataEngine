@@ -1,0 +1,22 @@
+{
+  "src/ecodata/algorithms/registered_graph.py": "d02a42b76fa563613fa40ca00b869601910ea64cb1bf301179d681c95bc5bf71",
+  "src/ecodata/algorithms/spatial_registry_binding.py": "6fad2de3a01bbfd50d0ca90bd20e4cac8ba7722a15f0ba45a3ed0f762776d993",
+  "src/ecodata/algorithms/platform_search.py": "6f7111d9e59eaf6a110123963072f09294ebe3f8d2ee8d9d6f82c4b5d78137e2",
+  "src/ecodata/algorithms/field_mutation.py": "987884dbe047ce5cea3fc4870a2e7667aca616bb0c462269ebd5a58945685c7b",
+  "src/ecodata/algorithms/autonomous_decision.py": "cc2960261ac16d665656c1d78ae46ba5baf6c15b13142dc8458ed68bfad71b81",
+  "src/ecodata/algorithms/semantic_requirements.py": "0086fbfb75d312748c5d348fb330cf0ef6d2b05d3461df5e7a5e4a6b71a73ef1",
+  "src/ecodata/algorithms/paired_station_search.py": "85194b587ddf52d00cd8cc96e450a4c300ace007ca5b38202dfc1fc0c4e3a2b2",
+  "src/ecodata/algorithms/spatial_fusion_task.py": "3ecb7cbc5772f41f0f54e301b7662f9059b86777ce8f6537bbcdfb103bd54bac",
+  "src/ecodata/desktop/recommendations.py": "1f4ac2367b8324f3f011c19070471734fc62822d89d6be78148e151c93bda878",
+  "src/ecodata/desktop/service.py": "9328629c5bb38ab1033fcc63e3dc0e32f619541b6e0ab4876d6ed17bfd33e7de",
+  "src/ecodata/desktop/__main__.py": "ded70cdc45b0d166e6e9693c0a9b538493775d51fe2aa69af588a6d59f4f01c0",
+  "src/ecodata/desktop/station_grid.py": "5528370b29a04b064bb37de26073974357bf6754a16604d37868b35d8ca68db9",
+  "src/ecodata/desktop/independent_alignment.py": "5cdaad5f9c4a5d4aec079d5265951e702dc903a8d020e9c91e647478948bcad4",
+  "src/ecodata/desktop/indexed_table_recipe.py": "486fd9d57cdcd53cdb569b019ab5a1a0d6f747747b90dc396c63228dda7a796e",
+  "src/ecodata/desktop/windowed_grid_recipe.py": "5e9a5a87ba4f87ebc49c87d2d7e164366a34946fad8f1260d0053dc0b4305338",
+  "src/ecodata/desktop/release_gate.py": "3bd39569e3f423a46358135e404b894081735072a7b823c5585c3e34cafab37d",
+  "src/ecodata/interface/search_page.py": "3d4d30cb340493c6e18689ebd43b6458e0eaccc728f24029ec16fe5bc9f35954",
+  "tests/test_registered_graph.py": "200ae85b416ad9aad02fc26bba77a7657c00fedb19a80b509990c4258b15bb96",
+  "tools/verify_registry_graph.py": "f2a1924ca90bb9b1afd46b57c23ba1e2c327a6ce762f5cd703e6ed7f21aafc82",
+  "tools/summarize_registry_graph.py": "8d1a58f7a6ce1e73337bf62c1947b7dd35fb394986035ad2621aebf7e199f151"
+}

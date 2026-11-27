@@ -2587,12 +2587,16 @@ class Window(QMainWindow):
         recipes={}
         verified_alignments={}
         for row in self.selected_recommendations:
-            recipes.setdefault(row["task"],[]).append(row["steps"])
+            recipes.setdefault(row["task"],[]).append([] if row.get('graph') is not None else row["steps"])
             for report in row.get("local_holdout_review", ()):
                 if report.get("basis") == "joint_recipe_acceptance_passed" and report.get("alignment"):
                     verified_alignments[row["task"]] = report["alignment"]
                     break
         tasks=[(task_id,dict(self.gated[tuple(task_id.split(":",1))],recipes=steps,
+                             autonomous_recommendation=any(r.get('autonomous_recommendation') for r in self.selected_recommendations if r['task']==task_id),
+                             autonomous_variables=[r.get('scope',{}).get('variable') for r in self.selected_recommendations if r['task']==task_id],
+                             recommended_graphs=[dict(id=r['id'],graph=r['graph'],scope=r['scope'],reason=r.get('reason',''))
+                                 for r in self.selected_recommendations if r['task']==task_id and r.get('graph') is not None],
                              recommendation_origin=next((r.get("recommendation_origin","confirmed_registered_recipe") for r in self.selected_recommendations if r["task"]==task_id),"confirmed_registered_recipe"),
                              verified_recipe_alignment=verified_alignments.get(task_id),
                              runtime_fields=list(dict.fromkeys(
@@ -2628,7 +2632,7 @@ class Window(QMainWindow):
         folder=Path(self.run_temp.name)
         scan,model=self.scan,self.decision_model
         selected=tuple(self.selected_recommendations)
-        require(selected)
+        require(selected, allow_search=True)
         if not selected:
             require_whole_scope(self.recommendation_rows)
         self.result=self.review_reply=self.approved=None

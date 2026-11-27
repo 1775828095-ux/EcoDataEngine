@@ -1,0 +1,13 @@
+{
+  "protocol": "prepared-registry-recommendation-v2",
+  "request_sha256": "ab7aae2196873b317de2aad33e3071a5f016be11a07c2530aa7fc8c51c23ccb8",
+  "attempts": [
+    {
+      "status": "STRUCTURE_ADMITTED"
+    }
+  ],
+  "cache_hit": false,
+  "status": "SEARCH_PROPOSAL",
+  "numerically_verified": false,
+  "seconds": 9.766261999999983
+}

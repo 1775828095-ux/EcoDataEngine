@@ -5,7 +5,12 @@ from .service import ALGORITHMS, bundle, run_original_workbench, run_station_bat
 
 def run(scan, tasks, folder, progress=None, *, model_id=None,api_key=None):
     from ecodata.core.recovery import session,attach
-    with session(api_key=api_key,progress=progress) as recovery:
+    from contextlib import nullcontext
+    from ecodata.algorithms.registered_graph import recommendation_session
+    from .service import prepared_graph_provider
+    provider=prepared_graph_provider(api_key,progress) if any(task.get('autonomous_recommendation') for _,task in tasks) else None
+    variables={v for _,task in tasks for v in task.get('autonomous_variables',[]) if v}
+    with session(api_key=api_key,progress=progress) as recovery, (recommendation_session(provider,variables=variables) if provider else nullcontext()):
         result=_run(scan,tasks,folder,progress,model_id=model_id)
         return attach(result,folder,recovery)
 

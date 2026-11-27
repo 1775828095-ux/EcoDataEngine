@@ -1,0 +1,71 @@
+{
+  "version": "prepared-registry-search-v2",
+  "routes": [
+    "windowed_grid_recipe",
+    "pair_processing",
+    "observation_gap_search",
+    "original_engineering",
+    "native_reference_search",
+    "station_grid",
+    "indexed_table_recipe",
+    "independent_grid_search",
+    "local"
+  ],
+  "real": {
+    "status": "PASS",
+    "source": "Existing NCEP real 6x6x6 subset",
+    "input_sha256": "869f400eba80d4be6d3bb33f10c28600f06cca45c5d3b47e8932d1dabf97d427",
+    "directory": "real_local_v4",
+    "counts": {
+      "evaluated": 11,
+      "proposals": 100
+    },
+    "mutation_candidates": 7,
+    "mutation_pass": 4,
+    "total_cost": {
+      "used": 87,
+      "phases": {
+        "search": 73,
+        "deploy": 2,
+        "validation_audit": 12
+      },
+      "service_seconds": 2.743194899999935
+    },
+    "recommendation_seconds": 9.766261999999983,
+    "api_receipts": [
+      {
+        "stage": "registered_graph",
+        "id": "5ef3ae3d-81b1-449b-9324-b6b823c0cc54",
+        "model": "deepseek-flash",
+        "usage": {
+          "prompt_tokens": 62855,
+          "completion_tokens": 881,
+          "total_tokens": 63736
+        }
+      }
+    ],
+    "delivery_status": "BASELINE_RETAINED",
+    "accuracy_claim": false,
+    "manual_gui": false
+  },
+  "limits": [
+    "Nine route admission checks are not nine independent real datasets",
+    "Current paired task has declared component port bindings; full catalogue visibility does not imply all algorithms executable",
+    "Static proxy requires finite aligned continuous rasters, cannot establish independent accuracy",
+    "Interval-mean and arbitrary-interval mutations remain unsupported where no legal shared evaluator exists",
+    "Current backend is existing PortraitMutation, not retired GOLEM",
+    "Online failure does not bypass final quality; open legal search continues"
+  ],
+  "failed_clients": [
+    "real_local_v2: scan return tuple unpack error before search",
+    "real_local_v3: explicit physical variable conflict, blocked before API"
+  ],
+  "tests": "final-targeted2.xml (read final test receipt, not inferred from this manifest)",
+  "targeted_tests": {
+    "tests": "75",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "0",
+    "time": "140.806"
+  }
+}

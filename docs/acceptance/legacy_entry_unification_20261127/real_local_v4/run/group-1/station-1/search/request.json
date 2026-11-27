@@ -1,0 +1,139 @@
+{
+  "request": {
+    "task": "multisource",
+    "variable": "temperature",
+    "physical_variable": "air_temperature",
+    "unit": "K",
+    "semantic_type": "continuous",
+    "temporal_semantics": "instantaneous",
+    "processing_goal": "spatial_fusion",
+    "observation_crs": "EPSG:4326",
+    "mutation_control": "random",
+    "initial_algorithms": [],
+    "soft_guidance": false,
+    "spatial_soft_guidance": false,
+    "operation": "spatial_estimation",
+    "recommended_recipes": [],
+    "recommended_graphs": [
+      {
+        "id": "prepared-ds-graph",
+        "graph": {
+          "nodes": [],
+          "output": "source:0"
+        },
+        "scope": {
+          "variable": "temperature"
+        },
+        "reason": "输入证据：source:0 已确认为连续温度场，单位 K，时间分辨率 6 小时且为瞬时语义，CRS 为 EPSG:4326，有限值 112 个、缺失 0 个，质量门状态 PASS。requirements.required、hard_constraints、soft_objectives 均为空；target 未给出目标网格、目标时间频率或空间重建目标。因此没有缺失恢复、重采样、融合或偏置订正的必要任务。图中不添加算法节点，也没有实际父边；输出直接保持 source:0。可用 observations 与 components（如 spatial.idw、station.*、fusion.idw）具备观测条件端口，但当前没有显式空间插值/重建要求，主动调用会产生未请求的估计，故不构图。validation 由平台自动质量门执行，不作为节点加入。未执行任何数值处理，不声称数值收益或未验证精度。"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "role": "primary",
+      "descriptor": {
+        "filename": "parsed_input",
+        "format": "NetCDF",
+        "structure": "grid",
+        "variables": [
+          "temperature"
+        ],
+        "units": {
+          "temperature": "K"
+        },
+        "semantic_types": {
+          "temperature": "continuous"
+        },
+        "time_coordinate": "time",
+        "temporal_resolution": "0 days 06:00:00",
+        "x_coordinate": "lon",
+        "y_coordinate": "lat",
+        "crs": "EPSG:4326",
+        "dimensions": {
+          "time": 6,
+          "lat": 6,
+          "lon": 6
+        },
+        "confirmations_required": [],
+        "spatial_resolution_km": null,
+        "pixel_width_km": null,
+        "pixel_height_km": null,
+        "spatial_resolution_reason": null,
+        "geometry_types": [],
+        "extent": [
+          -117.5,
+          32.5,
+          -105.0,
+          45.0
+        ],
+        "field_types": {
+          "temperature": "float64"
+        },
+        "rasterizable_fields": [],
+        "missing_values": {
+          "temperature": 0
+        },
+        "cf_metadata": {
+          "backend": "cf-xarray",
+          "axes": {
+            "X": [
+              "lon"
+            ],
+            "Y": [
+              "lat"
+            ],
+            "T": [
+              "time"
+            ]
+          },
+          "coordinates": {
+            "longitude": [
+              "lon"
+            ],
+            "latitude": [
+              "lat"
+            ],
+            "time": [
+              "time"
+            ]
+          },
+          "bounds": {},
+          "standard_names": {
+            "latitude": [
+              "lat"
+            ],
+            "time": [
+              "time"
+            ],
+            "longitude": [
+              "lon"
+            ]
+          },
+          "ambiguities": [],
+          "grid_mappings": [],
+          "crs": null
+        },
+        "location_metadata": {
+          "source": "dataset_global_attributes",
+          "values": {},
+          "attributes": {},
+          "scope": "dataset_location_not_necessarily_all_fields",
+          "promoted": false,
+          "complete": false
+        }
+      },
+      "source_filename": "input.nc",
+      "sha256": "869f400eba80d4be6d3bb33f10c28600f06cca45c5d3b47e8932d1dabf97d427",
+      "declarations": {}
+    }
+  ],
+  "budget": {
+    "objective_limit": 130,
+    "total_call_limit": 180,
+    "proposal_limit": 100,
+    "wall_seconds": 45,
+    "probe_call_limit": 600
+  },
+  "seed": 11,
+  "version": "spatial_relationship_fusion_v1_5_date_region"
+}

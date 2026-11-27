@@ -17,6 +17,7 @@ UNSCORED = {"insufficient_score_support", "insufficient_gap_score_support", "ins
 # Adapters below have a real public mutation path; this is not a ranking rule.
 SEARCH_CONTINUATION_ROUTES = frozenset({
     "independent_grid_search", "windowed_grid_recipe", "station_grid", "indexed_table_recipe"})
+PUBLIC_SEARCH_ROUTES=SEARCH_CONTINUATION_ROUTES | {'pair_processing','observation_gap_search','original_engineering','native_reference_search','local'}
 
 
 def continuation_steps(task, rejected):

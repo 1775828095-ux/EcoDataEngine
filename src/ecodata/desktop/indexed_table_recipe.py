@@ -347,7 +347,7 @@ def review(scan, task, steps, *, independent=False):
 def run(scan, task_id, task, folder, model_id, progress):
     from ecodata.io.structures import export_structure, table_dataset
 
-    if task.get("search_after_rejection"):
+    if task.get("search_after_rejection") or task.get('recommended_graphs'):
         return run_search(scan, task_id, task, folder, progress)
     steps, = task["recipes"]
     with ExitStack() as stack:
@@ -397,6 +397,7 @@ def run_search(scan, task_id, task, folder, progress):
     if reused_development:
         request["recommendation_isolation"] = dict(status="INSUFFICIENT",
             reason="Recommendation groups reused as development only; no independent confirmation claim")
+    if task.get('recommended_graphs'):request['recommended_graphs']=task['recommended_graphs']
     return run_paired(scan, task_id, task, frame, request, folder, progress,
                       dict(excluded_recommendation_groups=[] if reused_development else sorted(held),
                            recommendation_groups_reused_for_development=reused_development, paired_records=len(frame),

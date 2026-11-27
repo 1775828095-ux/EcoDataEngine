@@ -1,0 +1,22 @@
+{
+  "files": {
+    "src/ecodata/algorithms/registered_graph.py": "2eaf93f48c3f0264a07091fcf14c85dcd32df81ac7168d89802a923c725245ea",
+    "src/ecodata/algorithms/field_mutation.py": "95876b9aa0a7283d49dff1ae10e8bbd001733e9a8f3c987dc9f5318dcd8cba6a",
+    "src/ecodata/algorithms/spatial_fusion_task.py": "6e9885481e536a2afdb3e22161fe4af28de445c3e4565458f81b75e9c6d5ddfd",
+    "src/ecodata/algorithms/platform_search.py": "c44c8391768113e59f2b17777503443cb83654899b4cc86d40b6d1275e810e6c",
+    "src/ecodata/algorithms/static_raster_search.py": "4300c20a1e725cbc559f809639beecb63f50dfc1d5d0e93c06b086f2c5fcca79",
+    "src/ecodata/desktop/service.py": "557d9fe40a577c232f0163aac02a51e259b1289973f5bf99591cf3fc46262020",
+    "src/ecodata/desktop/recommendations.py": "94d948aecb6184e32f09943b36f180213d0a887f709c159f5555db877002cecf",
+    "src/ecodata/desktop/release_gate.py": "31998c262383d3dba138be9c1b6e43ed3bc94d17864dbe979fe543367b39083a",
+    "src/ecodata/desktop/__main__.py": "cc6244e8315e6da65852dce1c5c4e50f2c780c87570086c4f4649bc443c08a68",
+    "src/ecodata/desktop/selected_processing.py": "0df739e82c82c3e565bb16be66d70cf2be1c5e707112c38b9c124a07f3067d40",
+    "src/ecodata/desktop/pair_processing.py": "d6f38fb4b0a1f2f33dd211e9551d949d808c17bb91f1b3e215f23a57ae418da9",
+    "src/ecodata/desktop/windowed_grid_recipe.py": "143e66db66c059e2359b8bf5adb0396738e57aaf3b3af1321dea19d5e05c26b2",
+    "src/ecodata/desktop/recipe_trials.py": "f114a636abccdc7ae2a05afc61e307fc95005e0f949168077ba0155f5afe67d8",
+    "tests/test_prepared_recommendation.py": "412038509bebb466116d635bff61769fdb2a094a663c14c9c5c715dd6c18b9c6",
+    "tests/test_desktop_joint_recipe_sampling.py": "cb58b15d1742ad31e6c7caffc0d381d0477b1bd55c006b56efa32c370a3aace0",
+    "tools/check_legacy_registry_entry.py": "ef94ce03ffef8dff1ee49adba7c8aca78369d5ddfb74a636ee810bef1dae8b9a"
+  },
+  "previous_snapshot": "Previous delivery source_final_v9 where available; first three before/ copies retained",
+  "current_capture": "After bounded runs and before delivery; dependency paths used in real run unchanged"
+}

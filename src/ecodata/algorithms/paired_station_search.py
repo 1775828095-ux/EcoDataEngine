@@ -151,6 +151,8 @@ def submit(inputs,request,folder,*,budget=None,seed=11,progress=None):
                     steps.append('bias.prior_series_affine' if operation=='station.bias.holdout' else operation)
                 if steps:compiled.append(dict(recipe,steps=steps))
             if compiled:application['recommended_recipes']=compiled
+            if request.get('recommended_graphs'):
+                application['recommended_graphs']=request['recommended_graphs']
             application_bytes=bytes(data.to_netcdf(engine='h5netcdf'))
             (local/'application_input.nc').write_bytes(application_bytes)
             resources=[SearchInput('background.nc','primary',application_bytes),

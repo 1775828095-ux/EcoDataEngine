@@ -1,0 +1,143 @@
+{
+  "status": "PASS",
+  "used_for_selection": false,
+  "source": "FROZEN_REDUCED_SCALE_OUTER_BLOCKS",
+  "reference_basis": "REDUCED_SCALE_PRODUCT_RECONSTRUCTION",
+  "statistical_independence_verified": false,
+  "accuracy_improvement": "NOT_ESTABLISHED",
+  "schemes": {
+    "selected": {
+      "status": "PASS",
+      "key": "2c053fcc74e3d7f35328",
+      "metrics": {
+        "RMSE": 3.2506925681274237,
+        "MAE": 2.6210310247925364,
+        "Bias": -0.2895721806572418,
+        "count": 32
+      },
+      "blocked_validation": {
+        "objective": 3.18758622950621,
+        "objective_name": "equal_date_region_RMSE",
+        "pooled": {
+          "RMSE": 3.2506925681274237,
+          "MAE": 2.6210310247925364,
+          "Bias": -0.2895721806572418,
+          "count": 32
+        },
+        "blocks": [
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 9,
+            "metrics": {
+              "RMSE": 2.550172547552922,
+              "MAE": 2.032476272658789,
+              "Bias": 1.9125557725737874,
+              "count": 16
+            }
+          },
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 3.824999911459498,
+              "MAE": 3.209585776926284,
+              "Bias": -2.491700133888271,
+              "count": 16
+            }
+          }
+        ],
+        "block_count": 2,
+        "date_count": 1,
+        "region_count": 2,
+        "RMSE_block_std": 0.6374136819532881,
+        "worst_block_RMSE": 3.824999911459498,
+        "source_bonus": 0,
+        "uncertainty": "Descriptive date-region variability, not a confidence interval",
+        "robustness_status": "INSUFFICIENT_DATE_OR_REGION_REPLICATION"
+      },
+      "trace": null
+    },
+    "single_source_baseline": {
+      "status": "PASS",
+      "key": "2c053fcc74e3d7f35328",
+      "metrics": {
+        "RMSE": 3.2506925681274237,
+        "MAE": 2.6210310247925364,
+        "Bias": -0.2895721806572418,
+        "count": 32
+      },
+      "blocked_validation": {
+        "objective": 3.18758622950621,
+        "objective_name": "equal_date_region_RMSE",
+        "pooled": {
+          "RMSE": 3.2506925681274237,
+          "MAE": 2.6210310247925364,
+          "Bias": -0.2895721806572418,
+          "count": 32
+        },
+        "blocks": [
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 9,
+            "metrics": {
+              "RMSE": 2.550172547552922,
+              "MAE": 2.032476272658789,
+              "Bias": 1.9125557725737874,
+              "count": 16
+            }
+          },
+          {
+            "date": "2013-01-01 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 3.824999911459498,
+              "MAE": 3.209585776926284,
+              "Bias": -2.491700133888271,
+              "count": 16
+            }
+          }
+        ],
+        "block_count": 2,
+        "date_count": 1,
+        "region_count": 2,
+        "RMSE_block_std": 0.6374136819532881,
+        "worst_block_RMSE": 3.824999911459498,
+        "source_bonus": 0,
+        "uncertainty": "Descriptive date-region variability, not a confidence interval",
+        "robustness_status": "INSUFFICIENT_DATE_OR_REGION_REPLICATION"
+      },
+      "trace": null
+    }
+  },
+  "metric_backend": "Shared error_metrics; cached genuine numerical predictions, no new fitted graphs",
+  "test_ids": [
+    16,
+    17,
+    22,
+    23,
+    28,
+    29,
+    34,
+    35
+  ],
+  "conditioning": "Degraded primary only; fine test labels never used in fitting",
+  "review_support": {
+    "locations": [
+      "16",
+      "17",
+      "22",
+      "23",
+      "28",
+      "29",
+      "34",
+      "35"
+    ],
+    "times": [
+      "2013-01-01 00:00:00",
+      "2013-01-01 06:00:00",
+      "2013-01-01 12:00:00",
+      "2013-01-01 18:00:00"
+    ],
+    "reference_key": "6b09686d4bc0c3bce9d90ef730f2f57f69d04c7840f6776690316569977a8da5"
+  }
+}

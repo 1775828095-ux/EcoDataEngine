@@ -1,0 +1,429 @@
+{
+  "key": "2c053fcc74e3d7f35328",
+  "baseline_key": "2c053fcc74e3d7f35328",
+  "graph": {
+    "25575840a9ed8f4aefc4": {
+      "operation": "spatial.source",
+      "parents": [],
+      "parameters": {
+        "index": 0
+      }
+    },
+    "a59c76d23f4cd9dd6f38": {
+      "operation": "spatial.observations",
+      "parents": [],
+      "parameters": {}
+    },
+    "bded0fd8a4a050eb829c": {
+      "operation": "spatial.idw",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 1.0
+      }
+    },
+    "a0b17d051bb8095d5541": {
+      "operation": "spatial.idw",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 2.0
+      }
+    },
+    "9d7d330a6eb3953331a0": {
+      "operation": "spatial.idw",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 3.0
+      }
+    },
+    "51ce4213b2416975f1ab": {
+      "operation": "fusion.idw",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "c22e5f138a9850192746": {
+      "operation": "station.metpy_barnes",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "b17105ad095184759027": {
+      "operation": "station.metpy_cressman",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "2e441ba229a556b69c2c": {
+      "operation": "station.metpy_linear",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "703b34df38c72ba8fd13": {
+      "operation": "station.metpy_natural_neighbor",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "0c281370eb060ef71b08": {
+      "operation": "station.pykrige_ordinary",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "5034a3da27d69b26c5c0": {
+      "operation": "station.pykrige_ordinary3d",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "1efe29c27ea70fcaa312": {
+      "operation": "station.pykrige_regression",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "2c053fcc74e3d7f35328": {
+      "operation": "station.pykrige_universal",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "1494452dc1e2ba626c7b": {
+      "operation": "station.pykrige_universal3d",
+      "parents": [
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {}
+    },
+    "6ba3cd62c0365efc048d": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "25575840a9ed8f4aefc4",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 2.0
+      }
+    },
+    "eb3c0d9b95d8f4f8f4fe": {
+      "operation": "spatial.blend",
+      "parents": [
+        "2c053fcc74e3d7f35328",
+        "2e441ba229a556b69c2c"
+      ],
+      "parameters": {
+        "weight": 0.25
+      }
+    },
+    "86b72a5cba316b6029c8": {
+      "operation": "spatial.blend",
+      "parents": [
+        "0c281370eb060ef71b08",
+        "9d7d330a6eb3953331a0"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    },
+    "6fb8052607fc23ed9473": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "bded0fd8a4a050eb829c",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 3.0
+      }
+    },
+    "38dcc69ad63592c08cdf": {
+      "operation": "spatial.blend",
+      "parents": [
+        "0c281370eb060ef71b08",
+        "b17105ad095184759027"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    },
+    "7b2aee6635f6650d7820": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "9d7d330a6eb3953331a0",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 1.0
+      }
+    },
+    "37b9ffe40f86ea0e4c77": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "2c053fcc74e3d7f35328",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 1.0
+      }
+    },
+    "b8b9e94ea5e7da4a8e5b": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "1efe29c27ea70fcaa312",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 1.0
+      }
+    },
+    "f933874fe72b7b9e4218": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "703b34df38c72ba8fd13",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 3.0
+      }
+    },
+    "9b7423d8d06eb8b58e27": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "bded0fd8a4a050eb829c",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 2.0
+      }
+    },
+    "db3e81af8d0a90017406": {
+      "operation": "spatial.blend",
+      "parents": [
+        "bded0fd8a4a050eb829c",
+        "0c281370eb060ef71b08"
+      ],
+      "parameters": {
+        "weight": 0.25
+      }
+    },
+    "412de424f31ec6eb461c": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "b17105ad095184759027",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 1.0
+      }
+    },
+    "552853ad0902ea3e1ca1": {
+      "operation": "spatial.blend",
+      "parents": [
+        "1494452dc1e2ba626c7b",
+        "2e441ba229a556b69c2c"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    },
+    "e28b484a92b87aff94d3": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "1494452dc1e2ba626c7b",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 3.0
+      }
+    },
+    "18aa22171ff77453e634": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "b17105ad095184759027",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 2.0
+      }
+    },
+    "1011ffe26cb8fa4ca6d6": {
+      "operation": "spatial.blend",
+      "parents": [
+        "bded0fd8a4a050eb829c",
+        "2e441ba229a556b69c2c"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    },
+    "06ec434963a1e014549c": {
+      "operation": "spatial.blend",
+      "parents": [
+        "2c053fcc74e3d7f35328",
+        "25575840a9ed8f4aefc4"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    },
+    "bf18910e9ffdf026145d": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "bded0fd8a4a050eb829c",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 1.0
+      }
+    },
+    "dc4660d242936b9f965d": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "a0b17d051bb8095d5541",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 2.0
+      }
+    },
+    "d6e24703a717bdfd88c4": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "2c053fcc74e3d7f35328",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 2.0
+      }
+    },
+    "2b3da306f6accd4b0df7": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "9d7d330a6eb3953331a0",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 2.0
+      }
+    },
+    "70493bcf9592805ca422": {
+      "operation": "spatial.blend",
+      "parents": [
+        "25575840a9ed8f4aefc4",
+        "2c053fcc74e3d7f35328"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    },
+    "99c0b389664b8d6d64e5": {
+      "operation": "spatial.blend",
+      "parents": [
+        "0c281370eb060ef71b08",
+        "1efe29c27ea70fcaa312"
+      ],
+      "parameters": {
+        "weight": 0.25
+      }
+    },
+    "32a6bc0b458fe308f56a": {
+      "operation": "spatial.blend",
+      "parents": [
+        "9d7d330a6eb3953331a0",
+        "2e441ba229a556b69c2c"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    },
+    "9a921cb5f1378cee5ee0": {
+      "operation": "spatial.blend",
+      "parents": [
+        "9d7d330a6eb3953331a0",
+        "c22e5f138a9850192746"
+      ],
+      "parameters": {
+        "weight": 0.75
+      }
+    },
+    "0923fb7ba98f66369ecf": {
+      "operation": "spatial.blend",
+      "parents": [
+        "b17105ad095184759027",
+        "0c281370eb060ef71b08"
+      ],
+      "parameters": {
+        "weight": 0.75
+      }
+    },
+    "9559bbddaaa7d5d45b7a": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "9d7d330a6eb3953331a0",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 3.0
+      }
+    },
+    "74e829107331b71990c3": {
+      "operation": "spatial.blend",
+      "parents": [
+        "5034a3da27d69b26c5c0",
+        "25575840a9ed8f4aefc4"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    },
+    "1c31cd0d48b6b73eae66": {
+      "operation": "spatial.residual_idw",
+      "parents": [
+        "51ce4213b2416975f1ab",
+        "a59c76d23f4cd9dd6f38"
+      ],
+      "parameters": {
+        "power": 1.0
+      }
+    },
+    "236eb88ea35143346e7f": {
+      "operation": "spatial.blend",
+      "parents": [
+        "9d7d330a6eb3953331a0",
+        "25575840a9ed8f4aefc4"
+      ],
+      "parameters": {
+        "weight": 0.25
+      }
+    },
+    "35a87cbe5a916481b880": {
+      "operation": "spatial.blend",
+      "parents": [
+        "2c053fcc74e3d7f35328",
+        "b17105ad095184759027"
+      ],
+      "parameters": {
+        "weight": 0.5
+      }
+    }
+  },
+  "review_axes": [
+    "space"
+  ],
+  "confirmation_read": false
+}

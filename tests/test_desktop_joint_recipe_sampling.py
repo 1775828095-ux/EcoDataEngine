@@ -302,7 +302,8 @@ def test_cf_time_only_fields_reach_final_recommendation_by_day(tmp_path):
     checked, gated = discovery.check(scan, {"C1": local},
                                      {"decisions": [{"candidate": "C1", "action": "fusion"}]}, approved)
     assert gated["C1", "fusion"]["route"] == "indexed_table_recipe"
-    plan = recommendations.make_request(scan, approved, checked, gated)
+    # Historical fixed-recipe protocol still reproduces its NIST/final-confirmation gate.
+    plan = recommendations.make_request(scan, approved, checked, gated,prepared_graph_service=False)
     recipes, _ = recommendations.recommend_plan(plan, [], mock=True)
     recommendations.review_holdouts(scan, approved, plan, recipes, gated)
     audit = recipes[0]["local_holdout_review"][0]["acceptance_sampling"]
@@ -364,7 +365,8 @@ def test_first_recommendation_checks_a_real_grid_pair_without_deep_read(tmp_path
     checked, gated = discovery.check(scan, {"C1": local}, {"decisions": gate}, approved)
     assert gated["C1", "fusion"]["route"] == "windowed_grid_recipe"
     scan["on_demand"] = True
-    plan = recommendations.make_request(scan, approved, checked, gated, sampled_workflow=True)
+    # This test checks the retained legacy fixed-recipe approval, not search admission.
+    plan = recommendations.make_request(scan, approved, checked, gated, sampled_workflow=True,prepared_graph_service=False)
     execution = gated["C1", "fusion"]
     assert execution["locked_holdout"]["window"] == [0, 64, 64, 16]
     from ecodata.desktop.holdout_plan import exposures

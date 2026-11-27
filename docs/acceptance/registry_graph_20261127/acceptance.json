@@ -1,0 +1,648 @@
+{
+  "version": "registry-graph-20261127-v1",
+  "registry_count": 121,
+  "registry_status": {
+    "available": 99,
+    "checkpoint_missing": 2,
+    "python_version_blocked": 1,
+    "license_unverified": 2,
+    "blocked": 7,
+    "research_only": 6,
+    "dependency_missing": 3,
+    "gpu_required": 1
+  },
+  "complete_discovery": true,
+  "all_plugins_numerically_verified": false,
+  "tests": {
+    "tests": "81",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0",
+    "time": "45.014"
+  },
+  "cases": {
+    "spatial": {
+      "status": "PASS",
+      "numerical_product": true,
+      "RMSE": 2.330044240850161,
+      "MAE": 1.7793754410539966,
+      "objective": 2.1041077294764357,
+      "objective_basis": "Equal-block mean RMSE; RMSE/MAE/Bias fields retain pooled physical metrics",
+      "kernel_calls": 11,
+      "actual_new_mutations": 1,
+      "attempts": 80,
+      "recommendations": [
+        {
+          "recommendation": {
+            "id": "spatial:generated_graph",
+            "graph": {
+              "nodes": [
+                {
+                  "id": "spatial_bilinear",
+                  "algorithm": "spatial.bilinear",
+                  "parents": [
+                    "source:0"
+                  ],
+                  "parameters": {}
+                },
+                {
+                  "id": "nonnegative_projection",
+                  "algorithm": "framewise.raster_task.nonnegative",
+                  "parents": [
+                    "spatial_bilinear"
+                  ],
+                  "parameters": {}
+                }
+              ],
+              "output": "nonnegative_projection"
+            },
+            "reason": "输入证据：source:0 为 continuous temperature，单位 K，空间为 grid，质量 PASS，54 个有限值且无缺失；目标要求连续空间重采样并保持非负。实际父边：source:0 -> spatial_bilinear -> framewise.raster_task.nonnegative。spatial.bilinear 本地为 ROOT_APPLICABLE，提供 continuous_spatial_resampling 并声明 coordinate_monotonicity；其后 framewise.raster_task.nonnegative 提供 nonnegative_validation，满足非负输出约束。未加入 validation.result，因为 validation 类别由平台自动质量门执行。未选择学习模型或需要观测/训练状态的算法，因为当前没有相应证据与资源；resolution_km 未知，因此不声称插值会提高真实空间信息量。",
+            "scope": {
+              "variable": "temperature"
+            }
+          },
+          "status": "REJECTED",
+          "keys": [],
+          "error": "Actual parent compatibility/redundancy rejected: framewise.raster_task.nonnegative"
+        }
+      ],
+      "product": "output\\registry_graph_20261127\\real-v9\\spatial\\product.nc",
+      "product_sha256": "06b76cd53daf0858e6a9e6bb7ffe4e75fd5ffa68602345688e92a8fa3ac53d89",
+      "total_cost": {
+        "limit": 30,
+        "total_call_limit": 30,
+        "search_limit": 12,
+        "deployment_limit": null,
+        "deployment_seconds": null,
+        "used": 11,
+        "probe_limit": 4,
+        "deployment_time_reserve_seconds": 0.0,
+        "deployment_call_reserve": 0,
+        "reservation_history": [],
+        "phases": {
+          "search": 11
+        },
+        "service_seconds": 2.2055835999999545,
+        "fit_adjust_calls": 0,
+        "training_capable_calls": 0,
+        "failed_calls": 0,
+        "events": [
+          {
+            "algorithm": "spatial.bilinear",
+            "phase": "search",
+            "graph": "m855e4b91621faed1836e6911ce8955a99017636144771a8c81d5d09e7c294b15",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.3887846999996327
+          },
+          {
+            "algorithm": "spatial.conservative",
+            "phase": "search",
+            "graph": "m12828b516f9ca64b7446bdf91b21266b7e2e0036b30c8f9874b72af4ecf7b004",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.806021200000032
+          },
+          {
+            "algorithm": "spatial.nearest",
+            "phase": "search",
+            "graph": "m2d488fa31de9076837ff16b687cbb43ddf25f552b8f9f72faa07417067e64751",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.006086299999878975
+          },
+          {
+            "algorithm": "framewise.raster_task.station.pykrige_ordinary",
+            "phase": "search",
+            "graph": "m2fdfe57364a92cc22dcda6ba3f6db96ff25d61ee658c1bd1d79db000484ab7c2",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.2298945000002277
+          },
+          {
+            "algorithm": "framewise.raster_task.nonnegative",
+            "phase": "search",
+            "graph": "m599999afa07fc60a8f67400517c563c660db1a507c7e4f23b5bd881628f92dd8",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.0005499999997482519
+          },
+          {
+            "algorithm": "framewise.raster_task.station.metpy_linear",
+            "phase": "search",
+            "graph": "m9420fddc680d6e1ff34e09963a39b4baa2ab29cfc0681610a8865dd38c0038e0",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.07567569999991974
+          },
+          {
+            "algorithm": "framewise.raster_task.fusion.idw",
+            "phase": "search",
+            "graph": "m9e9b70a14d6f53b0fe20d1f3a36d1225f09802a82e249822885adce09eab1ba8",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.07416209999973944
+          },
+          {
+            "algorithm": "framewise.raster_task.spatial.bilinear",
+            "phase": "search",
+            "graph": "ma8e3b64494958c6d3f367e65d77393f2e07873df5240f0342143d2f00f2f9eb8",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.008002900000064983
+          },
+          {
+            "algorithm": "framewise.spatial.median_filter",
+            "phase": "search",
+            "graph": "madaf9e13fee95128c63e0d5f65778faa2fb199c9704c56313ad7d6472df1eec0",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.004600000000209548
+          },
+          {
+            "algorithm": "framewise.raster_task.pchip",
+            "phase": "search",
+            "graph": "mea3485da05f0bc48345255b4ef1e29840b0980dbf649e9ffede33fbfe32a58f1",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.007921699999315024
+          },
+          {
+            "algorithm": "framewise.raster_task.pchip",
+            "phase": "search",
+            "graph": "mad1c722d14a65d0daa1cab86dc97d8a315ea07d1ffa28aeda22bd792d935147a",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.007947100000819773
+          }
+        ],
+        "cache_rule": "Cached node traversal has no ledger event; all new calls, including failed and probe calls, count",
+        "time_rule": "Search wall time includes proposal/portrait/quality overhead; configured deployment has its own protected deadline; all calls remain in the shared total limit; an in-flight kernel may overrun before returning"
+      },
+      "recommendation_cost": {
+        "recommendation_and_discovery_seconds": 2.156611999999768,
+        "total_pipeline_seconds": 4.482743099999425,
+        "proposal_rounds": 1,
+        "search_cost": {
+          "limit": 30,
+          "total_call_limit": 30,
+          "search_limit": 12,
+          "deployment_limit": null,
+          "deployment_seconds": null,
+          "used": 11,
+          "probe_limit": 4,
+          "deployment_time_reserve_seconds": 0.0,
+          "deployment_call_reserve": 0,
+          "reservation_history": [],
+          "phases": {
+            "search": 11
+          },
+          "service_seconds": 2.202717200000734,
+          "fit_adjust_calls": 0,
+          "training_capable_calls": 0,
+          "failed_calls": 0,
+          "events": [
+            {
+              "algorithm": "spatial.bilinear",
+              "phase": "search",
+              "graph": "m855e4b91621faed1836e6911ce8955a99017636144771a8c81d5d09e7c294b15",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.3887846999996327
+            },
+            {
+              "algorithm": "spatial.conservative",
+              "phase": "search",
+              "graph": "m12828b516f9ca64b7446bdf91b21266b7e2e0036b30c8f9874b72af4ecf7b004",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.806021200000032
+            },
+            {
+              "algorithm": "spatial.nearest",
+              "phase": "search",
+              "graph": "m2d488fa31de9076837ff16b687cbb43ddf25f552b8f9f72faa07417067e64751",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.006086299999878975
+            },
+            {
+              "algorithm": "framewise.raster_task.station.pykrige_ordinary",
+              "phase": "search",
+              "graph": "m2fdfe57364a92cc22dcda6ba3f6db96ff25d61ee658c1bd1d79db000484ab7c2",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.2298945000002277
+            },
+            {
+              "algorithm": "framewise.raster_task.nonnegative",
+              "phase": "search",
+              "graph": "m599999afa07fc60a8f67400517c563c660db1a507c7e4f23b5bd881628f92dd8",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.0005499999997482519
+            },
+            {
+              "algorithm": "framewise.raster_task.station.metpy_linear",
+              "phase": "search",
+              "graph": "m9420fddc680d6e1ff34e09963a39b4baa2ab29cfc0681610a8865dd38c0038e0",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.07567569999991974
+            },
+            {
+              "algorithm": "framewise.raster_task.fusion.idw",
+              "phase": "search",
+              "graph": "m9e9b70a14d6f53b0fe20d1f3a36d1225f09802a82e249822885adce09eab1ba8",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.07416209999973944
+            },
+            {
+              "algorithm": "framewise.raster_task.spatial.bilinear",
+              "phase": "search",
+              "graph": "ma8e3b64494958c6d3f367e65d77393f2e07873df5240f0342143d2f00f2f9eb8",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.008002900000064983
+            },
+            {
+              "algorithm": "framewise.spatial.median_filter",
+              "phase": "search",
+              "graph": "madaf9e13fee95128c63e0d5f65778faa2fb199c9704c56313ad7d6472df1eec0",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.004600000000209548
+            },
+            {
+              "algorithm": "framewise.raster_task.pchip",
+              "phase": "search",
+              "graph": "mea3485da05f0bc48345255b4ef1e29840b0980dbf649e9ffede33fbfe32a58f1",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.007921699999315024
+            },
+            {
+              "algorithm": "framewise.raster_task.pchip",
+              "phase": "search",
+              "graph": "mad1c722d14a65d0daa1cab86dc97d8a315ea07d1ffa28aeda22bd792d935147a",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.007947100000819773
+            }
+          ],
+          "cache_rule": "Cached node traversal has no ledger event; all new calls, including failed and probe calls, count",
+          "time_rule": "Search wall time includes proposal/portrait/quality overhead; configured deployment has its own protected deadline; all calls remain in the shared total limit; an in-flight kernel may overrun before returning"
+        }
+      }
+    },
+    "temporal": {
+      "status": "BUDGET_EXHAUSTED_BEFORE_MUTATION",
+      "numerical_product": true,
+      "RMSE": 3.7794397732997367,
+      "MAE": 3.1923333333333272,
+      "objective": 3.6542710978894264,
+      "objective_basis": "Equal-block mean RMSE; RMSE/MAE/Bias fields retain pooled physical metrics",
+      "kernel_calls": 2,
+      "actual_new_mutations": 0,
+      "attempts": 80,
+      "recommendations": [
+        {
+          "recommendation": {
+            "id": "temporal:generated_graph",
+            "graph": {
+              "nodes": [
+                {
+                  "id": "recover",
+                  "algorithm": "temporal.raster_linear",
+                  "parents": [
+                    "source:0"
+                  ],
+                  "parameters": {}
+                }
+              ],
+              "output": "recover"
+            },
+            "reason": "输入为已确认的连续温度场（K，非负，瞬时，6 小时间隔），实际存在 15/32 缺失值，且任务要求时间缺失恢复与完整时间覆盖。temporal.raster_linear 在发现结果中对 source:0 为 ROOT_APPLICABLE，具备 irregular_time_interpolation 与 temporal_missing_recovery 能力，单父输入契约满足；线性插值在非负输入上不引入负值，输出保持非负。父边仅为 source:0 -> recover，无隐藏参考或目标标签参与。nonnegative_validation 由平台自动质量门执行，未作为处理节点加入。未使用不可用或需要训练/观测/辅助数据的算法；未声称数值收益。",
+            "scope": {
+              "variable": "temperature"
+            }
+          },
+          "status": "PASS",
+          "keys": [
+            "m929a9df5199f596b4ea3011d2226dd34bbab5f10fdbe46e6fe45b7d811908fbf"
+          ]
+        }
+      ],
+      "product": "output\\registry_graph_20261127\\real-v9\\temporal\\product.nc",
+      "product_sha256": "bf69c553b8b86b5b796500ce7f0dc3a282276d81b4f87da3657606eb9cc62196",
+      "total_cost": {
+        "limit": 30,
+        "total_call_limit": 30,
+        "search_limit": 12,
+        "deployment_limit": null,
+        "deployment_seconds": null,
+        "used": 2,
+        "probe_limit": 4,
+        "deployment_time_reserve_seconds": 0.0,
+        "deployment_call_reserve": 0,
+        "reservation_history": [],
+        "phases": {
+          "search": 2
+        },
+        "service_seconds": 0.22904100000050676,
+        "fit_adjust_calls": 0,
+        "training_capable_calls": 0,
+        "failed_calls": 0,
+        "events": [
+          {
+            "algorithm": "temporal.raster_linear",
+            "phase": "search",
+            "graph": "m929a9df5199f596b4ea3011d2226dd34bbab5f10fdbe46e6fe45b7d811908fbf",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.0008658000006107613
+          },
+          {
+            "algorithm": "temporal.raster_nearest",
+            "phase": "search",
+            "graph": "m20eeaec10e07b0138f90ef3a0674d0b7d8e47882d0419dd2dc3e39ae634b1131",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.001168800000414194
+          }
+        ],
+        "cache_rule": "Cached node traversal has no ledger event; all new calls, including failed and probe calls, count",
+        "time_rule": "Search wall time includes proposal/portrait/quality overhead; configured deployment has its own protected deadline; all calls remain in the shared total limit; an in-flight kernel may overrun before returning"
+      },
+      "recommendation_cost": {
+        "recommendation_and_discovery_seconds": 0.08904679999977816,
+        "total_pipeline_seconds": 0.34141509999972186,
+        "proposal_rounds": 1,
+        "search_cost": {
+          "limit": 30,
+          "total_call_limit": 30,
+          "search_limit": 12,
+          "deployment_limit": null,
+          "deployment_seconds": null,
+          "used": 2,
+          "probe_limit": 4,
+          "deployment_time_reserve_seconds": 0.0,
+          "deployment_call_reserve": 0,
+          "reservation_history": [],
+          "phases": {
+            "search": 2
+          },
+          "service_seconds": 0.22785810000004858,
+          "fit_adjust_calls": 0,
+          "training_capable_calls": 0,
+          "failed_calls": 0,
+          "events": [
+            {
+              "algorithm": "temporal.raster_linear",
+              "phase": "search",
+              "graph": "m929a9df5199f596b4ea3011d2226dd34bbab5f10fdbe46e6fe45b7d811908fbf",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.0008658000006107613
+            },
+            {
+              "algorithm": "temporal.raster_nearest",
+              "phase": "search",
+              "graph": "m20eeaec10e07b0138f90ef3a0674d0b7d8e47882d0419dd2dc3e39ae634b1131",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.001168800000414194
+            }
+          ],
+          "cache_rule": "Cached node traversal has no ledger event; all new calls, including failed and probe calls, count",
+          "time_rule": "Search wall time includes proposal/portrait/quality overhead; configured deployment has its own protected deadline; all calls remain in the shared total limit; an in-flight kernel may overrun before returning"
+        }
+      }
+    },
+    "multisource": {
+      "status": "PASS",
+      "numerical_product": true,
+      "RMSE": 62.93033666465859,
+      "MAE": 21.245454545454546,
+      "objective": 43.14726427436448,
+      "objective_basis": "Equal-block mean RMSE; RMSE/MAE/Bias fields retain pooled physical metrics",
+      "kernel_calls": 3,
+      "actual_new_mutations": 1,
+      "attempts": 80,
+      "recommendations": [
+        {
+          "recommendation": {
+            "id": "multisource:generated_graph",
+            "graph": {
+              "nodes": [],
+              "output": "source:1"
+            },
+            "reason": "输入证据：两个来源均为 precipitation、单位 mm、日累积、点支持且已确认非负；source:1 有 90 个有限值且缺失为 0，source:0 缺失 50%（45/90），直接输出 source:0 会造成大量缺失。目标时间共 90 个日步，source:1 的覆盖与目标时间长度一致。实际父边：图为空，无处理节点父边，输出直接绑定 source:1。所提供能力与限制：非负硬约束由输入物理属性和平台自动 validation 质量门处理（validation 类别不能作为处理节点加入图）；没有观测、辅助变量、训练授权或已绑定参数的可执行融合节点，因此不选择需要 primary_index、primary_share、不确定性变量或观测拟合的融合算法；空间分辨率与网格结构仍为 UNKNOWN，不执行空间重采样。未执行数值计算，不声称融合或处理收益。",
+            "scope": {
+              "variable": "precipitation"
+            }
+          },
+          "status": "PASS",
+          "keys": [
+            "s1"
+          ]
+        }
+      ],
+      "product": "output\\registry_graph_20261127\\real-v9\\multisource\\review-baseline.nc",
+      "product_sha256": "3a43840681bd46aff038753b5c3ab05a491e4b5e581f21b8f4987c7340f056c3",
+      "total_cost": {
+        "limit": 30,
+        "total_call_limit": 30,
+        "search_limit": 12,
+        "deployment_limit": null,
+        "deployment_seconds": null,
+        "used": 3,
+        "probe_limit": 4,
+        "deployment_time_reserve_seconds": 0.0,
+        "deployment_call_reserve": 0,
+        "reservation_history": [],
+        "phases": {
+          "search": 3
+        },
+        "service_seconds": 0.35382750000007945,
+        "fit_adjust_calls": 0,
+        "training_capable_calls": 0,
+        "failed_calls": 0,
+        "events": [
+          {
+            "algorithm": "temporal.raster_nearest",
+            "phase": "search",
+            "graph": "m20eeaec10e07b0138f90ef3a0674d0b7d8e47882d0419dd2dc3e39ae634b1131",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.001134299999648647
+          },
+          {
+            "algorithm": "temporal.raster_linear",
+            "phase": "search",
+            "graph": "m929a9df5199f596b4ea3011d2226dd34bbab5f10fdbe46e6fe45b7d811908fbf",
+            "parameters": {},
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.0009402000005138689
+          },
+          {
+            "algorithm": "fusion.series_missing_fallback",
+            "phase": "search",
+            "graph": "mf05df177ac880d66f1cea6c62f2a6737bf3e17ee3cab6416bea570df931ef72e",
+            "parameters": {
+              "primary_index": 0
+            },
+            "status": "PASS",
+            "fit_adjust": false,
+            "requires_training": false,
+            "seconds": 0.002059499999631953
+          }
+        ],
+        "cache_rule": "Cached node traversal has no ledger event; all new calls, including failed and probe calls, count",
+        "time_rule": "Search wall time includes proposal/portrait/quality overhead; configured deployment has its own protected deadline; all calls remain in the shared total limit; an in-flight kernel may overrun before returning"
+      },
+      "recommendation_cost": {
+        "recommendation_and_discovery_seconds": 0.13684869999997318,
+        "total_pipeline_seconds": 0.8273643000002266,
+        "proposal_rounds": 1,
+        "search_cost": {
+          "limit": 30,
+          "total_call_limit": 30,
+          "search_limit": 12,
+          "deployment_limit": null,
+          "deployment_seconds": null,
+          "used": 3,
+          "probe_limit": 4,
+          "deployment_time_reserve_seconds": 0.0,
+          "deployment_call_reserve": 0,
+          "reservation_history": [],
+          "phases": {
+            "search": 3
+          },
+          "service_seconds": 0.3452562000002217,
+          "fit_adjust_calls": 0,
+          "training_capable_calls": 0,
+          "failed_calls": 0,
+          "events": [
+            {
+              "algorithm": "temporal.raster_nearest",
+              "phase": "search",
+              "graph": "m20eeaec10e07b0138f90ef3a0674d0b7d8e47882d0419dd2dc3e39ae634b1131",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.001134299999648647
+            },
+            {
+              "algorithm": "temporal.raster_linear",
+              "phase": "search",
+              "graph": "m929a9df5199f596b4ea3011d2226dd34bbab5f10fdbe46e6fe45b7d811908fbf",
+              "parameters": {},
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.0009402000005138689
+            },
+            {
+              "algorithm": "fusion.series_missing_fallback",
+              "phase": "search",
+              "graph": "mf05df177ac880d66f1cea6c62f2a6737bf3e17ee3cab6416bea570df931ef72e",
+              "parameters": {
+                "primary_index": 0
+              },
+              "status": "PASS",
+              "fit_adjust": false,
+              "requires_training": false,
+              "seconds": 0.002059499999631953
+            }
+          ],
+          "cache_rule": "Cached node traversal has no ledger event; all new calls, including failed and probe calls, count",
+          "time_rule": "Search wall time includes proposal/portrait/quality overhead; configured deployment has its own protected deadline; all calls remain in the shared total limit; an in-flight kernel may overrun before returning"
+        }
+      }
+    }
+  },
+  "spatial_registry_real": {
+    "status": "PASS",
+    "attempted_algorithms": [
+      "spatial.blend",
+      "spatial.idw",
+      "spatial.observations",
+      "spatial.source",
+      "station.metpy_barnes",
+      "station.metpy_cressman",
+      "station.pykrige_ordinary",
+      "station.pykrige_regression",
+      "station.pykrige_universal"
+    ],
+    "failed_algorithms": [
+      "station.pykrige_regression"
+    ],
+    "product": "output\\registry_graph_20261127\\spatial_registry_real\\product.nc"
+  },
+  "desktop_browser_acceptance": "NOT_RUN_CURRENT_VERSION",
+  "temporal_new_mutation_acceptance": "NOT_ACHIEVED_IN_FROZEN_BUDGET",
+  "algorithm_superiority": "NOT_TESTED",
+  "all_specialized_routes_migrated": false,
+  "historical_outputs_overwritten": false,
+  "new_algorithms_added": 0,
+  "GOLEM": "RETIRED_BACKEND_NOT_REINTRODUCED"
+}

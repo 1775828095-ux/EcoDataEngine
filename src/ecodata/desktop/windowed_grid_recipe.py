@@ -356,23 +356,26 @@ def run(scan, task_id, task, folder, model_id, progress):
         a, b, window, times = pair(stack, scan, task)
         variable = task["quantity"]
         steps, = task["recipes"]
+        from ecodata.algorithms.registered_graph import has_recommender
+        if has_recommender():steps=[step for step in steps if step!=recipe_trials.BLEND]
+        execution['methods']=steps
         method = next(ALIGN[step] for step in steps if step in ALIGN)
         if a.support in {"cell_mean", "flux"} and method != "conservative":
             raise ValueError("单元均值或通量需使用已登记的保守对齐契约")
-        continuation = bool(task.get("search_after_rejection"))
-        seeds = (a.temporal == "instantaneous" and a.crs == CRS.from_epsg(4326) and len(times) >= 3
+        continuation = bool(task.get("search_after_rejection") or has_recommender())
+        seeds = (((a.times is None and continuation) or (a.temporal in {"instantaneous", "accumulation"} and len(times) >= 3)) and a.crs == CRS.from_epsg(4326)
                  and (continuation or recipe_trials.BLEND in steps))
         if continuation and (not a.physical_definition or a.physical_definition != b.physical_definition):
             raise ValueError("双源物理定义缺失或冲突，不能冒充同变量融合")
         if continuation and not seeds:
-            raise ValueError("当前网格变异需要已声明的瞬时量、EPSG:4326和至少三个真实共同时间；未执行被拒方案")
+            raise ValueError("当前网格变异支持EPSG:4326静态栅格，或至少三个真实共同时间的已声明瞬时量/带日区间累计量；未执行被拒方案")
         results, shared_times, shared_fields = [], [], []
         for time in times:
             left, right, affine = read_pair(a, b, window, time, method)
             values = combine(left, right, task, steps, a.temporal)
             results.append(values)
             if seeds and np.isfinite(left).all() and np.isfinite(right).all():
-                shared_times.append(a.times[time[0]])
+                if a.times is not None:shared_times.append(a.times[time[0]])
                 shared_fields.append((left, right))
         axes = dict(x=affine.c + (np.arange(int(window.width))+.5)*affine.a,
                     y=affine.f + (np.arange(int(window.height))+.5)*affine.e)
@@ -390,11 +393,13 @@ def run(scan, task_id, task, folder, model_id, progress):
             ds["time_bounds"] = (("time", "bounds"), a.interval[[i for i, _ in times]])
             ds.time.attrs["bounds"] = "time_bounds"
             ds.time.encoding["units"] = ds.time_bounds.encoding["units"] = "seconds since 1970-01-01"
-        if continuation and len(shared_fields) < 3:
+        minimum = 1 if a.times is None else 3
+        if continuation and len(shared_fields) < minimum:
             raise ValueError("合法网格变异缺少三个完整共同时间；未交付被拒方案")
-        if len(shared_fields) >= 3:
-            updated, search, decision = mutate(task_id, task, ds, shared_times, shared_fields, folder, model_id, progress)
-            ds[variable].loc[dict(time=shared_times)] = updated
+        if seeds and len(shared_fields) >= minimum:
+            updated, search, decision = mutate(task_id, task, ds, shared_times if a.times is not None else None, shared_fields, folder, model_id, progress)
+            if a.times is None:ds[variable] = updated
+            else:ds[variable].loc[dict(time=shared_times)] = updated
             execution["mutation_status"] = decision
         file, details = artifact(ds, "aligned-filled-fusion.nc", variable)
     files=[file]
@@ -412,19 +417,21 @@ def mutate(task_id, task, template, times, pairs, folder, model_id, progress):
     from .local_search import pareto_comparison, submit
     from .result_summary import ranked_candidates
     from .service import fusion_evidence
+    from ecodata.algorithms.registered_graph import has_recommender
+    autonomous=has_recommender()
 
     variable = task["quantity"]
     inputs = []
     for index, arrays in enumerate(zip(*pairs)):
-        frame = template[[variable]].sel(time=times).rename({"x": "lon", "y": "lat"}).copy(deep=True)
-        frame[variable].values[:] = np.stack(arrays)
+        frame = (template[[variable]] if times is None else template[[variable]].sel(time=times)).rename({"x": "lon", "y": "lat"}).copy(deep=True)
+        frame[variable].values[:] = arrays[0] if times is None else np.stack(arrays)
         frame[variable].attrs["data_kind"] = "continuous"
         frame.attrs.update(source_id=f"accepted-source-{index}", spatial_x="lon", spatial_y="lat")
         frame.lat.attrs["units"], frame.lon.attrs["units"] = "degrees_north", "degrees_east"
         inputs.append(SearchInput(f"source-{index}.nc", "primary" if not index else "background",
                                   bytes(frame.to_netcdf(engine="h5netcdf"))))
     request = dict(task="multisource", variable=variable, physical_variable=variable, unit=task["unit"],
-                   semantic_type="continuous", temporal_semantics="instantaneous", processing_goal="spatial_fusion",
+                   semantic_type="continuous", temporal_semantics=template[variable].attrs.get("temporal_semantics", "UNKNOWN"), processing_goal="spatial_fusion",
                    initial_algorithms=[recipe_trials.BLEND], observation_crs="EPSG:4326", mutation_control="random")
     request = with_recommendations(request, [dict(id=task_id, task=task_id, steps=[recipe_trials.BLEND],
                                                  scope=dict(variable=variable))])
@@ -441,26 +448,26 @@ def mutate(task_id, task, template, times, pairs, folder, model_id, progress):
         result = submit(inputs, request, path, model_id=model_id, progress=progress)
         if result.get("status") != "PASS" or not result.get("product"):
             raise ValueError("原版搜索未提供可用产物")
-        if (task.get("search_after_rejection")
+        if ((task.get("search_after_rejection") or autonomous)
                 and not result.get("post_mutation_acceptance", {}).get("recommended")
                 and result.get("delivery_status") != "BASELINE_RETAINED"):
             raise ValueError("变异产物未获最终验收，且没有可交付的质量基线")
         with xr.open_dataset(result["product"]) as product:
-            aligned = product[variable].rename({"lat": "y", "lon": "x"}).transpose("time", "y", "x")
-            aligned = aligned.sel(y=template.y, x=template.x, time=times).load()
+            aligned = product[variable].rename({"lat": "y", "lon": "x"})
+            aligned = (aligned.transpose("y", "x").sel(y=template.y, x=template.x) if times is None else aligned.transpose("time", "y", "x").sel(y=template.y, x=template.x, time=times)).load()
             if not np.isfinite(aligned).all():
                 raise ValueError("寻优产物存在未恢复的观测缺口")
     except (EcoDataError, OSError, ValueError, RuntimeError, KeyError) as error:
-        if task.get("search_after_rejection"):
+        if task.get("search_after_rejection") or autonomous:
             raise
-        return template[variable].sel(time=times), None, "保留验收方案，原版搜索未生成可替换产物："+str(error)
+        return (template[variable] if times is None else template[variable].sel(time=times)), None, "保留验收方案，原版搜索未生成可替换产物："+str(error)
     rankings = ranked_candidates(path, result)
     evidence = dict(candidate_product=result.get("candidate_product"),
                     candidate_trial_available=result.get("recommendation_review",{}).get("candidate_trial_available",False),
                     best=result.get("delivered_best") or result["best"], selected_graph=result.get("delivered_graph") or result["selected_graph"], evidence=fusion_evidence(result),
                     confirmed_initial=result["confirmed_initial"], rankings=rankings, pareto_comparison=pareto_comparison(rankings))
-    if task.get('search_after_rejection'):
+    if task.get('search_after_rejection') or autonomous:
         return aligned, evidence, '交付公共最终关卡保留的产品；原失败方案未放行'
     if not result.get('post_mutation_acceptance',{}).get('recommended'):
-        return template[variable].sel(time=times), evidence, '保留已验收方案；变异增强未通过冻结后独立复检'
+        return (template[variable] if times is None else template[variable].sel(time=times)), evidence, '保留已验收方案；变异增强未通过冻结后独立复检'
     return aligned, evidence, "双源完整时段使用原版变异寻优结果"

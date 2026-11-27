@@ -111,10 +111,14 @@ def allowed(recommendation):
 
 def selectable(recommendation):
     """Permission to submit a search, distinct from permission to execute a recipe."""
-    from .recipe_trials import SEARCH_CONTINUATION_ROUTES
+    from .recipe_trials import SEARCH_CONTINUATION_ROUTES,PUBLIC_SEARCH_ROUTES
     admission = recommendation.get("search_admission", {})
+    if admission.get('protocol')=='prepared-registry-search-v2':
+        return (admission.get('status')=='SEARCH_ONLY' and admission.get('route') in PUBLIC_SEARCH_ROUTES
+                and recommendation.get('autonomous_recommendation') is True
+                and recommendation.get('execution_release',{}).get('status')=='search_only')
     return allowed(recommendation) or (
-        admission.get("protocol") == "rejected-recipe-search-v1"
+        admission.get("protocol") in {"rejected-recipe-search-v1","registered-graph-search-v1"}
         and admission.get("status") == "SEARCH_ONLY"
         and admission.get("route") in SEARCH_CONTINUATION_ROUTES
         and recommendation.get("execution_release", {}).get("status") == "search_only")

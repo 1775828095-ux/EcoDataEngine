@@ -1,0 +1,146 @@
+{
+  "version": "blocked_confirmation_v2_aggregate_risk",
+  "status": "NO_STABLE_SELECTION_GAIN",
+  "recommended": false,
+  "selection": {
+    "sufficient": true,
+    "differences": [
+      {
+        "block": "2013-01-01 00:00:00|0",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      },
+      {
+        "block": "2013-01-01 00:00:00|1",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      },
+      {
+        "block": "2013-01-01 00:00:00|2",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      },
+      {
+        "block": "2013-01-01 00:00:00|4",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      },
+      {
+        "block": "2013-01-01 00:00:00|5",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      },
+      {
+        "block": "2013-01-01 00:00:00|6",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      },
+      {
+        "block": "2013-01-01 00:00:00|8",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      }
+    ],
+    "objective_change": 0.0,
+    "stable_gain": false,
+    "roundoff_only_tolerance": 2.909338953365923e-14,
+    "aggregate_gain": false,
+    "uncertainty": {
+      "status": "CONDITIONAL_INTERVAL",
+      "units": 7,
+      "resampling_unit": "spatial regions",
+      "interpretation": "Conditional block-resampling interval; block independence and future coverage are not established",
+      "method": "paired cluster percentile bootstrap",
+      "confidence_level": 0.95,
+      "resamples": 4999,
+      "seed": 20261125,
+      "lower": 0.0,
+      "upper": 0.0,
+      "gain_supported": false,
+      "leave_one_unit_out_range": [
+        0.0,
+        0.0
+      ]
+    },
+    "local_risk": {
+      "status": "NO_OBSERVED_DEGRADATION",
+      "degraded_blocks": 0,
+      "total_blocks": 7,
+      "degraded_fraction": 0.0,
+      "worst_rmse_increase": 0.0,
+      "worst_mae_increase": 0.0,
+      "violations": [],
+      "basis": "Observed changes only; no task harm tolerance inferred"
+    }
+  },
+  "confirmation": {
+    "sufficient": true,
+    "differences": [
+      {
+        "block": "2013-01-01 00:00:00|9",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      },
+      {
+        "block": "2013-01-01 00:00:00|10",
+        "rmse_change": 0.0,
+        "mae_change": 0.0
+      }
+    ],
+    "objective_change": 0.0,
+    "stable_gain": false,
+    "roundoff_only_tolerance": 4.52983247996913e-14,
+    "aggregate_gain": false,
+    "uncertainty": {
+      "status": "INSUFFICIENT",
+      "units": 2,
+      "resampling_unit": "spatial regions",
+      "interpretation": "Conditional block-resampling interval; block independence and future coverage are not established",
+      "method": "paired cluster percentile bootstrap",
+      "confidence_level": 0.95,
+      "resamples": 4999,
+      "seed": 20261125
+    },
+    "local_risk": {
+      "status": "NO_OBSERVED_DEGRADATION",
+      "degraded_blocks": 0,
+      "total_blocks": 2,
+      "degraded_fraction": 0.0,
+      "worst_rmse_increase": 0.0,
+      "worst_mae_increase": 0.0,
+      "violations": [],
+      "basis": "Observed changes only; no task harm tolerance inferred"
+    }
+  },
+  "confirmation_used_for_search": false,
+  "confirmation_retries": 0,
+  "policy": {
+    "version": "blocked_confirmation_v2_aggregate_risk",
+    "blocks": 3,
+    "min_times_per_block": 2,
+    "objective": "Equal-block mean RMSE",
+    "confirmation": "Disjoint geographic holdout, once after freezing",
+    "acceptance": "Aggregate gain in both stages, paired block uncertainty, declared local risk limits",
+    "insufficient": "Quality-valid candidate may be tried; baseline remains default until confirmed",
+    "confidence": "No statistical confidence or universal accuracy guarantee",
+    "resampling": {
+      "method": "paired cluster percentile bootstrap",
+      "confidence_level": 0.95,
+      "resamples": 4999,
+      "seed": 20261125
+    },
+    "local_risk": "No default tolerance percent; undeclared local harm limits remain UNKNOWN"
+  },
+  "warning": "Paired block intervals are conditional diagnostics; not calibrated future guarantees or independent pixel replicates",
+  "decision": "KEEP_BASELINE",
+  "candidate_trial_available": false,
+  "evidence_status": "SUFFICIENT_ENGINEERING_SUPPORT",
+  "reference_basis": "REDUCED_SCALE_PRODUCT_RECONSTRUCTION",
+  "axes": [
+    "space"
+  ],
+  "accuracy_recommended": false,
+  "claim": "Product reconstruction only; not environmental accuracy",
+  "baseline_key": "2c053fcc74e3d7f35328",
+  "selection_key": "2c053fcc74e3d7f35328"
+}

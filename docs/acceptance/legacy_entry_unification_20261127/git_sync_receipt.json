@@ -1,0 +1,40 @@
+{
+  "target": "D:\\codex\\EcoDataEngine-GitHub",
+  "files": [
+    "src/ecodata/algorithms/registered_graph.py",
+    "src/ecodata/algorithms/field_mutation.py",
+    "src/ecodata/algorithms/spatial_fusion_task.py",
+    "src/ecodata/algorithms/platform_search.py",
+    "src/ecodata/algorithms/static_raster_search.py",
+    "src/ecodata/desktop/service.py",
+    "src/ecodata/desktop/recommendations.py",
+    "src/ecodata/desktop/release_gate.py",
+    "src/ecodata/desktop/__main__.py",
+    "src/ecodata/desktop/selected_processing.py",
+    "src/ecodata/desktop/pair_processing.py",
+    "src/ecodata/desktop/windowed_grid_recipe.py",
+    "src/ecodata/desktop/recipe_trials.py",
+    "tests/test_prepared_recommendation.py",
+    "tests/test_desktop_joint_recipe_sampling.py",
+    "tools/check_legacy_registry_entry.py",
+    "docs/EcoData Engine项目总交付报告.md"
+  ],
+  "previous_hashes": {
+    "src/ecodata/algorithms/registered_graph.py": "d02a42b76fa563613fa40ca00b869601910ea64cb1bf301179d681c95bc5bf71",
+    "src/ecodata/algorithms/field_mutation.py": "987884dbe047ce5cea3fc4870a2e7667aca616bb0c462269ebd5a58945685c7b",
+    "src/ecodata/algorithms/spatial_fusion_task.py": "3ecb7cbc5772f41f0f54e301b7662f9059b86777ce8f6537bbcdfb103bd54bac",
+    "src/ecodata/algorithms/platform_search.py": "6f7111d9e59eaf6a110123963072f09294ebe3f8d2ee8d9d6f82c4b5d78137e2",
+    "src/ecodata/desktop/service.py": "9328629c5bb38ab1033fcc63e3dc0e32f619541b6e0ab4876d6ed17bfd33e7de",
+    "src/ecodata/desktop/recommendations.py": "1f4ac2367b8324f3f011c19070471734fc62822d89d6be78148e151c93bda878",
+    "src/ecodata/desktop/release_gate.py": "3bd39569e3f423a46358135e404b894081735072a7b823c5585c3e34cafab37d",
+    "src/ecodata/desktop/__main__.py": "ded70cdc45b0d166e6e9693c0a9b538493775d51fe2aa69af588a6d59f4f01c0",
+    "src/ecodata/desktop/selected_processing.py": "6efd55a147b59ebd13afea029288bd1ce0b4c90d7919e82c649e35c0288762f5",
+    "src/ecodata/desktop/pair_processing.py": "6488585353652e1b3e15b93ab3604682fe46d6f78537133dd21a6cbc73eb5a98",
+    "src/ecodata/desktop/windowed_grid_recipe.py": "5e9a5a87ba4f87ebc49c87d2d7e164366a34946fad8f1260d0053dc0b4305338",
+    "src/ecodata/desktop/recipe_trials.py": "ffe7a45f78f82916f5d533dcf0a0c8e01b89308d1fd39174f0fc93bd1a677ba0",
+    "tests/test_desktop_joint_recipe_sampling.py": "bddd021b166ee79b3f371fb038f1ebf8284da4d2a12c55e6e53cbff27d1c1711",
+    "docs/EcoData Engine项目总交付报告.md": "9a616b4bb68530fb0b3fc67c7599068d9aff36ff118217739da99b3801092149"
+  },
+  "committed": false,
+  "pushed": false
+}

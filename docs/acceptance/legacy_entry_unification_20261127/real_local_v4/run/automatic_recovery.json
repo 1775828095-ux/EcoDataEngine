@@ -1,0 +1,24 @@
+{
+  "schema": "ecodata.automatic-recovery.v1",
+  "policy": {
+    "version": "local_recovery_v1",
+    "max_gap_records": 3,
+    "max_missing_fraction": 0.2,
+    "max_spatial_hole_cells": 3,
+    "max_spatial_missing_fraction": 0.2,
+    "max_edge_records": 1,
+    "extrapolation": "nearest estimate at one existing endpoint record only; no new timestamps",
+    "accumulations": "estimate missing equal-length window amounts only; never split or invent intervals",
+    "observations": "never impute evaluation/observation inputs",
+    "ds_calls": 1,
+    "ds_timeout_seconds": 30
+  },
+  "events": [],
+  "ds_calls": 0,
+  "recovery_seconds": 0.00010480000003099121,
+  "ds_seconds": 0.0,
+  "metadata_io_seconds": 0.0,
+  "public_scope_wall_seconds": 14.335374799999954,
+  "original_inputs_modified": false,
+  "qualification": "补值为估计，不是新增实测；格式通过不代表模型运行或精度改善"
+}

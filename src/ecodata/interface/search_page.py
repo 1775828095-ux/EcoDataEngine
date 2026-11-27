@@ -7,6 +7,13 @@ from ecodata.interface.temporal_search_page import download_search_result
 
 
 def process_search_upload(inputs,request,evaluation,folder,**options):
+    provider=options.pop('recommendation_provider',None)
+    if provider is not None:
+        from ecodata.algorithms.platform_search import recommend_and_submit
+        if request.get('decision_policy')=='current_input':raise ValueError('Explicit recommendation request needs a declared validation protocol')
+        mode=options.pop('mode','PortraitMutation')
+        if mode!='PortraitMutation':raise ValueError('Registry graph proposals use the shared mutation backend')
+        return recommend_and_submit(inputs,request,evaluation,folder,provider=provider,**options)
     if request.get('decision_policy')=='current_input':
         if evaluation is not None or options.pop('validation',None) is not None:raise ValueError('Current-input page does not pass external selection labels')
         if options.pop('mode','PortraitMutation')!='PortraitMutation':raise ValueError('Current-input page uses the random mutation service')

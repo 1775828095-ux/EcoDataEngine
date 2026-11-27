@@ -1,0 +1,974 @@
+{
+  "limit": 180,
+  "total_call_limit": 180,
+  "search_limit": 130,
+  "deployment_limit": 32,
+  "deployment_seconds": 9.0,
+  "used": 87,
+  "probe_limit": 43,
+  "deployment_time_reserve_seconds": 9.0,
+  "deployment_call_reserve": 96,
+  "reservation_history": [
+    {
+      "at_used": 0,
+      "calls": 96,
+      "seconds": 9.0
+    }
+  ],
+  "phases": {
+    "search": 73,
+    "deploy": 2,
+    "validation_audit": 12
+  },
+  "service_seconds": 2.743194899999935,
+  "fit_adjust_calls": 0,
+  "training_capable_calls": 0,
+  "failed_calls": 1,
+  "events": [
+    {
+      "algorithm": "spatial.source",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "index": 0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 2.1699999933844083e-05
+    },
+    {
+      "algorithm": "spatial.source",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "index": 0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 7.799999934832158e-06
+    },
+    {
+      "algorithm": "spatial.source",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "index": 0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.6999999792897142e-06
+    },
+    {
+      "algorithm": "spatial.source",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "index": 0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.199999923708674e-06
+    },
+    {
+      "algorithm": "spatial.source",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "index": 0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.099999958067201e-06
+    },
+    {
+      "algorithm": "spatial.source",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "index": 0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 2.900000026784255e-06
+    },
+    {
+      "algorithm": "spatial.source",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "index": 0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.6000000136482413e-06
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 7.000000096013537e-06
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 1.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.000999500000034459
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 4.800000056093268e-06
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 1.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.000795000000039181
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 4.600000011123484e-06
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 1.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0009244999999964421
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 4.400000079840538e-06
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 1.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0007507000000259723
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.900000024259498e-06
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 1.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.000611199999980272
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.5000000480067683e-06
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 1.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0005440999999564156
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.2000000373955118e-06
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 1.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0007747999999310196
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 2.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0008149000000230444
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 2.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.000600099999928716
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 2.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0005343999999922744
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 2.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0005399000000352316
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 2.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0007071999999652689
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 2.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0006087999998953819
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 2.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0006027000000585758
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 3.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0006256000000348649
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 3.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0005258999999568914
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 3.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0005363999999872249
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 3.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.000551999999970576
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 3.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0005508000000418178
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 3.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.000655100000017228
+    },
+    {
+      "algorithm": "spatial.idw",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "power": 3.0
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0005767000000105327
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.25752460000001065
+    },
+    {
+      "algorithm": "station.metpy_linear",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.052498200000059114
+    },
+    {
+      "algorithm": "spatial.blend",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "weight": 0.25
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 7.699999969190685e-06
+    },
+    {
+      "algorithm": "station.metpy_barnes",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05317430000002332
+    },
+    {
+      "algorithm": "station.metpy_barnes",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05413790000000063
+    },
+    {
+      "algorithm": "station.metpy_barnes",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.06834159999993972
+    },
+    {
+      "algorithm": "station.metpy_barnes",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05175350000001799
+    },
+    {
+      "algorithm": "station.metpy_barnes",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05156320000003234
+    },
+    {
+      "algorithm": "station.metpy_barnes",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.050871599999936734
+    },
+    {
+      "algorithm": "station.metpy_barnes",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05326330000002599
+    },
+    {
+      "algorithm": "station.metpy_cressman",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05275979999998981
+    },
+    {
+      "algorithm": "station.metpy_cressman",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05372429999999895
+    },
+    {
+      "algorithm": "station.metpy_cressman",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.050353999999970256
+    },
+    {
+      "algorithm": "station.metpy_cressman",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.08149779999996554
+    },
+    {
+      "algorithm": "station.metpy_cressman",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05173740000009275
+    },
+    {
+      "algorithm": "station.metpy_cressman",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05102610000005825
+    },
+    {
+      "algorithm": "station.metpy_cressman",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05207710000001953
+    },
+    {
+      "algorithm": "station.pykrige_ordinary",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.08551539999996294
+    },
+    {
+      "algorithm": "spatial.blend",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "weight": 0.5
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 8.700000080352766e-06
+    },
+    {
+      "algorithm": "station.pykrige_ordinary",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05958399999997255
+    },
+    {
+      "algorithm": "spatial.blend",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "weight": 0.5
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 8.399999956054671e-06
+    },
+    {
+      "algorithm": "station.pykrige_ordinary",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.06159909999996671
+    },
+    {
+      "algorithm": "spatial.blend",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "weight": 0.5
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 7.2999999929379555e-06
+    },
+    {
+      "algorithm": "station.pykrige_ordinary",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0633136999999806
+    },
+    {
+      "algorithm": "spatial.blend",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "weight": 0.5
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 1.0699999961616413e-05
+    },
+    {
+      "algorithm": "station.pykrige_ordinary",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0936324000000468
+    },
+    {
+      "algorithm": "spatial.blend",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "weight": 0.5
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 1.020000001972221e-05
+    },
+    {
+      "algorithm": "station.pykrige_ordinary",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.06119849999993221
+    },
+    {
+      "algorithm": "spatial.blend",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "weight": 0.5
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 7.699999969190685e-06
+    },
+    {
+      "algorithm": "station.pykrige_ordinary",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0660837000000356
+    },
+    {
+      "algorithm": "spatial.blend",
+      "phase": "search",
+      "graph": null,
+      "parameters": {
+        "weight": 0.5
+      },
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 9.400000067216752e-06
+    },
+    {
+      "algorithm": "station.pykrige_universal3d",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "FAIL",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.005639800000039941,
+      "error": "Actual retained station contract: ('INPUT_REQUIREMENT_MISSING: z, target_z and vertical_unit=m',)"
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0863065999999435
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.07036389999996118
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.07341580000002068
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.09737439999992148
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.07046370000000479
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "search",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.06763320000004569
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "deploy",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 5.600000008598727e-06
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "deploy",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.1256085999999641
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.999999989900971e-06
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.036871099999984835
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 4.699999976764957e-06
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.03713659999993979
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.2000000373955118e-06
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.0381012999999939
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.89999991057266e-06
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.03425820000006752
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.3000000030369847e-06
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.04429410000000189
+    },
+    {
+      "algorithm": "spatial.observations",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 3.999999989900971e-06
+    },
+    {
+      "algorithm": "station.pykrige_universal",
+      "phase": "validation_audit",
+      "graph": null,
+      "parameters": {},
+      "status": "PASS",
+      "fit_adjust": false,
+      "requires_training": false,
+      "seconds": 0.05655070000000251
+    }
+  ],
+  "cache_rule": "Cached node traversal has no ledger event; all new calls, including failed and probe calls, count",
+  "time_rule": "Search wall time includes proposal/portrait/quality overhead; configured deployment has its own protected deadline; all calls remain in the shared total limit; an in-flight kernel may overrun before returning"
+}

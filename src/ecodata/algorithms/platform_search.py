@@ -31,20 +31,50 @@ CURRENT_INPUT_BUDGET=dict(objective_limit=1800,total_call_limit=1800,proposal_li
 
 def with_recommendations(request, recommendations):
     """Bind advisory recipes to a scientific quantity, never to a winning score."""
-    selected=[]
+    selected=[]; graphs=[]
     for row in recommendations or []:
         if row.get('advisory_only'):continue
         scope=row.get('scope',{})
         if not scope.get('variable'):
             raise ValueError('Search recommendation requires an explicit variable scope')
         if scope['variable']!=request['variable']:continue
+        if row.get('graph') is not None:
+            # Structural admission occurs against the actual prepared resources
+            # inside the public search, never against outbound sample labels.
+            graphs.append(dict(id=str(row.get('task',''))+':'+str(row.get('id','')),
+                graph=row['graph'],reason=str(row.get('reason',''))[:600],scope=scope))
+            continue
         steps=row.get('steps')
         if not isinstance(steps,list) or not 1<=len(steps)<=8 or any(not isinstance(s,str) for s in steps):
             raise ValueError('Invalid recommended recipe')
         selected.append(dict(id=str(row.get('task',''))+':'+str(row.get('id','')),
             steps=steps,reason=str(row.get('reason',''))[:600],scope=scope))
-    if len(selected)>16:raise ValueError('At most 16 recommended recipes per request')
-    return dict(request,recommended_recipes=selected) if selected else request
+    if len(selected)+len(graphs)>16:raise ValueError('At most 16 recommendations per request')
+    result=dict(request)
+    if selected:result['recommended_recipes']=selected
+    if graphs:result['recommended_graphs']=graphs
+    return result
+
+
+def recommend_and_submit(inputs,request,evaluation,folder,*,provider,budget=None,seed=11,validation=None,progress=None):
+    """Transport-independent recommendation client of this same numerical service.
+
+    The provider sees only the public feature/contract payload. Its graph is a
+    proposal, not an objective or permission to bypass independent evaluation.
+    """
+    from ecodata.algorithms.registered_graph import recommendation_session
+    started=perf_counter()
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    with recommendation_session(provider):
+        result=submit_search(inputs,request,evaluation,folder,budget=budget,seed=seed,validation=validation,progress=progress)
+    receipts=[json.loads(path.read_text(encoding='utf8')) for path in folder.rglob('prepared_recommendation.json')]
+    costs=dict(recommendation_and_discovery_seconds=sum(row['seconds'] for row in receipts),
+        total_pipeline_seconds=perf_counter()-started,prepared_searches=len(receipts),
+        proposal_rounds=sum(len(row['attempts']) for row in receipts),search_cost=result.get('total_cost'))
+    save(folder/'recommendation_cost.json',costs)
+    result['recommendation_cost']=costs
+    return result
+
 FAMILIES={
     "spatial":{"single_source_scale","constrained_downscaling","learned_reconstruction","learned_climate_downscaling","terrain_downscaling","terrain_weather_downscaling","vertical_interpolation","soil_profile","observation_interpolation","raster_reconstruction","spatial_filter","geometric_alignment","spatiotemporal_reconstruction"},
     "temporal":{"temporal_scale","temporal_statistics","irregular_time","temporal_reconstruction","spatiotemporal_reconstruction"},
@@ -179,6 +209,14 @@ class SearchValidation(DatasetReference):
     def __call__(self,ds):
         # A fixed subset of timestamps; no successful-subset scoring.
         return super().__call__(ds.sel(time=self.reference.time))
+
+
+class RasterSearchValidation(DatasetReference):
+    """Spatial reference queue without inventing an observation timestamp."""
+    def __init__(self,reference,variable):
+        if reference.attrs.get('split')!='search_validation':raise ValueError('Explicit spatial validation split required')
+        super().__init__(reference,variable)
+        self.protocol.update(role='search_validation',used_for_selection=True,temporal_axis='NOT_APPLICABLE')
 
 
 class BlockedReference(DatasetReference):
@@ -597,6 +635,12 @@ def _submit_search(inputs,request,evaluation,folder,*,budget=None,mode="Portrait
             if type(request['soft_guidance']) is not bool:raise ValueError('soft_guidance must be boolean')
             request.setdefault('spatial_soft_guidance',request['soft_guidance'])
             parsed,audit=parse_inputs(inputs)
+            source_fields=[ds[request['variable']] for role,ds in parsed if role in {'primary','background'}]
+            if (not request.get('adapter') and source_fields and all(set(a.dims)=={'lat','lon'} for a in source_fields)
+                    and not any(role=='observations' for role,_ in parsed)):
+                from ecodata.algorithms.static_raster_search import submit as static_submit
+                return static_submit(inputs,request,evaluation,folder,budget=dict(DEFAULT_BUDGET,**(budget or {})),
+                    seed=seed,progress=progress,validation=validation)
             from ecodata.algorithms.spatial_fusion_task import applies,submit as spatial_submit
             if applies(parsed,request):
                 if evaluation is not None or validation is not None:
@@ -638,8 +682,11 @@ def _submit_search(inputs,request,evaluation,folder,*,budget=None,mode="Portrait
         raise
 
 
-def submit_file_request(config,folder):
+def submit_file_request(config,folder,*,recommendation_provider=None):
     """Toolkit JSON client. Scientific policy remains exclusively in submit_search."""
+    if recommendation_provider is not None and (config.get('mode','PortraitMutation')!='PortraitMutation'
+            or config.get('decision_policy')=='current_input' or config['request'].get('decision_policy')=='current_input'):
+        raise ValueError('Explicit graph recommendation requires the shared mutation request and declared validation protocol')
     inputs=[SearchInput(Path(item["path"]).name,item["role"],Path(item["path"]).read_bytes(),item.get("metadata")) for item in config["inputs"]]
     if config['request'].get('task')=='cross_variable_alignment':
         return process_cross_variable(inputs,config['request'],folder)
@@ -656,6 +703,9 @@ def submit_file_request(config,folder):
     if config.get('search_validation'):
         path=Path(config['search_validation']['path']);data,_=recognise_file(path.name,path.read_bytes())
         validation=SearchValidation(data[variable],variable)
+    if recommendation_provider is not None:
+        return recommend_and_submit(inputs,config['request'],evaluation,folder,provider=recommendation_provider,
+            budget=config.get('budget'),seed=config.get('seed',11),validation=validation)
     return submit_search(inputs,config["request"],evaluation,folder,budget=config.get("budget"),mode=config.get("mode","PortraitMutation"),seed=config.get("seed",11),validation=validation)
 
 

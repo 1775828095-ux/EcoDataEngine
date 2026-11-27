@@ -110,6 +110,9 @@ class GraphMutation:
         for fold in self.folds[1:]:
             self.fold_executors.append(Executor(replace(fold['context'],validation_reference=None,validation_role=None),fold['registry'],account=self.account,phase='search_fold_'+fold['id'][:12]))
         self.available=[s for s in registry.specs() if s.status=='available' and s.category!='validation']
+        from ecodata.algorithms.registered_graph import discover
+        self.discovery=discover(registry,context)
+        save(self.folder/'registry_discovery.json',self.discovery)
         self.field=dict(variable=context.variable,model=model)
         self.baseline=measure(context.sources[0].dataset,context)['metrics']
         finite_reference=np.asarray(reference.values,dtype=float)
@@ -155,9 +158,13 @@ class GraphMutation:
             self.account.protect_deployment(calls,seconds)
 
     def exhausted(self):
-        return (bool(self.stopper.reason) or self.account.exhausted() or self.attempts>=self.budget['proposal_limit']
+        return (self.execution_exhausted() or self.attempts>=self.budget['proposal_limit']
+                or self.iterations>=self.budget['proposal_limit'])
+
+    def execution_exhausted(self):
+        return (bool(self.stopper.reason) or self.account.exhausted()
                 or not self.account.can_search(max(1,len(self.folds)),self.account.reserve)
-                or self.iterations>=self.budget['proposal_limit'] or perf_counter()-self.started>=self.budget['wall_seconds'])
+                or perf_counter()-self.started>=self.budget['wall_seconds'])
 
     def node_count(self,key):
         return sum(self.records[k]['operation']!='source' for k in self.nodes(key))
@@ -446,7 +453,7 @@ class GraphMutation:
         if not self.can_evaluate(key):return None
         if self.account.total_limit is not None and self.request.get('_deployment_reexecution'):
             best=self.best();self.deployment_reserve(max(self.node_count(key),best['algorithm_nodes'] if best else 1))
-        if self.exhausted() and not (origin=='simplification' and not self.account.exhausted()): return None
+        if self.execution_exhausted() and not (origin=='simplification' and not self.account.exhausted()): return None
         self.executions+=1; started=perf_counter();before_calls=len(self.account.events);row=dict(key=key,origin=origin,parent=parent)
         try:
             output,trace=self.executor.execute(self.records,key)
@@ -521,6 +528,17 @@ class GraphMutation:
         return 'structure'
 
     def initialize_recommendations(self):
+        from ecodata.algorithms.registered_graph import execute_recommendation
+        for recommendation in self.request.get('recommended_graphs',[]):
+            receipt=dict(recommendation=recommendation,status='REJECTED',keys=[])
+            try:
+                if recommendation.get('scope',{}).get('variable')!=self.context.variable:
+                    raise ValueError('Recommended graph variable scope mismatch')
+                key=execute_recommendation(self,recommendation)
+                receipt.update(status='PASS',keys=[key])
+                if key not in self.recommended_parents:self.recommended_parents.append(key)
+            except (ValueError,KeyError,TypeError) as exc:receipt['error']=str(exc)
+            self.recommendation_receipts.append(receipt)
         for recipe in self.request.get('recommended_recipes',[]):
             receipt=dict(recipe=recipe,status='REJECTED',keys=[])
             try:
@@ -559,10 +577,11 @@ class GraphMutation:
         if initial_limit is not None and (type(initial_limit)!=int or not 1<=initial_limit<self.budget['proposal_limit']):
             raise ValueError('Initial proposal limit must reserve mutation attempts')
         available=list(self.available)
-        if initial_limit is not None:self.rng.shuffle(available)
+        self.rng.shuffle(available)
+        root_applicable={row['id'] for row in self.discovery['algorithms'] if row['root_eligible']}
+        available.sort(key=lambda spec:spec.id not in root_applicable)
         # Score every actual root-neighbour, never a random sixteen-plan pool.
-        for spec in available:
-            if initial_limit is not None and self.attempts>=initial_limit:break
+        def neighbours(spec):
             arity=spec.input_contract.get('source_arity')
             for count in ([arity] if arity is not None else range(1,len(self.roots)+1)):
                 if not count or count>len(self.roots): continue
@@ -570,10 +589,15 @@ class GraphMutation:
                     try:
                         for param in self.options(spec,parents):
                             row=self.candidate(None,None,spec,parents,param,'initial_registry_neighbour')
-                            if row: screened.append(row)
+                            yield row
                             if self.exhausted() or (initial_limit is not None and self.attempts>=initial_limit): break
                     except (ValueError,KeyError,TypeError): pass
                     if self.exhausted() or (initial_limit is not None and self.attempts>=initial_limit): break
+        # Each producer gets a turn before another consumes its entire parameter
+        # or parent-product space. The fixed seed randomises which gets first turn.
+        for row in round_robin([neighbours(spec) for spec in available]):
+            if row:screened.append(row)
+            if self.exhausted() or (initial_limit is not None and self.attempts>=initial_limit):break
         # All compatible seeds are retained; real evaluations count in the same budget.
         use_prior=self.soft_guidance and self.candidate_portraits is not None and self.selection_policy['portraits_enabled']
         for row in screened:
@@ -582,11 +606,19 @@ class GraphMutation:
         save(self.folder/'initial_screening.json',dict(rows=screened,reference_used=False,
              complete_root_scan=not self.exhausted() and (initial_limit is None or self.attempts<initial_limit),global_space_complete=False,
              random_truncation=initial_limit is not None,initial_proposal_limit=initial_limit,
-             ordering='seeded_shuffle' if initial_limit is not None else 'registry_order'))
+             ordering='seeded_producer_round_robin'))
         for key in self.roots:
             if not self.exhausted():self.execute(key,'three_portrait_initialization')
         for row in screened:
             if self.exhausted(): break
+            best=self.best()
+            # Initial discovery must not consume all measured calls before the
+            # first mutation. Retain enough for one edit of the current best;
+            # this is a resource reservation, not an algorithm preference.
+            if best is not None and self.request.get('mutation_control','random')!='none':
+                needed=max(1,self.node_count(best['key'])+1)*max(1,len(self.folds))
+                if len(self.account.events)+self.node_count(row['child'])*max(1,len(self.folds))+needed>self.account.limit:
+                    break
             self.execute(row['child'],'three_portrait_initialization')
         self.response.freeze_common()
         return self.best()
@@ -705,7 +737,7 @@ class GraphMutation:
             if row and row['child']!=sink and row['child'] not in self.evaluated:
                 candidates[row['child']]=row
             if self.exhausted() or self.attempts-begin>=allowance: break
-        if not candidates or self.exhausted():
+        if not candidates or self.execution_exhausted():
             self.empty_neighbourhoods+=1
             return None
         before=self.evaluated[sink]['metrics']['objective']
@@ -826,6 +858,9 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
         self_protocol=dict(self_protocol,selection_policy=selection_policy,history_validation=history_receipt,
             all_required_fold_ids=[f['id'] for f in folds],objective_fold_ids=selection_policy['objective_fold_ids'],
             evidence_scope='Applicable development simulations are primary, local diagnostics separate' if history else self_protocol.get('support_level','Local diagnostic support only'))
+    from ecodata.algorithms.registered_graph import apply_prepared_recommendation
+    request,recommendation_seconds=apply_prepared_recommendation(registry,context,request,folder)
+    account.started+=recommendation_seconds  # Recorded separately from the numerical search allowance.
     save(folder/'request.json',dict(request=request,inputs=audit,quality=quality,budget=budget,seed=seed,
          validation=validation.protocol,self_validation=self_protocol,handwritten_pool=False,max_depth=None))
     save(folder/'portraits.json',portraits(context,registry,model))
@@ -844,9 +879,9 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
             clean(fold['reference'].to_dataset(name=context.variable)).to_netcdf(local/'labels.nc',engine='h5netcdf')
             for j,source in enumerate(fold['context'].sources):clean(source.dataset).to_netcdf(local/f'source{j}.nc',engine='h5netcdf')
             save(local/'protocol.json',fold_specs[i]['protocol'])
-    from ecodata.algorithms.platform_search import BlockedSearchValidation
+    from ecodata.algorithms.platform_search import BlockedSearchValidation,RasterSearchValidation
     search=GraphMutation(context,registry,request,model,validation.reference,folder,budget,seed,progress,account,folds=folds,selection_policy=selection_policy,profile_context=review_profile_context,
-        evaluator=validation if isinstance(validation,BlockedSearchValidation) else None)
+        evaluator=validation if isinstance(validation,(BlockedSearchValidation,RasterSearchValidation)) else None)
     try:
         backend=request.get('mutation_control','random')
         if backend not in {'alns','random','none','fixed'}:raise ValueError('Unknown explicit mutation backend; no fallback')

@@ -39,6 +39,25 @@ COMPONENTS = {
 }
 
 
+def graph_components(registry):
+    """Existing task operations and their actual named-port arities, no rankings."""
+    from ecodata.algorithms.spatial_registry_binding import operations
+    components={
+        'spatial.idw':dict(source_arity=1,parameter_domains=dict(power=[1.,2.,3.])),
+        'spatial.affine':dict(source_arity=2,parameter_domains={}),
+        'spatial.ratio':dict(source_arity=2,parameter_domains={}),
+        'spatial.residual_idw':dict(source_arity=2,parameter_domains=dict(power=[1.,2.,3.])),
+        'spatial.blend':dict(source_arity=2,parameter_domains=dict(weight=[.25,.5,.75])),
+        **{identifier:dict(source_arity=1,parameter_domains={}) for identifier in operations(registry)}}
+    for identifier,contract in components.items():
+        names=(['left','right'] if identifier=='spatial.blend' else ['field','observations']
+            if identifier in {'spatial.affine','spatial.ratio','spatial.residual_idw'} else ['observations'])
+        contract.update(input_ports={name:'spatial_conditioning_matrix' if name=='observations' else 'spatial_estimate_pair' for name in names},
+            output_port='spatial_estimate_pair',target_geometry='Actual paired query and retained positions bound by this task',
+            applicability='Actual retained inputs and additional resource requirements checked at execution')
+    return components
+
+
 def blend_fields(left, right, weight):
     return weight * left + (1 - weight) * right
 
@@ -432,6 +451,12 @@ class SpatialSearch:
         self.task=task; self.folder=Path(folder); self.request=task.request; self.rng=np.random.default_rng(seed)
         self.seed=seed
         self.budget=budget
+        from ecodata.algorithms.platform_search import platform_registry
+        from ecodata.algorithms.spatial_registry_binding import operations
+        self.registry=platform_registry()
+        self.registry_operations=operations(self.registry) if self.request.get('registry_expansion',True) else {}
+        self.components=dict(COMPONENTS,**{identifier:dict(kind='estimate',backend=spec.backend)
+            for identifier,spec in self.registry_operations.items()})
         self.account=SearchAccount(budget['objective_limit'],budget['wall_seconds'],total_calls=budget.get('total_call_limit'))
         # Selected graph + fixed single-source comparator require a protected
         # post-selection allowance, in addition to final product deployment.
@@ -496,6 +521,7 @@ class SpatialSearch:
         save(self.folder/'evaluation_protocol.json',self.evaluation_plan)
         self.leaves=[self.intern('spatial.source',[],dict(index=i)) for i in range(len(task.fields))]
         self.leaves += [self.intern('spatial.idw',[],dict(power=p)) for p in (1.,2.,3.)]
+        self.leaves += [self.intern(identifier,[],{}) for identifier in self.registry_operations]
         if self.request.get('allow_training'):
             for i in range(len(self.folds[0]['cohort']['aux'])):self.leaves.append(self.intern('spatial.aux_affine',[],dict(index=i)))
         self.portraits=None
@@ -519,6 +545,36 @@ class SpatialSearch:
                 identities.add('auxiliary:'+str(node.parameters['index']))
         return sorted(identities)
 
+    def apply_prepared_recommendation(self):
+        """Present only the real retained cohort, never held labels or raw aliases."""
+        from ecodata.algorithms.registered_graph import has_recommender,apply_prepared_recommendation
+        if not has_recommender():return
+        from ecodata.algorithms.contracts import AlgorithmContext
+        from ecodata.core.schemas import EcoDataBundle
+        cohort=self.folds[0]['cohort'];xy=cohort['allxy'];sources=[]
+        for original,values in zip(self.task.fields,cohort['sources']):
+            dataset=xr.Dataset({self.request['variable']:(('time','point'),values)},
+                coords=dict(time=self.search_times,lat=('point',xy[:,1]),lon=('point',xy[:,0])),
+                attrs=dict(crs='EPSG:4326',source_id=original.attrs['source_id'],
+                    feature_scope='Actual first retained cohort preparation; held labels excluded'))
+            dataset[self.request['variable']].attrs=dict(original[self.request['variable']].attrs)
+            dataset[self.request['variable']].attrs.update(spatial_semantics='point',
+                support_evidence='Prepared field estimates sampled at paired positions; not original cell means or measured station labels')
+            sources.append(EcoDataBundle(dataset))
+        times=len(self.search_times);stations=len(cohort['sxy'])
+        observations=pd.DataFrame(dict(time=np.repeat(self.search_times,stations),
+            longitude=np.tile(cohort['sxy'][:,0],times),latitude=np.tile(cohort['sxy'][:,1],times),
+            value=cohort['y'].ravel(),unit=self.request['unit'],split='train'))
+        context=AlgorithmContext(tuple(sources),self.request['variable'],'continuous',observations=observations,
+            parameters=dict(paired_target_positions=xy.tolist()),
+            model_constraints=dict(unit=self.request['unit'],nonnegative=self.request.get('nonnegative',False)))
+        proposal_request=dict(self.request)
+        proposal_request.setdefault('operation','spatial_estimation')
+        updated,seconds=apply_prepared_recommendation(self.registry,context,proposal_request,self.folder,
+            components=graph_components(self.registry),resources=['observations'])
+        self.request.clear();self.request.update(updated)
+        self.account.started+=seconds
+
     def comparison_seeds(self):
         # These are scored candidates, never a forced fusion/final weighting.
         # Keep the existing random driver and component implementations intact.
@@ -533,6 +589,31 @@ class SpatialSearch:
 
     def validate_recommendations(self):
         """Compile ordered recipes into real typed parent edges, then score them."""
+        from ecodata.algorithms.registered_graph import validate
+        for proposal in self.request.get('recommended_graphs',[]):
+            receipt=dict(recommendation=proposal,status='REJECTED',keys=[])
+            try:
+                if proposal.get('scope',{}).get('variable')!=self.request['variable']:
+                    raise ValueError('Recommended graph variable scope mismatch')
+                sources=[k for k in self.leaves if self.records[k]['operation']=='spatial.source']
+                graph=validate(proposal['graph'],self.registry,len(sources),components=graph_components(self.registry),resources=['observations'])
+                bindings={f'source:{i}':key for i,key in enumerate(sources)}
+                bindings['observations']=self.intern('spatial.observations',[],{})
+                for node in graph['nodes']:
+                    operation=node['algorithm']
+                    if operation not in self.components:raise ValueError('Algorithm needs a different actual output port binding: '+operation)
+                    if len(node['parents'])!=len(self.input_names(operation)):raise ValueError('Task port arity mismatch')
+                    parameters=node['parameters']
+                    if operation in {'spatial.idw','spatial.residual_idw'}:parameters={'power':2.,**parameters}
+                    if operation=='spatial.blend':parameters={'weight':.5,**parameters}
+                    bindings[node['id']]=self.intern(operation,[bindings[p] for p in node['parents']],parameters)
+                key=bindings[graph['output']]
+                self.execute(key,'recommended_graph')
+                row=next((r for r in self.rows if r['key']==key),None)
+                receipt.update(keys=[key],status=row['status'] if row else 'BUDGET_STOP',error=row.get('error') if row else None)
+                if row and row['status']=='PASS':self.recommended_parents.append(key)
+            except (ValueError,KeyError,TypeError) as exc:receipt['error']=str(exc)
+            self.recommendation_receipts.append(receipt)
         for recipe in self.request.get('recommended_recipes',[]):
             receipt=dict(recipe=recipe,status='REJECTED',keys=[])
             try:
@@ -586,8 +667,11 @@ class SpatialSearch:
     def recommendation_parent(self):
         while self.recommended_parents:
             key=self.recommended_parents.pop(0)
-            if self.records[key]['operation'] in {'spatial.blend','spatial.idw','spatial.residual_idw'}:return key
+            return key
         return None
+
+    def recommendation_mutation_family(self,key):
+        return 'recommendation_parameters' if self.records[key]['operation'] in {'spatial.blend','spatial.idw','spatial.residual_idw'} else 'structure'
 
     def comparison_report(self,best):
         families={}
@@ -722,6 +806,8 @@ class SpatialSearch:
 
     def intern(self,op,parents,parameters):
         parents=list(parents)
+        if op in self.registry_operations and not parents:
+            parents=[self.intern('spatial.observations',[],{})]
         if op in {'spatial.idw','spatial.aux_affine','spatial.affine','spatial.ratio','spatial.residual_idw'}:
             observations=self.intern('spatial.observations',[],{})
             if op=='spatial.idw' and not parents:parents=[observations]
@@ -751,13 +837,13 @@ class SpatialSearch:
             if key in rebound:return rebound[key]
             if key in visiting:raise ValueError('Cycle in spatial graph')
             visiting.add(key);row=graph['records'][key]
-            if row['operation'] not in COMPONENTS:raise ValueError('Unknown spatial component')
+            if row['operation'] not in self.components:raise ValueError('Unknown spatial component')
             rebound[key]=self.intern(row['operation'],[bind(p) for p in row['parents']],row['parameters'])
             visiting.remove(key);return rebound[key]
         return bind(graph['key'])
 
-    @staticmethod
-    def input_names(op):
+    def input_names(self,op):
+        if op in self.registry_operations:return ['observations']
         if op in {'spatial.source','spatial.observations','spatial.auxiliary'}:return []
         if op=='spatial.idw':return ['observations']
         if op=='spatial.aux_affine':return ['covariate','observations']
@@ -777,7 +863,10 @@ class SpatialSearch:
                     detail={}
                     output_kind='spatial_estimate_pair'
                     y=inputs['observations'].value if 'observations' in inputs else None
-                    if op=='spatial.observations':
+                    if op in self.registry_operations:
+                        from ecodata.algorithms.spatial_registry_binding import execute
+                        result,detail=execute(self.registry.get(op),y,cohort,self.request)
+                    elif op=='spatial.observations':
                         result=cohort['y'].copy();output_kind='spatial_conditioning_matrix'
                         detail.update(coordinates=sxy.tolist(),role='retained observations only')
                     elif op=='spatial.auxiliary':
@@ -817,12 +906,12 @@ class SpatialSearch:
             return run
         adapters={}
         observations=Port('spatial_conditioning_matrix',('units',));covariate=Port('spatial_covariate_matrix',('units',))
-        for op in COMPONENTS:
+        for op in self.components:
             names=self.input_names(op)
             output=observations if op=='spatial.observations' else covariate if op=='spatial.auxiliary' else port
             ports={n:observations if n=='observations' else covariate if n=='covariate' else port for n in names}
             adapters[op,'run']=NodeAdapter(ports,{'field':output},operation(op),version=VERSION,
-                decision_contract=dict(COMPONENTS[op],scope='paired spatial-estimate task component; not a new scientific method'))
+                decision_contract=dict(self.components[op],scope='paired spatial-estimate task component; not a new scientific method'))
         return NumericalDAGExecutor(adapters,version=VERSION)
 
     def execute(self,key,phase='initial'):
@@ -1041,6 +1130,8 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     save(folder/'request.json',dict(request=request,inputs=audit,budget=budget,seed=seed,version=VERSION))
     if progress:progress('搜索准备：按固定评价队列比较真实候选；评分不等于独立实测精度，搜索不保证全局最优')
     search=SpatialSearch(task,folder,budget,seed,model=model,progress=progress);search.budget=budget
+    search.apply_prepared_recommendation()
+    save(folder/'request.json',dict(request=request,inputs=audit,budget=budget,seed=seed,version=VERSION))
     search.validate_recommendations()
     if progress:
         for receipt in search.recommendation_receipts:
@@ -1063,6 +1154,10 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     if requested:save(folder/'confirmed_initial.json',seed_receipt)
     for key in leaves:
         if search.exhausted():break
+        # New Registry neighbours remain reachable in mutation. Do not consume
+        # the whole numerical budget evaluating every newly discovered leaf
+        # before the first graph edit (legacy comparison seeds stay explicit).
+        if search.records[key]['operation'] in search.registry_operations:continue
         search.execute(key)
     for key in search.comparison_seeds():
         if search.exhausted():break

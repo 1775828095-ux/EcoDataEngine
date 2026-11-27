@@ -87,6 +87,23 @@ class SemanticFeatureExtractor:
     _cache = OrderedDict()
 
     @staticmethod
+    def task_target(context, target):
+        """Translate actual public geometry/time resources to existing rule facts."""
+        result=dict(target)
+        if context.target_lat is not None and context.target_lon is not None:
+            known=all({'lat','lon'}<=set(source.dataset.coords) for source in context.sources)
+            if known:
+                result.setdefault('grid_change',any(not np.array_equal(source.dataset[axis],values)
+                    for source in context.sources for axis,values in (('lat',context.target_lat),('lon',context.target_lon))))
+        if 'operation' not in result:
+            if result.get('task')=='spatial':result['operation']='spatial_processing'
+            elif result.get('task')=='temporal':
+                result['operation']=('temporal_processing' if context.parameters.get('target_time_frequency') else
+                    'temporal_missing_recovery' if result.get('target_times') else 'temporal_processing')
+        result.setdefault('require_complete_coverage',context.parameters.get('require_complete_output',False))
+        return result
+
+    @staticmethod
     def raster_features(dataset, variable, target_size):
         """Observable shape statistics shared with the existing raster router."""
         from scipy.ndimage import maximum_filter

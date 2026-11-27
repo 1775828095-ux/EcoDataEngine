@@ -411,7 +411,9 @@ def run(scan, task_id, task, folder, model_id, progress):
         raise ValueError("同一内容不能作为两个独立来源")
     raw_prepared = datasets
     restore_axes = {}
-    has_spatial_search = any(any(step in SPATIAL_SEEDS for step in recipe) for recipe in task["recipes"])
+    from ecodata.algorithms.registered_graph import has_recommender
+    autonomous=has_recommender() and task['action']=='fusion'
+    has_spatial_search = autonomous or any(any(step in SPATIAL_SEEDS for step in recipe) for recipe in task["recipes"])
     if task["action"] == "fusion" and has_spatial_search:
         converted = [spatial(ds, variable) for ds in datasets]
         datasets = [ds for ds, _ in converted]
@@ -435,7 +437,12 @@ def run(scan, task_id, task, folder, model_id, progress):
         if len(alignments)>1:
             working,time_report = apply_time(working,variable,alignments[0])
             process["time_alignment"] = time_report
-        if method in WEIGHTED:
+        if method in WEIGHTED and autonomous:
+            # Preserve both actual sources. The public prepared-data service,
+            # not a legacy complete weighted recipe, selects and runs the graph.
+            output=working
+            process['deferred_graph_selection']=True
+        elif method in WEIGHTED:
             from ecodata.fusion.alignment import align_and_fuse
             fused,report = align_and_fuse(raw_prepared,variable,method=WEIGHTED[method])
             output = [fused.dataset]
@@ -465,7 +472,7 @@ def run(scan, task_id, task, folder, model_id, progress):
             output = working
         else:
             raise ValueError("未登记的对齐算法")
-        if task["action"] == "fusion" and method not in WEIGHTED:
+        if task["action"] == "fusion" and (method not in WEIGHTED or autonomous):
             times = common_times(output)
             if not len(times):
                 raise ValueError("两源没有可比较的共同时间")

@@ -20,7 +20,7 @@ from ecodata.algorithms.daily_reconstruction import gap_lengths
 from ecodata.algorithms.numerical_search import save
 from ecodata.core.schemas import EcoDataBundle
 
-CONTRACT='autonomous_registry_reconstruction_v1'
+CONTRACT='autonomous_registry_reconstruction_v2_explicit_resources'
 
 
 def round_robin(streams):
@@ -153,6 +153,13 @@ class Executor:
     def __init__(self,context,registry,*,account=None,phase='search'):
         self.context=context;self.registry=registry;self.adapters={};self.calls=0
         self.account=account;self.phase=phase
+        self.context_resources={}
+        if context.observations is not None:self.context_resources['observations']=context.observations
+        if context.auxiliaries:self.context_resources['auxiliaries']=context.auxiliaries
+        for name in ('training_reference','historical_simulation','prior_resources','degradation_operator','coarse_reference','target_grid'):
+            if name in context.parameters:self.context_resources[name]=context.parameters[name]
+        self.adapters['resource.context','run']=NodeAdapter({}, {'resource':Port('task_resource',('role',))},
+            lambda inputs,params,external:{'resource':external['resource:'+params['resource']]})
         def source(_inputs,params,external):return {'field':external[params['source']]}
         self.adapters['source','run']=NodeAdapter({}, {'field':Port('working_field',('contract',))},source)
         self.adapters['resource.state','run']=NodeAdapter({}, {'state':Port('fitted_state',('source_id','training_end'))},
@@ -187,11 +194,16 @@ class Executor:
             if row['operation']=='source':continue
             identifier=row['operation'];arity=len(row['parents']);mode='arity_'+str(arity)
             from ecodata.algorithms.series_fusion import PriorSeriesCalibration
-            state_required=isinstance(self.registry.get(identifier),PriorSeriesCalibration)
+            state_required=(isinstance(self.registry.get(identifier),PriorSeriesCalibration)
+                or bool(self.registry.get(identifier).spec.input_contract.get('requires_fitted_state')))
             if (identifier,mode) in self.adapters:continue
             def compute(inputs,parameters,external,identifier=identifier,arity=arity,state_required=state_required):
+                resources={name:inputs['resource_'+name].value for name in self.context_resources}
+                scientific={k:v for k,v in self.context.parameters.items() if k not in self.context_resources and k!='fitted_state'}
+                scientific.update({k:v for k,v in resources.items() if k not in {'observations','auxiliaries'}})
                 context=replace(self.context,sources=tuple(inputs['p'+str(i)].value for i in range(arity)),
-                    parameters=dict(self.context.parameters,**{k:v for k,v in parameters.items() if k!='mode'}),
+                    observations=resources.get('observations'),auxiliaries=resources.get('auxiliaries',()),
+                    parameters=dict(scientific,**{k:v for k,v in parameters.items() if k!='mode'}),
                     validation_reference=None,validation_role=None)
                 if state_required:
                     context=replace(context,parameters=dict(context.parameters,fitted_state=inputs['state'].value,
@@ -227,7 +239,9 @@ class Executor:
                             report=dict(result.report,axis_order_normalized='time,lat,lon; values unchanged'))
                 return {'field':Artifact('working_field',result.data,dict(contract=CONTRACT,algorithm=identifier,report=result.report))}
             self.adapters[identifier,mode]=NodeAdapter(
-                dict({'p'+str(i):Port('working_field',('contract',)) for i in range(arity)},**({'state':Port('fitted_state',('source_id','training_end'))} if state_required else {})),
+                dict({'p'+str(i):Port('working_field',('contract',)) for i in range(arity)},
+                    **{'resource_'+name:Port('task_resource',('role',)) for name in self.context_resources},
+                    **({'state':Port('fitted_state',('source_id','training_end'))} if state_required else {})),
                 {'field':Port('working_field',('contract',))},compute)
             self.engine.adapters[identifier,mode]=self.adapters[identifier,mode]
         nodes=[];visited=set()
@@ -238,8 +252,15 @@ class Executor:
             params=dict(row['parameters'])
             if row['operation']!='source':params['mode']='arity_'+str(len(row['parents']))
             bindings={'p'+str(i):(p,'field') for i,p in enumerate(row['parents'])}
+            if row['operation']!='source':
+                for name in self.context_resources:
+                    resource='__resource_'+name
+                    if resource not in visited:
+                        nodes.append(Node(resource,'resource.context',parameters={'resource':name}));visited.add(resource)
+                    bindings['resource_'+name]=(resource,'resource')
             from ecodata.algorithms.series_fusion import PriorSeriesCalibration
-            if row['operation']!='source' and isinstance(self.registry.get(row['operation']),PriorSeriesCalibration):
+            if row['operation']!='source' and (isinstance(self.registry.get(row['operation']),PriorSeriesCalibration)
+                    or self.registry.get(row['operation']).spec.input_contract.get('requires_fitted_state')):
                 if '__fitted_state' not in visited:
                     nodes.append(Node('__fitted_state','resource.state',parameters={'source':'fitted_state'}))
                     visited.add('__fitted_state')
@@ -263,6 +284,8 @@ class Executor:
         visit(sink)
         external={'source'+str(i):Artifact('working_field',source,dict(contract=CONTRACT))
                   for i,source in enumerate(self.context.sources)}
+        external.update({'resource:'+name:Artifact('task_resource',value,dict(role=name))
+                         for name,value in self.context_resources.items()})
         if '__fitted_state' in visited:
             state=self.context.parameters.get('fitted_state')
             if state is None:raise ValueError('Missing actual fitted-state parent')
