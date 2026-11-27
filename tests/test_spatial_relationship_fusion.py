@@ -213,7 +213,7 @@ def test_fixed_bank_scores_real_controls_without_selecting_or_seeding(tmp_path):
     result=api.evaluate_graph_bank(items,q,graphs,tmp_path/'bank',budget=BUDGET)
     assert result['product'] is None and not result['selection_performed']
     assert result['control_keys']['idw']!=result['control_keys']['background']
-    assert all(r['status']=='PASS' and r['metrics']['count']==40 for r in result['controls'].values())
+    assert all(r['status']=='PASS' and r['metrics']['count']==35 for r in result['controls'].values())
 
 
 @pytest.mark.parametrize('conflict',[False,True])

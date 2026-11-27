@@ -1,0 +1,23 @@
+{
+  "version": "reference_pareto_v1",
+  "libraries": {
+    "scores": "2.7.0",
+    "pymoo": "0.6.2"
+  },
+  "sources": [
+    "https://github.com/nci/scores",
+    "https://github.com/anyoptimization/pymoo"
+  ],
+  "FSS": "Official scores.spatial.fss_2d, no zero-padding, declared reference-unit threshold only",
+  "spectrum": "Retained NumPy diagnostic, not pysteps RAPSD",
+  "choice": "Non-dominated measured error/gradient/available FSS; no invented weights or universal winner",
+  "mutation": "Each measured non-error non-dominated parent visited once under existing budget",
+  "required_support": "Same real reference coordinates, unit, mask fingerprint; unknown not scored as zero",
+  "budget": {
+    "objective_limit": 130,
+    "total_call_limit": 180,
+    "proposal_limit": 100,
+    "wall_seconds": 45
+  },
+  "seed": 11
+}

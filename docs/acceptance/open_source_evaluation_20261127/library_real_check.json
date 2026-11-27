@@ -1,0 +1,118 @@
+{
+  "scope": "Frozen historical reduced-scale numerical predictions; full-field retrospective library check, NOT independent acceptance or new ranking",
+  "threshold_basis": "273.15 K water freezing convention; threshold fixed without inspecting scores",
+  "records": [
+    {
+      "key": "c22e5f138a9850192746",
+      "spatial_structure": {
+        "version": "spatial_structure_v2_scores",
+        "status": "PASS",
+        "reference_required": true,
+        "original_shape": {
+          "sample": 9,
+          "lat": 8,
+          "lon": 8
+        },
+        "evaluated_bounding_shape": {
+          "sample": 9,
+          "lat": 8,
+          "lon": 8
+        },
+        "support_sha256": "3eae13600358e8cccc10aec64066d4d8289d2869a4aafcd751dc387490a6a359",
+        "gradient_RMSE_per_cell": 2.32275792238388,
+        "gradient_pairs": 1008,
+        "unit": "K",
+        "interpretation": "Gradient per grid cell and normalized frequency shape; not physical-km spectra or independent truth",
+        "used_for_selection": false,
+        "spectrum_status": "PASS",
+        "FSS_status": "EVALUATED",
+        "spectrum_frames": 9,
+        "total_frames": 9,
+        "backend": {
+          "spectrum": "Existing NumPy normalized 2D FFT diagnostic; not a new reconstruction kernel",
+          "FSS": {
+            "package": "scores",
+            "version": "2.7.0",
+            "source": "https://github.com/nci/scores"
+          }
+        },
+        "normalized_spectrum_L1": 0.2007064523555149,
+        "FSS": [
+          {
+            "scale_pixels": 1,
+            "value": 0.8981818181818182,
+            "status": "PASS"
+          },
+          {
+            "scale_pixels": 3,
+            "value": 0.9596407038267504,
+            "status": "PASS"
+          },
+          {
+            "scale_pixels": 5,
+            "value": 0.968526722835412,
+            "status": "PASS"
+          }
+        ],
+        "event_threshold": 273.15,
+        "event_comparison": "> (scores default)"
+      }
+    },
+    {
+      "key": "25575840a9ed8f4aefc4",
+      "spatial_structure": {
+        "version": "spatial_structure_v2_scores",
+        "status": "PASS",
+        "reference_required": true,
+        "original_shape": {
+          "sample": 9,
+          "lat": 8,
+          "lon": 8
+        },
+        "evaluated_bounding_shape": {
+          "sample": 9,
+          "lat": 8,
+          "lon": 8
+        },
+        "support_sha256": "3eae13600358e8cccc10aec64066d4d8289d2869a4aafcd751dc387490a6a359",
+        "gradient_RMSE_per_cell": 3.540833312768481,
+        "gradient_pairs": 1008,
+        "unit": "K",
+        "interpretation": "Gradient per grid cell and normalized frequency shape; not physical-km spectra or independent truth",
+        "used_for_selection": false,
+        "spectrum_status": "PASS",
+        "FSS_status": "EVALUATED",
+        "spectrum_frames": 9,
+        "total_frames": 9,
+        "backend": {
+          "spectrum": "Existing NumPy normalized 2D FFT diagnostic; not a new reconstruction kernel",
+          "FSS": {
+            "package": "scores",
+            "version": "2.7.0",
+            "source": "https://github.com/nci/scores"
+          }
+        },
+        "normalized_spectrum_L1": 0.23186970804360196,
+        "FSS": [
+          {
+            "scale_pixels": 1,
+            "value": 0.8868613138686131,
+            "status": "PASS"
+          },
+          {
+            "scale_pixels": 3,
+            "value": 0.9614946168461052,
+            "status": "PASS"
+          },
+          {
+            "scale_pixels": 5,
+            "value": 0.9711277715744138,
+            "status": "PASS"
+          }
+        ],
+        "event_threshold": 273.15,
+        "event_comparison": "> (scores default)"
+      }
+    }
+  ]
+}

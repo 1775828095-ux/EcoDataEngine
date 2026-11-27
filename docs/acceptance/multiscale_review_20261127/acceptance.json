@@ -1,0 +1,115 @@
+{
+  "version": "multiscale_review_v1",
+  "tests": {
+    "targeted2.xml": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "62",
+      "time": "43.830",
+      "timestamp": "2026-11-27T21:34:52.402703+08:00",
+      "hostname": "LAPTOP-E2PBSC6K"
+    },
+    "display-tests2.xml": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "9",
+      "time": "7.864",
+      "timestamp": "2026-11-27T21:36:29.610810+08:00",
+      "hostname": "LAPTOP-E2PBSC6K"
+    }
+  },
+  "source_sha256": {
+    "src/ecodata/algorithms/platform_search.py": "13d7661b0daebac5132b13ff08b8a01b4fbee55d86179a90a9965046be9150d2",
+    "src/ecodata/algorithms/spatial_fusion_task.py": "375f2d14d550410291a931f880d8fcfae3fd18bcb56bdee82344159cd3e9269f",
+    "src/ecodata/desktop/output_review.py": "6b9bbb20c26159b115dd99be34300905e4b348fe40d7bed2f567c371c7c09047",
+    "src/ecodata/desktop/result_cards.py": "1c9eaf4a328d5a83e1f537fbb5491b2c0bd21fc8e76417e6188ee82455391bf6",
+    "src/ecodata/desktop/service.py": "26ce16c2ccabe7f03fa15031a162824dccefb6cafede382404ffa08e2dc6b2ed",
+    "src/ecodata/desktop/windowed_grid_recipe.py": "143e66db66c059e2359b8bf5adb0396738e57aaf3b3af1321dea19d5e05c26b2",
+    "src/ecodata/evaluation/blocked_confirmation.py": "0ce8da10f8883a952e49c6e47d8aa5c73ca57a9dbf6def8898482a453b34bac2",
+    "src/ecodata/algorithms/spatial_selection_protocol.py": "594d8969ead4042aa0f94aa5d7b4f2b250ff84f46b683d092bcaa5d781098a43",
+    "src/ecodata/evaluation/spatial_structure.py": "36cbc4701971d3ca1f017b9eb23fe9ddf9541146f023068fe1c1ff3e8e138e34",
+    "tests/test_multiscale_review.py": "2af8ec24307ee3c9c2f9d56c77f1337c74673bfbcdc6904b3f4233649445d91c",
+    "tests/test_spatial_relationship_fusion.py": "b9e0ac46681417052d820aa2180d91bbf4058f43183aa7db30e0d807ca7cc2ca"
+  },
+  "real_case": {
+    "input": "input-normalized.nc",
+    "source": "Existing NCEP product, not independent observations",
+    "dates": 12,
+    "selection_dates": 9,
+    "confirmation_dates": 3,
+    "counts": {
+      "evaluated": 11,
+      "proposals": 100
+    },
+    "retained_products": [
+      {
+        "role": "baseline",
+        "key": "c22e5f138a9850192746",
+        "status": "QUALITY_VALID",
+        "product": "output\\multiscale_review_20261127\\real_ncep_v2\\run\\group-1\\station-1\\search\\product.nc",
+        "default": true,
+        "enhancement_confirmed": false
+      },
+      {
+        "role": "ds_recommendation_0",
+        "key": "25575840a9ed8f4aefc4",
+        "status": "QUALITY_VALID",
+        "product": "output\\multiscale_review_20261127\\real_ncep_v2\\run\\group-1\\station-1\\search\\ds_recommendation_0.nc",
+        "default": false,
+        "enhancement_confirmed": false
+      }
+    ],
+    "scope_comparisons": [
+      {
+        "candidate": "selected",
+        "key": "c22e5f138a9850192746",
+        "phase": "selection",
+        "status": "EVALUATED",
+        "candidate_better": 0,
+        "baseline_better": 0,
+        "equivalent": 108
+      },
+      {
+        "candidate": "selected",
+        "key": "c22e5f138a9850192746",
+        "phase": "confirmation",
+        "status": "EVALUATED",
+        "candidate_better": 0,
+        "baseline_better": 0,
+        "equivalent": 12
+      },
+      {
+        "candidate": "ds_recommendation_0",
+        "key": "25575840a9ed8f4aefc4",
+        "phase": "selection",
+        "status": "EVALUATED",
+        "candidate_better": 40,
+        "baseline_better": 68,
+        "equivalent": 0
+      },
+      {
+        "candidate": "ds_recommendation_0",
+        "key": "25575840a9ed8f4aefc4",
+        "phase": "confirmation",
+        "status": "EVALUATED",
+        "candidate_better": 5,
+        "baseline_better": 7,
+        "equivalent": 0
+      }
+    ],
+    "limitations": [
+      "Structure diagnostics do not replace RMSE with uncalibrated weights",
+      "No new Bayesian batch acceptance added",
+      "No three-source collocation without suitable third source",
+      "Real raster mask prevents full-spectrum scoring; no zero filling",
+      "No actual precipitation FSS case run; boundary tests only",
+      "No manual desktop upload rerun"
+    ]
+  },
+  "failed_case": "real_ncep rejected native 0..360 longitude outside declared signed-longitude contract; normalized representation in client, source untouched",
+  "last_change": "Explicit reserve reports its actual dates rather than default split; no strategy changes"
+}

@@ -109,6 +109,8 @@ def fusion_evidence(search):
         delta=single-multi
     return dict(post_mutation_acceptance={k:v for k,v in search.get('post_mutation_acceptance',{}).items() if k in {'version','status','recommended','frozen_graph_verified','final_review_status','probability_guarantee'}},status=assessment.get("status","NOT_ASSESSED"),
                 recommendation_review=public_summary(search.get('recommendation_review')),delivery_status=search.get('delivery_status'),
+                scope_report=search.get('scope_report'),retained_products=search.get('retained_products',[]),
+                reference_frontier=search.get('reference_frontier'),choice_scope=search.get('choice_scope'),
                 delivered_graph_key=(search.get('delivered_graph') or {}).get('key'),
                 selection_scores=families,selected_family=comparison.get("selected_family"),
                 holdout_scores=schemes,holdout_rmse_reduction=delta,
@@ -633,6 +635,10 @@ def run(state, folder, confirmed, progress=None, *, model_id=None):
         trial=TrialResult(ds,ds,(),{},0)
         product,name,_=trial.export("NetCDF")
         files=[(name,product)]
+        for option in search.get('retained_products',[]):
+            if option.get('status')=='QUALITY_VALID':
+                from pathlib import Path
+                files.append((option['role']+'.nc',Path(option['product']).read_bytes()))
         report=trial.report
     elif mode=="native":
         from ecodata.interface.engineering_conversion import convert_input
@@ -725,6 +731,10 @@ def bundle(result, planning=None, review=None):
     files=[*result["files"],("desktop_validation.json",dump(audit).encode("utf8")),
            ('desktop_format_conversion.json',dump(format_conversion(result)).encode('utf8')),
            ('desktop_issues.json',dump(unique(output(result,review))).encode('utf8'))]
+    from .output_review import searches
+    scopes={name:scope for name,item in searches(result).items()
+        if (scope:=item.get('scope_report') or item.get('evidence',{}).get('scope_report'))}
+    if scopes:files.append(('scope_reports.json',dump(scopes).encode('utf8')))
     data=package_results(files,[dict(报告=result["original_report"])],result["local"]["artifacts"])
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         if z.testzip() or any(z.read(name)!=raw for name,raw in files): raise ValueError("ZIP 回读校验失败")

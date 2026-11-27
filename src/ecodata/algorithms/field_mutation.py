@@ -992,7 +992,11 @@ def submit(inputs,request,evaluation,folder,*,budget,seed=11,validation=None,pro
                 source_baseline_key=source_baseline['key'] if best and source_baseline else None,
                 graph=search.records,validation_protocol=validation.protocol,
                 reference_used_for_selection='Search validation only; confirmation not read yet'))
+        from ecodata.algorithms.reliable_selection import reference_frontier
+        structure_selection=reference_frontier(search.evaluated.values())
         result=dict(service='PlatformSearch/PortraitMutation',status='PASS' if best else ('NO_EXECUTABLE_CURRENT_GRAPH' if deployment is not None else 'NO_ELIGIBLE_RESULT'),
+          reference_frontier=structure_selection,overall_optimum_claim=False,
+          choice_scope='ERROR_STRUCTURE_TRADEOFF_NO_UNIVERSAL_WINNER' if structure_selection.get('tradeoff') else 'ERROR_INCUMBENT_WITH_STRUCTURE_CHECK' if structure_selection.get('keys') else 'STRUCTURE_NOT_RANKABLE',
           best=best,initial_best=initial,product=str(product_path) if product_path else None,
           source_baselines=[r for r in search.evaluated.values() if r['origin']=='source_baseline'],
           bank_rows=bank_rows,selected_bank_id=next((name for name,key in bank_keys.items() if best and key==best['key']),None),

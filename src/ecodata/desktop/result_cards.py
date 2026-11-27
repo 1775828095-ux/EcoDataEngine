@@ -117,6 +117,15 @@ class ResultCards(QWidget):
                         if isinstance(metrics.get(key),(int,float)) and isfinite(metrics[key])]
                 if scores:
                     body.addWidget(label('   ·   '.join(scores),'selectionMetrics'))
+                structure=metrics.get('spatial_structure') or {}
+                if structure:
+                    detail='空间结构：'+structure.get('status','未评价')
+                    if structure.get('gradient_RMSE_per_cell') is not None:
+                        detail+=f"；梯度误差 {structure['gradient_RMSE_per_cell']:.4g} / 网格间隔"
+                    if structure.get('normalized_spectrum_L1') is not None:
+                        detail+=f"；频谱形状差 {structure['normalized_spectrum_L1']:.4g}"
+                    if structure.get('FSS_status')=='THRESHOLD_NOT_DECLARED':detail+='；未声明事件阈值，不计算FSS'
+                    body.addWidget(label(detail+'。结构诊断不等于独立精度认证。'))
                 if row.get('parameters'):
                     body.addWidget(label(f"参数：{row['parameters']}"))
             if row.get('proposed'):

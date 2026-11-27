@@ -1,0 +1,206 @@
+{
+  "protocol": {
+    "version": "reference_pareto_v1",
+    "libraries": {
+      "scores": "2.7.0",
+      "pymoo": "0.6.2"
+    },
+    "sources": [
+      "https://github.com/nci/scores",
+      "https://github.com/anyoptimization/pymoo"
+    ],
+    "FSS": "Official scores.spatial.fss_2d, no zero-padding, declared reference-unit threshold only",
+    "spectrum": "Retained NumPy diagnostic, not pysteps RAPSD",
+    "choice": "Non-dominated measured error/gradient/available FSS; no invented weights or universal winner",
+    "mutation": "Each measured non-error non-dominated parent visited once under existing budget",
+    "required_support": "Same real reference coordinates, unit, mask fingerprint; unknown not scored as zero",
+    "budget": {
+      "objective_limit": 130,
+      "total_call_limit": 180,
+      "proposal_limit": 100,
+      "wall_seconds": 45
+    },
+    "seed": 11
+  },
+  "source_sha256": {
+    "pyproject.toml": "28be2658fd7bd4b2d8458f1ba19c7833c4d5630062ed18da4cfdeb6ca79647c7",
+    "src/ecodata/evaluation/spatial_structure.py": "f4efda0239dbf1abcb8552383cd0dda2fbc1a74a5a9e6cead5adec5f4023f72a",
+    "src/ecodata/algorithms/reliable_selection.py": "6a879aa43baec48df5ab06cf4930cf865ee474f932e6884ae4dedddcfaab4c72",
+    "src/ecodata/algorithms/spatial_fusion_task.py": "6bb810a4328e091972a583e1e6beff498a72f8c50d033d4d66755dbc53979572",
+    "src/ecodata/algorithms/field_mutation.py": "61b25554e9a8ffd41fc757533b3fe280c0127f7d56112457caf8c266ad5d2982",
+    "src/ecodata/desktop/service.py": "46850f27a5d714e2f4482016ade6e4c75b3512dab00327db4fa9699a3ae1973b",
+    "src/ecodata/desktop/output_review.py": "82fed885b5a52610d96fe4c066b152771997721813a7bed44d827ef77b42829d",
+    "tests/test_reference_frontier.py": "fb1591102622ebae8dc36668ec03968c89a7ca06ca4932c4c71a1aa388b90f35"
+  },
+  "tests": {
+    "final-tests2.xml": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "75",
+      "time": "46.608",
+      "timestamp": "2026-11-27T21:54:52.443722+08:00",
+      "hostname": "LAPTOP-E2PBSC6K"
+    },
+    "display-tests.xml": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "14",
+      "time": "7.005",
+      "timestamp": "2026-11-27T21:56:37.352677+08:00",
+      "hostname": "LAPTOP-E2PBSC6K"
+    },
+    "final-smoke.xml": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "11",
+      "time": "3.193",
+      "timestamp": "2026-11-27T21:57:37.889335+08:00",
+      "hostname": "LAPTOP-E2PBSC6K"
+    }
+  },
+  "real": {
+    "directory": "real_ncep_v3",
+    "input_sha256": "d4be06fc95d38954c5eb65769710e053c8cebad80ff93682922603bf739c0607",
+    "counts": {
+      "evaluated": 11,
+      "proposals": 100
+    },
+    "total_calls": 94,
+    "frontier": {
+      "version": "reference_pareto_v1",
+      "weights": null,
+      "used_reference_only": true,
+      "reference_accuracy": "Not established independently by a product reconstruction reference",
+      "status": "TRADEOFF",
+      "keys": [
+        "2c053fcc74e3d7f35328",
+        "c22e5f138a9850192746"
+      ],
+      "metrics": [
+        "reference_error",
+        "gradient_RMSE_per_cell"
+      ],
+      "minimum_error_key": "c22e5f138a9850192746",
+      "minimum_gradient_error_key": "2c053fcc74e3d7f35328",
+      "tradeoff": true,
+      "support_sha256": "585a607cee96b70b7c163e58bfdc90dbdd389a012d8ba578704a44149fd65330",
+      "universal_winner": false,
+      "rule": "Exclude Pareto-dominated measured candidates; retain genuine tradeoffs without invented weights",
+      "evidence": [
+        {
+          "key": "25575840a9ed8f4aefc4",
+          "losses": [
+            2.3667311378986353,
+            3.7392519920268743
+          ],
+          "nondominated": false
+        },
+        {
+          "key": "2c053fcc74e3d7f35328",
+          "losses": [
+            2.464790480726204,
+            2.431318930783471
+          ],
+          "nondominated": true
+        },
+        {
+          "key": "86b72a5cba316b6029c8",
+          "losses": [
+            2.2641085735414275,
+            2.545206726003741
+          ],
+          "nondominated": false
+        },
+        {
+          "key": "9d7d330a6eb3953331a0",
+          "losses": [
+            2.2649011365022216,
+            3.0732504603080475
+          ],
+          "nondominated": false
+        },
+        {
+          "key": "a0b17d051bb8095d5541",
+          "losses": [
+            2.8580179886149333,
+            2.8029514462920724
+          ],
+          "nondominated": false
+        },
+        {
+          "key": "b17105ad095184759027",
+          "losses": [
+            5.399697169272439,
+            3.6198351582769863
+          ],
+          "nondominated": false
+        },
+        {
+          "key": "bded0fd8a4a050eb829c",
+          "losses": [
+            4.571609235269077,
+            3.1942996492744284
+          ],
+          "nondominated": false
+        },
+        {
+          "key": "c22e5f138a9850192746",
+          "losses": [
+            2.0603022091720566,
+            2.502739852243421
+          ],
+          "nondominated": true
+        }
+      ]
+    },
+    "structure_parent_keys": [
+      "2c053fcc74e3d7f35328",
+      "a0b17d051bb8095d5541"
+    ],
+    "retained_products": [
+      {
+        "role": "baseline",
+        "key": "c22e5f138a9850192746",
+        "status": "QUALITY_VALID",
+        "product": "output\\open_source_evaluation_20261127\\real_ncep_v3\\run\\group-1\\station-1\\search\\product.nc",
+        "default": true,
+        "enhancement_confirmed": false
+      },
+      {
+        "role": "structure_preferred",
+        "key": "2c053fcc74e3d7f35328",
+        "status": "QUALITY_VALID",
+        "product": "output\\open_source_evaluation_20261127\\real_ncep_v3\\run\\group-1\\station-1\\search\\structure_preferred.nc",
+        "default": false,
+        "enhancement_confirmed": false
+      },
+      {
+        "role": "ds_recommendation_0",
+        "key": "25575840a9ed8f4aefc4",
+        "status": "QUALITY_VALID",
+        "product": "output\\open_source_evaluation_20261127\\real_ncep_v3\\run\\group-1\\station-1\\search\\ds_recommendation_0.nc",
+        "default": false,
+        "enhancement_confirmed": false
+      }
+    ],
+    "actual_new_API_calls_in_final_replay": 0,
+    "cache": "Exact payload SHA matched original successful online DS response; all numerical calculations fresh"
+  },
+  "limitations": [
+    "NCEP product reconstruction, not independent instrument truth or multi-source advantage",
+    "FSS real check uses exposed historical numerical arrays, retrospective diagnostic only",
+    "No manual desktop upload rerun",
+    "Default deployed error incumbent still subject to existing independent gate; not a multi-objective universal optimum",
+    "Metadata-only final annotations covered by smoke tests; final frontier reproduced exactly from real measured rows"
+  ],
+  "failures": [
+    "pysteps binary unavailable on Windows; source build encoding issue and dependency build did not complete; replaced with scores",
+    "First real run numeric PASS but report JSON was misread as data table; moved audit report to shared ZIP packaging and replayed end to end"
+  ]
+}

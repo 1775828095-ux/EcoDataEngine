@@ -20,6 +20,27 @@ def spatial_blocks(meta):
     return codes[0] * (side + 1) + codes[1]
 
 
+def split_dates(times):
+    """Reserve whole later dates, never split one date across the two stages."""
+    import pandas as pd
+    clock=pd.DatetimeIndex(times)
+    if clock.hasnans or clock.has_duplicates or not clock.is_monotonic_increasing:
+        raise ValueError('Date partition needs unique increasing timestamps')
+    days=clock.normalize();unique=days.unique()
+    # Existing review requires three dates per stage. Less data is still
+    # processable, but cannot establish cross-date transfer.
+    held=max(3,int(np.ceil(len(unique)*.2))) if len(unique)>=6 else (1 if len(unique)>1 else 0)
+    confirmation=clock[days.isin(unique[-held:])] if held else clock[:0]
+    selection=clock[~clock.isin(confirmation)]
+    return selection,confirmation,dict(version='whole_date_holdout_v1',
+        selection_times=[str(t) for t in selection],confirmation_times=[str(t) for t in confirmation],
+        selection_dates=int(selection.normalize().nunique()),confirmation_dates=int(confirmation.normalize().nunique()),
+        total_dates=len(unique),date_overlap=False,
+        sufficient=selection.normalize().nunique()>=3 and confirmation.normalize().nunique()>=3,
+        rule='Whole chronological dates; at least three per stage when six dates exist; no value-dependent sampling',
+        limitation='Observed date range only; seasons and future domains not covered remain UNKNOWN')
+
+
 def split_locations(meta, seed, *, explicit_test=False):
     """Only coordinates/identities enter splitting; never reference values."""
     ids = meta.station_id.to_numpy()

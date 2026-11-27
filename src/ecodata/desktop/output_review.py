@@ -294,6 +294,9 @@ def cards(result, check):
                               selection_reference=reference,
                               seed_usage=search.get('seed_usage'),steps=[*alignment,*methods],alternative=alternative,
                               reason=(benefit + "。" if benefit else "") + check["conversion_reason"]))
+            if row['selected'] and search['evidence'].get('reference_frontier',{}).get('tradeoff'):
+                items[-1]['selection_label']='默认误差方案；另有结构优选'
+                items[-1]['selection_reason']+=' 误差与细节存在取舍；已保留结构优选产品，不能把本方案称为全面最优。'
     for entry in result.get("original_report", []) if result.get("mode")=="selected_operations" else []:
         reports=entry['report']
         if entry.get('backend')=='statistical_preprocessing' and isinstance(reports,dict):
@@ -486,6 +489,23 @@ def selection_summaries(items, failures, recommendations, *, result=None):
             if summary not in summaries:
                 summaries.append(summary)
     result=result or {}
+    for task,search in searches(result).items():
+        frontier=search.get('reference_frontier') or search.get('evidence',{}).get('reference_frontier')
+        if frontier and frontier.get('keys'):
+            tradeoff=frontier.get('tradeoff')
+            summaries.append(dict(task=task,title='误差与细节联合筛选',performed=True,
+                reason=(f"保留 {len(frontier['keys'])} 个互有优势的可执行方案；误差优选与梯度结构优选不同，分别保留产品。没有依据合成唯一综合冠军。" if tradeoff else
+                    '误差与梯度结构的优选一致；仅限当前参考和评价队列，不代表全局真实精度。')))
+        scope=search.get('scope_report') or search.get('evidence',{}).get('scope_report')
+        if not scope:continue
+        for comparison in scope.get('comparisons',[]):
+            if comparison.get('status')!='EVALUATED':continue
+            phase='独立复检' if comparison['phase']=='confirmation' else '选优样本'
+            name='DS推荐' if comparison['candidate'].startswith('ds_') else '搜索选中方案'
+            examples='；'.join(f"{r['block']}："+{'candidate':'候选较好','baseline':'基线较好','equivalent':'相当'}[r['lower_error']]
+                for r in comparison['blocks'][:4])
+            summaries.append(dict(task=task,title=f'{name}与基线 · {phase}范围对比',performed=True,
+                reason=f"候选较好 {comparison['candidate_better']} 块；基线较好 {comparison['baseline_better']} 块；相当 {comparison['equivalent']} 块。{examples}。完整范围见下载包的范围对照记录；不代表未观测区域精度。"))
     for task, row in result.get('other_searches',{}).items():
         reason=('按同一评价条件下的实测目标值排序；误差等价时优先结构更简单的方案。'
                 if row.get('validation_best_delivered') is not False else

@@ -1,0 +1,26 @@
+{
+  "version": "multiscale_review_v1",
+  "primary": "Existing RMSE and quality gates unchanged",
+  "structure": [
+    "gradient_RMSE_per_cell",
+    "normalized_2D_spectrum_L1",
+    "FSS only with declared threshold in reference units"
+  ],
+  "scope": "Descriptive diagnostics, no invented weights or structure gain claim without reference",
+  "seed": 11,
+  "budget": {
+    "objective_limit": 130,
+    "total_call_limit": 180,
+    "proposal_limit": 100,
+    "wall_seconds": 45
+  },
+  "before": {
+    "src/ecodata/algorithms/platform_search.py": "c44c8391768113e59f2b17777503443cb83654899b4cc86d40b6d1275e810e6c",
+    "src/ecodata/algorithms/spatial_fusion_task.py": "6e9885481e536a2afdb3e22161fe4af28de445c3e4565458f81b75e9c6d5ddfd",
+    "src/ecodata/evaluation/blocked_confirmation.py": "2340befb8e98e8485ed6b220f8c3b1c567482a5237832a8a9336ce399312e74b",
+    "src/ecodata/desktop/output_review.py": "0d92e0acb60ec8158dbea07a955e975a36f0672856e6b22db1076eae4e9b9a2a",
+    "src/ecodata/desktop/result_cards.py": "6132e261b6d1de339b457ac0dc95d9533a7bead494c3535ebb07112a8c6656ef",
+    "src/ecodata/desktop/service.py": "557d9fe40a577c232f0163aac02a51e259b1289973f5bf99591cf3fc46262020",
+    "src/ecodata/desktop/windowed_grid_recipe.py": "143e66db66c059e2359b8bf5adb0396738e57aaf3b3af1321dea19d5e05c26b2"
+  }
+}

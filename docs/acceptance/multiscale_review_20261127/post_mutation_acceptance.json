@@ -1,0 +1,3029 @@
+{
+  "version": "frozen_mutation_acceptance_v1",
+  "status": "BASELINE_RETAINED",
+  "recommended": false,
+  "frozen_graph_verified": true,
+  "selection_key": "c22e5f138a9850192746",
+  "delivered_key": "c22e5f138a9850192746",
+  "final_review_status": "NO_STABLE_SELECTION_GAIN",
+  "freeze_sha256": "0bfd7862881c7a66276ffafd6b09928ca23c29f59213529de1a444414eadde7c",
+  "numerical_review": {
+    "version": "blocked_confirmation_v2_aggregate_risk",
+    "status": "NO_STABLE_SELECTION_GAIN",
+    "recommended": false,
+    "selection": {
+      "sufficient": true,
+      "differences": [
+        {
+          "block": "2013-01-01 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-01 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-02 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-03 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-04 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-05 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-06 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-07 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-08 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|0",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|1",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|2",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|5",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|6",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|8",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|11",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|13",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|15",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|16",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|17",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-09 00:00:00|18",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        }
+      ],
+      "objective_change": 0.0,
+      "stable_gain": false,
+      "roundoff_only_tolerance": 2.9278655363953826e-14,
+      "aggregate_gain": false,
+      "uncertainty": {
+        "status": "CONDITIONAL_INTERVAL",
+        "units": 9,
+        "resampling_unit": "date clusters",
+        "interpretation": "Conditional block-resampling interval; block independence and future coverage are not established",
+        "method": "paired cluster percentile bootstrap",
+        "confidence_level": 0.95,
+        "resamples": 4999,
+        "seed": 20261125,
+        "lower": 0.0,
+        "upper": 0.0,
+        "gain_supported": false,
+        "leave_one_unit_out_range": [
+          0.0,
+          0.0
+        ]
+      },
+      "local_risk": {
+        "status": "NO_OBSERVED_DEGRADATION",
+        "degraded_blocks": 0,
+        "total_blocks": 108,
+        "degraded_fraction": 0.0,
+        "worst_rmse_increase": 0.0,
+        "worst_mae_increase": 0.0,
+        "violations": [],
+        "basis": "Observed changes only; no task harm tolerance inferred"
+      }
+    },
+    "confirmation": {
+      "sufficient": true,
+      "differences": [
+        {
+          "block": "2013-01-10 00:00:00|3",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-10 00:00:00|7",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-10 00:00:00|10",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-10 00:00:00|12",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-11 00:00:00|3",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-11 00:00:00|7",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-11 00:00:00|10",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-11 00:00:00|12",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-12 00:00:00|3",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-12 00:00:00|7",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-12 00:00:00|10",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        },
+        {
+          "block": "2013-01-12 00:00:00|12",
+          "rmse_change": 0.0,
+          "mae_change": 0.0
+        }
+      ],
+      "objective_change": 0.0,
+      "stable_gain": false,
+      "roundoff_only_tolerance": 2.116341205702342e-14,
+      "aggregate_gain": false,
+      "uncertainty": {
+        "status": "CONDITIONAL_INTERVAL",
+        "units": 3,
+        "resampling_unit": "date clusters",
+        "interpretation": "Conditional block-resampling interval; block independence and future coverage are not established",
+        "method": "paired cluster percentile bootstrap",
+        "confidence_level": 0.95,
+        "resamples": 4999,
+        "seed": 20261125,
+        "lower": 0.0,
+        "upper": 0.0,
+        "gain_supported": false,
+        "leave_one_unit_out_range": [
+          0.0,
+          0.0
+        ]
+      },
+      "local_risk": {
+        "status": "NO_OBSERVED_DEGRADATION",
+        "degraded_blocks": 0,
+        "total_blocks": 12,
+        "degraded_fraction": 0.0,
+        "worst_rmse_increase": 0.0,
+        "worst_mae_increase": 0.0,
+        "violations": [],
+        "basis": "Observed changes only; no task harm tolerance inferred"
+      }
+    },
+    "confirmation_used_for_search": false,
+    "confirmation_retries": 0,
+    "policy": {
+      "version": "blocked_confirmation_v2_aggregate_risk",
+      "blocks": 3,
+      "min_times_per_block": 2,
+      "objective": "Equal-block mean RMSE",
+      "confirmation": "Disjoint locations and later dates, once after freezing",
+      "acceptance": "Aggregate gain in both stages, paired block uncertainty, declared local risk limits",
+      "insufficient": "Quality-valid candidate may be tried; baseline remains default until confirmed",
+      "confidence": "No statistical confidence or universal accuracy guarantee",
+      "resampling": {
+        "method": "paired cluster percentile bootstrap",
+        "confidence_level": 0.95,
+        "resamples": 4999,
+        "seed": 20261125
+      },
+      "local_risk": "No default tolerance percent; undeclared local harm limits remain UNKNOWN"
+    },
+    "warning": "Paired block intervals are conditional diagnostics; not calibrated future guarantees or independent pixel replicates",
+    "decision": "KEEP_BASELINE",
+    "candidate_trial_available": false,
+    "range_comparison": {
+      "selection": {
+        "phase": "selection",
+        "blocks": [
+          {
+            "block": "2013-01-01 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.1877568584390814,
+              "MAE": 1.163073946007458,
+              "Bias": -1.163073946007458,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.1877568584390814,
+              "MAE": 1.163073946007458,
+              "Bias": -1.163073946007458,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.91622307833793,
+              "MAE": 3.40890896887484,
+              "Bias": -0.9924318216981476,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.91622307833793,
+              "MAE": 3.40890896887484,
+              "Bias": -0.9924318216981476,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.2518582580054396,
+              "MAE": 0.8874924360886638,
+              "Bias": 0.29938445389156243,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.2518582580054396,
+              "MAE": 0.8874924360886638,
+              "Bias": 0.29938445389156243,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.1132543587390304,
+              "MAE": 1.7785032735793322,
+              "Bias": -1.7785032735793322,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.1132543587390304,
+              "MAE": 1.7785032735793322,
+              "Bias": -1.7785032735793322,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.338431510363189,
+              "MAE": 3.1092263296307863,
+              "Bias": 0.8896115521935144,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.338431510363189,
+              "MAE": 3.1092263296307863,
+              "Bias": 0.8896115521935144,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.8370668481478787,
+              "MAE": 1.3081951340538467,
+              "Bias": 1.3081951340538467,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.8370668481478787,
+              "MAE": 1.3081951340538467,
+              "Bias": 1.3081951340538467,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.9234720477387177,
+              "MAE": 0.86456204832227,
+              "Bias": 0.86456204832227,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.9234720477387177,
+              "MAE": 0.86456204832227,
+              "Bias": 0.86456204832227,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.5990952891184445,
+              "MAE": 2.2526384367770618,
+              "Bias": -0.5987793319394825,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.5990952891184445,
+              "MAE": 2.2526384367770618,
+              "Bias": -0.5987793319394825,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.6761170943331436,
+              "MAE": 2.2647241764214954,
+              "Bias": -1.6339370946252672,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.6761170943331436,
+              "MAE": 2.2647241764214954,
+              "Bias": -1.6339370946252672,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.8263124679233775,
+              "MAE": 2.6477360238666563,
+              "Bias": 0.20272702134516862,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.8263124679233775,
+              "MAE": 2.6477360238666563,
+              "Bias": 0.20272702134516862,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.9639730598116074,
+              "MAE": 1.9310623034089076,
+              "Bias": -0.2879504548241414,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.9639730598116074,
+              "MAE": 1.9310623034089076,
+              "Bias": -0.2879504548241414,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-01 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.0733148487712767,
+              "MAE": 1.7905251028845726,
+              "Bias": -0.11715423167015615,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.0733148487712767,
+              "MAE": 1.7905251028845726,
+              "Bias": -0.11715423167015615,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.2092163834541192,
+              "MAE": 1.0487316156884106,
+              "Bias": -1.0487316156884106,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.2092163834541192,
+              "MAE": 1.0487316156884106,
+              "Bias": -1.0487316156884106,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.9079616769206122,
+              "MAE": 3.3247934131711645,
+              "Bias": -0.9837308038896424,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.9079616769206122,
+              "MAE": 3.3247934131711645,
+              "Bias": -0.9837308038896424,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.3576428021009685,
+              "MAE": 1.1172600760470033,
+              "Bias": 0.721709920580409,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.3576428021009685,
+              "MAE": 1.1172600760470033,
+              "Bias": 0.721709920580409,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.276521175833353,
+              "MAE": 1.7254059838499956,
+              "Bias": -1.6899908887720727,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.276521175833353,
+              "MAE": 1.7254059838499956,
+              "Bias": -1.6899908887720727,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.6548090645090765,
+              "MAE": 2.419230109202786,
+              "Bias": 0.7235886233258526,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.6548090645090765,
+              "MAE": 2.419230109202786,
+              "Bias": 0.7235886233258526,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.613288733514238,
+              "MAE": 2.2590880951495933,
+              "Bias": 1.193733273937852,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.613288733514238,
+              "MAE": 2.2590880951495933,
+              "Bias": 1.193733273937852,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.349770551887098,
+              "MAE": 1.7399196483604555,
+              "Bias": 1.7399196483604555,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.349770551887098,
+              "MAE": 1.7399196483604555,
+              "Bias": 1.7399196483604555,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.6683090525506414,
+              "MAE": 2.4359319460473756,
+              "Bias": -0.7667833093423582,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.6683090525506414,
+              "MAE": 2.4359319460473756,
+              "Bias": -0.7667833093423582,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.144422785006487,
+              "MAE": 1.737094737180385,
+              "Bias": -0.9619367822188991,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.144422785006487,
+              "MAE": 1.737094737180385,
+              "Bias": -0.9619367822188991,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.9655245036143958,
+              "MAE": 1.4619620830262932,
+              "Bias": 0.7591552078012285,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.9655245036143958,
+              "MAE": 1.4619620830262932,
+              "Bias": 0.7591552078012285,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.203155014235547,
+              "MAE": 1.9784165675400516,
+              "Bias": -0.7229306664851833,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.203155014235547,
+              "MAE": 1.9784165675400516,
+              "Bias": -0.7229306664851833,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-02 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.6647239877461184,
+              "MAE": 1.4242477944797827,
+              "Bias": -0.8370185503622736,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.6647239877461184,
+              "MAE": 1.4242477944797827,
+              "Bias": -0.8370185503622736,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.792655154162124,
+              "MAE": 0.7018783157886617,
+              "Bias": -0.5398893187422402,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.792655154162124,
+              "MAE": 0.7018783157886617,
+              "Bias": -0.5398893187422402,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 4.234315588518749,
+              "MAE": 3.6163527600671443,
+              "Bias": -1.4656946180403736,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 4.234315588518749,
+              "MAE": 3.6163527600671443,
+              "Bias": -1.4656946180403736,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.6116772043407892,
+              "MAE": 1.2820838333222326,
+              "Bias": 0.1567927701742775,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.6116772043407892,
+              "MAE": 1.2820838333222326,
+              "Bias": 0.1567927701742775,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.6597624475479607,
+              "MAE": 2.0817621473036922,
+              "Bias": -2.0817621473036922,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.6597624475479607,
+              "MAE": 2.0817621473036922,
+              "Bias": -2.0817621473036922,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.950706561301554,
+              "MAE": 2.707546955088077,
+              "Bias": 0.13217294734133134,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.950706561301554,
+              "MAE": 2.707546955088077,
+              "Bias": 0.13217294734133134,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.431202637895721,
+              "MAE": 2.7609918714112425,
+              "Bias": 2.1148991591061232,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.431202637895721,
+              "MAE": 2.7609918714112425,
+              "Bias": 2.1148991591061232,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.8117065227405273,
+              "MAE": 1.7123490520177143,
+              "Bias": 1.7123490520177143,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.8117065227405273,
+              "MAE": 1.7123490520177143,
+              "Bias": 1.7123490520177143,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.250978000415692,
+              "MAE": 2.947754733241851,
+              "Bias": -0.4554535410310905,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.250978000415692,
+              "MAE": 2.947754733241851,
+              "Bias": -0.4554535410310905,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.706564757201516,
+              "MAE": 1.4829773536876019,
+              "Bias": -0.7905705583174267,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.706564757201516,
+              "MAE": 1.4829773536876019,
+              "Bias": -0.7905705583174267,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.2892473407844565,
+              "MAE": 1.1873357914388691,
+              "Bias": 0.278736911412949,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.2892473407844565,
+              "MAE": 1.1873357914388691,
+              "Bias": 0.278736911412949,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.0223606184803393,
+              "MAE": 1.8224054953858797,
+              "Bias": -0.8602374006744355,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.0223606184803393,
+              "MAE": 1.8224054953858797,
+              "Bias": -0.8602374006744355,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-03 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.1383098469768784,
+              "MAE": 1.127142923451217,
+              "Bias": -0.59676292796361,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.1383098469768784,
+              "MAE": 1.127142923451217,
+              "Bias": -0.59676292796361,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.7800245048058883,
+              "MAE": 0.689378499714806,
+              "Bias": -0.6587665054547784,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.7800245048058883,
+              "MAE": 0.689378499714806,
+              "Bias": -0.6587665054547784,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.696354273519173,
+              "MAE": 3.257230246202923,
+              "Bias": -1.2085141161987139,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.696354273519173,
+              "MAE": 3.257230246202923,
+              "Bias": -1.2085141161987139,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.4298480652278909,
+              "MAE": 1.1601639613788137,
+              "Bias": 0.302520097226207,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.4298480652278909,
+              "MAE": 1.1601639613788137,
+              "Bias": 0.302520097226207,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.995348849809988,
+              "MAE": 2.6642499562210844,
+              "Bias": -2.6642499562210844,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.995348849809988,
+              "MAE": 2.6642499562210844,
+              "Bias": -2.6642499562210844,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.1063129569480616,
+              "MAE": 2.9844308325889557,
+              "Bias": 0.5440613328539285,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.1063129569480616,
+              "MAE": 2.9844308325889557,
+              "Bias": 0.5440613328539285,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.3730120125087675,
+              "MAE": 1.8880200301429255,
+              "Bias": 1.2674160009024291,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.3730120125087675,
+              "MAE": 1.8880200301429255,
+              "Bias": 1.2674160009024291,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.370940098794915,
+              "MAE": 2.0218842874735117,
+              "Bias": 1.9006889221344068,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.370940098794915,
+              "MAE": 2.0218842874735117,
+              "Bias": 1.9006889221344068,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.878591694000002,
+              "MAE": 2.6070109032443867,
+              "Bias": -1.1230047476081637,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.878591694000002,
+              "MAE": 2.6070109032443867,
+              "Bias": -1.1230047476081637,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.7102937396026079,
+              "MAE": 1.1024212248346004,
+              "Bias": 0.5643239649435117,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.7102937396026079,
+              "MAE": 1.1024212248346004,
+              "Bias": 0.5643239649435117,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.4864952639396147,
+              "MAE": 2.1305286218369446,
+              "Bias": 0.045759978463806306,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.4864952639396147,
+              "MAE": 2.1305286218369446,
+              "Bias": 0.045759978463806306,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.7748403240011317,
+              "MAE": 1.7027488360740506,
+              "Bias": -0.5705283525189202,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.7748403240011317,
+              "MAE": 1.7027488360740506,
+              "Bias": -0.5705283525189202,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-04 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.411564861898562,
+              "MAE": 1.0869832842318914,
+              "Bias": -0.8939928024966974,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.411564861898562,
+              "MAE": 1.0869832842318914,
+              "Bias": -0.8939928024966974,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.8426919796078273,
+              "MAE": 0.6508973113033676,
+              "Bias": -0.6508973113033676,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.8426919796078273,
+              "MAE": 0.6508973113033676,
+              "Bias": -0.6508973113033676,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.2392862281876087,
+              "MAE": 3.0120353813871503,
+              "Bias": -1.3733238363352456,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.2392862281876087,
+              "MAE": 3.0120353813871503,
+              "Bias": -1.3733238363352456,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.086888492077755,
+              "MAE": 1.8293060943578183,
+              "Bias": 0.821630283244545,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.086888492077755,
+              "MAE": 1.8293060943578183,
+              "Bias": 0.821630283244545,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.0362502310683057,
+              "MAE": 2.6611932838968215,
+              "Bias": -2.6611932838968215,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.0362502310683057,
+              "MAE": 2.6611932838968215,
+              "Bias": -2.6611932838968215,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.0115281914698215,
+              "MAE": 2.940119311222986,
+              "Bias": -0.04049734636086555,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.0115281914698215,
+              "MAE": 2.940119311222986,
+              "Bias": -0.04049734636086555,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.2316416228108342,
+              "MAE": 2.0061456727562472,
+              "Bias": 0.8021667637033829,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.2316416228108342,
+              "MAE": 2.0061456727562472,
+              "Bias": 0.8021667637033829,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.2330436515757732,
+              "MAE": 1.957607591781553,
+              "Bias": 1.957607591781553,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.2330436515757732,
+              "MAE": 1.957607591781553,
+              "Bias": 1.957607591781553,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.5927543455040687,
+              "MAE": 2.4572390515251357,
+              "Bias": -1.1962923990652712,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.5927543455040687,
+              "MAE": 2.4572390515251357,
+              "Bias": -1.1962923990652712,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.8092248880007302,
+              "MAE": 1.6090377905441215,
+              "Bias": 0.33556267649491645,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.8092248880007302,
+              "MAE": 1.6090377905441215,
+              "Bias": 0.33556267649491645,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.6396881617539998,
+              "MAE": 1.5292851932814386,
+              "Bias": 0.325962738569487,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.6396881617539998,
+              "MAE": 1.5292851932814386,
+              "Bias": 0.325962738569487,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.1122334841777657,
+              "MAE": 1.8503575500808864,
+              "Bias": -1.7241501490027389,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.1122334841777657,
+              "MAE": 1.8503575500808864,
+              "Bias": -1.7241501490027389,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-05 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.7878204904465573,
+              "MAE": 1.5410980706726463,
+              "Bias": -0.4522722007335318,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.7878204904465573,
+              "MAE": 1.5410980706726463,
+              "Bias": -0.4522722007335318,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.430025767352796,
+              "MAE": 0.34204380118563904,
+              "Bias": -0.32359758993334253,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.430025767352796,
+              "MAE": 0.34204380118563904,
+              "Bias": -0.32359758993334253,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.8097610514587754,
+              "MAE": 2.4186511643936655,
+              "Bias": -1.01535628502846,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.8097610514587754,
+              "MAE": 2.4186511643936655,
+              "Bias": -1.01535628502846,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.0171133342378147,
+              "MAE": 0.7918333750525903,
+              "Bias": 0.542878020660936,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.0171133342378147,
+              "MAE": 0.7918333750525903,
+              "Bias": 0.542878020660936,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.1355326185027343,
+              "MAE": 2.933045194511706,
+              "Bias": -2.933045194511706,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.1355326185027343,
+              "MAE": 2.933045194511706,
+              "Bias": -2.933045194511706,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.9029766298493276,
+              "MAE": 2.7839687426745883,
+              "Bias": 0.2530052323966885,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.9029766298493276,
+              "MAE": 2.7839687426745883,
+              "Bias": 0.2530052323966885,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.8851676550158447,
+              "MAE": 1.4063394024186806,
+              "Bias": 1.150201099937803,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.8851676550158447,
+              "MAE": 1.4063394024186806,
+              "Bias": 1.150201099937803,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.2281547281552716,
+              "MAE": 2.0152647652250835,
+              "Bias": 2.0152647652250835,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.2281547281552716,
+              "MAE": 2.0152647652250835,
+              "Bias": 2.0152647652250835,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.160780093358621,
+              "MAE": 2.0928727694184204,
+              "Bias": -1.0613550290421756,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.160780093358621,
+              "MAE": 2.0928727694184204,
+              "Bias": -1.0613550290421756,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.4969224577438824,
+              "MAE": 1.2005559936630306,
+              "Bias": 0.12186846784227612,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.4969224577438824,
+              "MAE": 1.2005559936630306,
+              "Bias": 0.12186846784227612,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.8192376433917055,
+              "MAE": 1.5216006311075745,
+              "Bias": -0.1367398129425368,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.8192376433917055,
+              "MAE": 1.5216006311075745,
+              "Bias": -0.1367398129425368,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.0127568774968148,
+              "MAE": 1.9597670255440676,
+              "Bias": -1.0563830215140797,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.0127568774968148,
+              "MAE": 1.9597670255440676,
+              "Bias": -1.0563830215140797,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-06 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.14038804939404,
+              "MAE": 1.627584664444072,
+              "Bias": 0.13752523703044517,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.14038804939404,
+              "MAE": 1.627584664444072,
+              "Bias": 0.13752523703044517,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.9141482930429969,
+              "MAE": 0.7444594401049471,
+              "Bias": -0.20200216413493877,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.9141482930429969,
+              "MAE": 0.7444594401049471,
+              "Bias": -0.20200216413493877,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.9619967753829815,
+              "MAE": 2.1550530723274903,
+              "Bias": 0.31950724604828906,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.9619967753829815,
+              "MAE": 2.1550530723274903,
+              "Bias": 0.31950724604828906,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.3948010570763956,
+              "MAE": 0.9420580063769677,
+              "Bias": 0.7556582983150264,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.3948010570763956,
+              "MAE": 0.9420580063769677,
+              "Bias": 0.7556582983150264,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.153701457581223,
+              "MAE": 2.6109475913238924,
+              "Bias": -2.6109475913238924,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.153701457581223,
+              "MAE": 2.6109475913238924,
+              "Bias": -2.6109475913238924,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.1664989739085296,
+              "MAE": 2.9941208885971093,
+              "Bias": 0.20373551122020217,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.1664989739085296,
+              "MAE": 2.9941208885971093,
+              "Bias": 0.20373551122020217,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.1703301541580435,
+              "MAE": 0.8724728566883044,
+              "Bias": 0.8724728566883044,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.1703301541580435,
+              "MAE": 0.8724728566883044,
+              "Bias": 0.8724728566883044,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.9997767413273742,
+              "MAE": 1.813926602809758,
+              "Bias": 1.0487774769243714,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.9997767413273742,
+              "MAE": 1.813926602809758,
+              "Bias": 1.0487774769243714,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.5450841155887642,
+              "MAE": 1.4542788509052258,
+              "Bias": -0.8364819629560003,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.5450841155887642,
+              "MAE": 1.4542788509052258,
+              "Bias": -0.8364819629560003,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.15177719611874,
+              "MAE": 2.1053968886141234,
+              "Bias": -0.06271158062459392,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.15177719611874,
+              "MAE": 2.1053968886141234,
+              "Bias": -0.06271158062459392,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.6706522969302011,
+              "MAE": 1.3090002536977323,
+              "Bias": 0.17445557257140365,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.6706522969302011,
+              "MAE": 1.3090002536977323,
+              "Bias": 0.17445557257140365,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.9267445296863098,
+              "MAE": 0.8791250282654204,
+              "Bias": -0.2853024515185183,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.9267445296863098,
+              "MAE": 0.8791250282654204,
+              "Bias": -0.2853024515185183,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-07 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.3348992298734075,
+              "MAE": 1.3218680880615636,
+              "Bias": -0.10208200092583297,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.3348992298734075,
+              "MAE": 1.3218680880615636,
+              "Bias": -0.10208200092583297,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.9244382845795529,
+              "MAE": 0.7456606876713465,
+              "Bias": -0.7456606876713465,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.9244382845795529,
+              "MAE": 0.7456606876713465,
+              "Bias": -0.7456606876713465,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.925049606423659,
+              "MAE": 2.794939241786153,
+              "Bias": -1.1112128669298613,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.925049606423659,
+              "MAE": 2.794939241786153,
+              "Bias": -1.1112128669298613,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.473794307776361,
+              "MAE": 1.127558307125426,
+              "Bias": 0.5600381798809764,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.473794307776361,
+              "MAE": 1.127558307125426,
+              "Bias": 0.5600381798809764,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.325031864888069,
+              "MAE": 1.0314008516253494,
+              "Bias": -1.0314008516253494,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.325031864888069,
+              "MAE": 1.0314008516253494,
+              "Bias": -1.0314008516253494,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.639509052927224,
+              "MAE": 3.479602135030163,
+              "Bias": 0.9187936096809182,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.639509052927224,
+              "MAE": 3.479602135030163,
+              "Bias": 0.9187936096809182,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.2270751609689197,
+              "MAE": 1.0273274481827315,
+              "Bias": 0.3025875558668787,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.2270751609689197,
+              "MAE": 1.0273274481827315,
+              "Bias": 0.3025875558668787,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.739052688117646,
+              "MAE": 2.4076221439793386,
+              "Bias": 1.3014887015819312,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.739052688117646,
+              "MAE": 2.4076221439793386,
+              "Bias": 1.3014887015819312,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.5474769438670204,
+              "MAE": 1.367877221662809,
+              "Bias": -0.32256458696036816,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.5474769438670204,
+              "MAE": 1.367877221662809,
+              "Bias": -0.32256458696036816,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.7916708260419276,
+              "MAE": 1.7513347844021467,
+              "Bias": -0.09302680938559149,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.7916708260419276,
+              "MAE": 1.7513347844021467,
+              "Bias": -0.09302680938559149,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.8002066792788929,
+              "MAE": 1.4427692425351637,
+              "Bias": -0.14523225305570975,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.8002066792788929,
+              "MAE": 1.4427692425351637,
+              "Bias": -0.14523225305570975,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.7291002516125906,
+              "MAE": 1.6838825517399556,
+              "Bias": -0.9941653931137324,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.7291002516125906,
+              "MAE": 1.6838825517399556,
+              "Bias": -0.9941653931137324,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-08 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.029606413430169,
+              "MAE": 0.9081010810214991,
+              "Bias": 0.007185657528793854,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.029606413430169,
+              "MAE": 0.9081010810214991,
+              "Bias": 0.007185657528793854,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|0",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.0632735054512623,
+              "MAE": 0.9022733677610546,
+              "Bias": -0.2147343592251758,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.0632735054512623,
+              "MAE": 0.9022733677610546,
+              "Bias": -0.2147343592251758,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|1",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 3.4008855210489193,
+              "MAE": 2.9382153194103324,
+              "Bias": -1.4191538279523428,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 3.4008855210489193,
+              "MAE": 2.9382153194103324,
+              "Bias": -1.4191538279523428,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|2",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.369642151721836,
+              "MAE": 0.8752019684917087,
+              "Bias": 0.7563473924852104,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.369642151721836,
+              "MAE": 0.8752019684917087,
+              "Bias": 0.7563473924852104,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|5",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.2319635374652007,
+              "MAE": 2.0781924232807683,
+              "Bias": -2.0781924232807683,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.2319635374652007,
+              "MAE": 2.0781924232807683,
+              "Bias": -2.0781924232807683,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|6",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.6807317836330395,
+              "MAE": 2.440735281678613,
+              "Bias": 0.34027717175838745,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.6807317836330395,
+              "MAE": 2.440735281678613,
+              "Bias": 0.34027717175838745,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|8",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.8419154527060768,
+              "MAE": 0.7781361733954526,
+              "Bias": 0.6433416707152588,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.8419154527060768,
+              "MAE": 0.7781361733954526,
+              "Bias": 0.6433416707152588,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|11",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 2.5773652041892925,
+              "MAE": 2.2127821105986953,
+              "Bias": 2.2127821105986953,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.5773652041892925,
+              "MAE": 2.2127821105986953,
+              "Bias": 2.2127821105986953,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|13",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.8507567878849845,
+              "MAE": 0.6225173193303135,
+              "Bias": 0.2958787942536105,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.8507567878849845,
+              "MAE": 0.6225173193303135,
+              "Bias": 0.2958787942536105,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|15",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.1570837105131913,
+              "MAE": 0.9507992242010346,
+              "Bias": 0.07977150168110825,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.1570837105131913,
+              "MAE": 0.9507992242010346,
+              "Bias": 0.07977150168110825,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|16",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.5668343014591706,
+              "MAE": 1.2800507429069796,
+              "Bias": -0.08263937454140091,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.5668343014591706,
+              "MAE": 1.2800507429069796,
+              "Bias": -0.08263937454140091,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|17",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 1.3402534696161685,
+              "MAE": 1.1597260503754256,
+              "Bias": -1.1597260503754256,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.3402534696161685,
+              "MAE": 1.1597260503754256,
+              "Bias": -1.1597260503754256,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-09 00:00:00|18",
+            "status": "EVALUATED",
+            "phase": "selection",
+            "candidate": {
+              "RMSE": 0.5923068151426324,
+              "MAE": 0.5556562927574333,
+              "Bias": -0.17061293772884767,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.5923068151426324,
+              "MAE": 0.5556562927574333,
+              "Bias": -0.17061293772884767,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          }
+        ],
+        "used_for_selection": true,
+        "measured_blocks": 108,
+        "candidate_better": 0,
+        "baseline_better": 0,
+        "equivalent": 108,
+        "limitation": "Observed ranges only; unobserved dates, regions and unresolved fine scales remain UNKNOWN"
+      },
+      "confirmation": {
+        "phase": "confirmation",
+        "blocks": [
+          {
+            "block": "2013-01-10 00:00:00|3",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 0.6314690055669879,
+              "MAE": 0.5156781980830374,
+              "Bias": 0.30395852484184616,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.6314690055669879,
+              "MAE": 0.5156781980830374,
+              "Bias": 0.30395852484184616,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-10 00:00:00|7",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 0.9884574397858833,
+              "MAE": 0.8815154534001834,
+              "Bias": -0.5751001334531765,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.9884574397858833,
+              "MAE": 0.8815154534001834,
+              "Bias": -0.5751001334531765,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-10 00:00:00|10",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 2.142741229136589,
+              "MAE": 1.8311302521346846,
+              "Bias": -0.634083801608412,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.142741229136589,
+              "MAE": 1.8311302521346846,
+              "Bias": -0.634083801608412,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-10 00:00:00|12",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 1.7089849254880878,
+              "MAE": 1.1856874446603314,
+              "Bias": 1.1504245975241219,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.7089849254880878,
+              "MAE": 1.1856874446603314,
+              "Bias": 1.1504245975241219,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-11 00:00:00|3",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 1.85609955831372,
+              "MAE": 1.5669016074883046,
+              "Bias": -1.0718664123916852,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.85609955831372,
+              "MAE": 1.5669016074883046,
+              "Bias": -1.0718664123916852,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-11 00:00:00|7",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 1.6589662960125433,
+              "MAE": 1.2209858111181404,
+              "Bias": 0.9899031984822102,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.6589662960125433,
+              "MAE": 1.2209858111181404,
+              "Bias": 0.9899031984822102,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-11 00:00:00|10",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 1.4501063909685925,
+              "MAE": 1.0805315416499042,
+              "Bias": -0.8239780627751401,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.4501063909685925,
+              "MAE": 1.0805315416499042,
+              "Bias": -0.8239780627751401,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-11 00:00:00|12",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 0.5003086991780556,
+              "MAE": 0.47081455196509125,
+              "Bias": -0.02191905829631935,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 0.5003086991780556,
+              "MAE": 0.47081455196509125,
+              "Bias": -0.02191905829631935,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-12 00:00:00|3",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 2.0215570871076305,
+              "MAE": 1.8818963168641432,
+              "Bias": -1.8818963168641432,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.0215570871076305,
+              "MAE": 1.8818963168641432,
+              "Bias": -1.8818963168641432,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-12 00:00:00|7",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 1.0306898086013796,
+              "MAE": 0.7953486635173448,
+              "Bias": 0.04365506743043568,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.0306898086013796,
+              "MAE": 0.7953486635173448,
+              "Bias": 0.04365506743043568,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-12 00:00:00|10",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 2.4391725803248425,
+              "MAE": 2.333264698008705,
+              "Bias": 0.500508343938904,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 2.4391725803248425,
+              "MAE": 2.333264698008705,
+              "Bias": 0.500508343938904,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          },
+          {
+            "block": "2013-01-12 00:00:00|12",
+            "status": "EVALUATED",
+            "phase": "confirmation",
+            "candidate": {
+              "RMSE": 1.4423597271217339,
+              "MAE": 1.2167294750983046,
+              "Bias": 1.1486153152669942,
+              "count": 4
+            },
+            "baseline": {
+              "RMSE": 1.4423597271217339,
+              "MAE": 1.2167294750983046,
+              "Bias": 1.1486153152669942,
+              "count": 4
+            },
+            "RMSE_change": 0.0,
+            "lower_error": "equivalent"
+          }
+        ],
+        "used_for_selection": false,
+        "measured_blocks": 12,
+        "candidate_better": 0,
+        "baseline_better": 0,
+        "equivalent": 12,
+        "limitation": "Observed ranges only; unobserved dates, regions and unresolved fine scales remain UNKNOWN"
+      }
+    },
+    "evidence_status": "SUFFICIENT_ENGINEERING_SUPPORT",
+    "reference_basis": "REDUCED_SCALE_PRODUCT_RECONSTRUCTION",
+    "axes": [
+      "space",
+      "time"
+    ],
+    "accuracy_recommended": false,
+    "claim": "Product reconstruction only; not environmental accuracy",
+    "baseline_key": "c22e5f138a9850192746",
+    "selection_key": "c22e5f138a9850192746"
+  },
+  "recommendation_isolation": null,
+  "confirmation_used_for_search": false,
+  "confirmation_retries": 0,
+  "probability_guarantee": null,
+  "independence_scope": "Declared search/confirmation partition only; recommendation exposure and upstream independence require separate evidence",
+  "reason": "Existing one-shot numerical review after graph freeze; a pre-mutation trial is not acceptance of the selected graph"
+}

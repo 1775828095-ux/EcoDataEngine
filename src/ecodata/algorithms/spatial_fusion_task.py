@@ -475,14 +475,20 @@ class SpatialSearch:
         selection_ids=self.location_protocol['selection_ids']
         groups=[held for _,held in self.location_protocol['folds']]
         # Last date block is confirmation only and cannot influence search/stop.
-        cut=max(1,int(len(task.times)*.8)) if len(task.times)>=5 else len(task.times)
-        self.search_times=task.times[:cut];self.confirm_times=task.times[cut:];self.groups=groups
+        from ecodata.algorithms.spatial_selection_protocol import split_dates
+        self.search_times,self.confirm_times,self.date_protocol=split_dates(task.times)
+        self.groups=groups
         if 'confirmation_times' in self.request:
             requested=pd.DatetimeIndex(self.request['confirmation_times'])
             if requested.hasnans or requested.has_duplicates:
                 raise ValueError('Invalid pre-reserved confirmation times')
             self.confirm_times=task.times.intersection(requested)
             self.search_times=task.times.difference(self.confirm_times)
+            self.date_protocol.update(version='explicit_reserved_dates',
+                selection_times=[str(t) for t in self.search_times],confirmation_times=[str(t) for t in self.confirm_times],
+                selection_dates=int(self.search_times.normalize().nunique()),confirmation_dates=int(self.confirm_times.normalize().nunique()),
+                sufficient=self.search_times.normalize().nunique()>=3 and self.confirm_times.normalize().nunique()>=3,
+                date_overlap=bool(len(self.search_times.normalize().intersection(self.confirm_times.normalize()))))
             reservation=self.request.get('recommendation_isolation',{})
             if reservation.get('status')=='RESERVED':
                 previous=pd.DatetimeIndex(reservation['recommendation_review_times'])
@@ -515,7 +521,7 @@ class SpatialSearch:
         if self.reconstruction is not None:
             self.reconstruction_executor=self.executor(self.reconstruction['cohort'],'search')
             self.resolution=np.finfo(float).eps
-        self.review_axes=['space','time'] if (self.reconstruction is None and len(task.times.normalize().unique())>=5) or 'confirmation_times' in self.request else ['space']
+        self.review_axes=['space','time'] if len(task.times.normalize().unique())>=6 or 'confirmation_times' in self.request else ['space']
         if self.progress:
             self.progress('评价依据：'+self.evaluation_plan['mode']+'；'+self.evaluation_plan['selection_meaning'])
         save(self.folder/'evaluation_protocol.json',self.evaluation_plan)
@@ -668,7 +674,22 @@ class SpatialSearch:
         while self.recommended_parents:
             key=self.recommended_parents.pop(0)
             return key
+        # Measured structure tradeoffs are actual search parents, not log-only
+        # alternatives. Visit each once; the existing proposal/call budget holds.
+        frontier=self.reference_frontier()
+        visited=getattr(self,'structure_parents_used',set())
+        for key in frontier.get('keys',[]):
+            if key!=self.best()['key'] and key not in visited:
+                visited.add(key);self.structure_parents_used=visited
+                return key
         return None
+
+    def reference_frontier(self):
+        from ecodata.algorithms.reliable_selection import reference_frontier
+        mode=self.request.get('spatial_objective_mode','reference_pareto_v1')
+        if mode=='rmse_v1':return dict(status='EXPLICIT_RMSE_ONLY',keys=[])
+        if mode!='reference_pareto_v1':raise ValueError('Unknown spatial objective mode')
+        return reference_frontier(self.rows)
 
     def recommendation_mutation_family(self,key):
         return 'recommendation_parameters' if self.records[key]['operation'] in {'spatial.blend','spatial.idw','spatial.residual_idw'} else 'structure'
@@ -725,7 +746,7 @@ class SpatialSearch:
             times=self.search_times
             predictions=self.reconstruction_predictions
             traces={}
-            if 'confirmation_times' in self.request:
+            if 'time' in self.review_axes:
                 if not len(self.confirm_times):
                     return dict(status='NO_SEPARATE_DATE_BLOCK',used_for_selection=False,schemes={})
                 from ecodata.evaluation.fusion_protocol import prepare
@@ -750,6 +771,9 @@ class SpatialSearch:
                     schemes[name]=dict(status='PASS',key=key,metrics=error_metrics(predictions[key][:,index],r['reference'][:,index]),
                         blocked_validation=blocked_validation(predictions[key][:,index],r['reference'][:,index],times,index,r['split']['block_by_station']),
                         trace=traces.get(key))
+                    from ecodata.evaluation.spatial_structure import paired_grid
+                    schemes[name]['metrics']['spatial_structure']=paired_grid(predictions[key],r['reference'],r['query'],times,index,
+                        self.request['unit'],threshold=self.request.get('event_threshold'))
             return dict(status='PASS' if schemes else 'NO_SEPARATE_LOCATION_TEST',used_for_selection=False,
                 source='FROZEN_REDUCED_SCALE_OUTER_BLOCKS',reference_basis=self.evaluation_plan['mode'],
                 statistical_independence_verified=False,accuracy_improvement='NOT_ESTABLISHED',schemes=schemes,
@@ -994,6 +1018,11 @@ class SpatialSearch:
                     date_count=len({b['date'] for b in blocks}),region_count=len({b['region'] for b in blocks}),
                     robustness_status='MULTIPLE_DATES_AND_REGIONS' if len({b['date'] for b in blocks})>=3 and len({b['region'] for b in blocks})>=2 else 'INSUFFICIENT_DATE_OR_REGION_REPLICATION')
             row['blocked_validation']=report
+            if self.reconstruction is not None:
+                from ecodata.evaluation.spatial_structure import paired_grid
+                r=self.reconstruction
+                row['metrics']['spatial_structure']=paired_grid(predicted,r['reference'],r['query'],self.search_times,r['selected'],self.request['unit'],
+                    threshold=self.request.get('event_threshold'))
             row['metrics']['objective']=report['objective'] if selection_policy=='date_region_v1' else rmse
             row['metrics']['objective_name']='equal_date_region_RMSE' if selection_policy=='date_region_v1' else 'pooled_RMSE'
             row['reconstruction_reference_used_for_selection']=self.reconstruction is not None
@@ -1015,7 +1044,10 @@ class SpatialSearch:
         rows=[r for r in self.rows if r['status']=='PASS']
         if not rows:return None
         value=min(r['metrics']['objective'] for r in rows)
-        return min((r for r in rows if r['metrics']['objective']<=value+self.resolution),key=lambda r:(r['algorithm_nodes'],r['key']))
+        near=[r for r in rows if r['metrics']['objective']<=value+self.resolution]
+        front=self.reference_frontier().get('keys',[])
+        eligible=[r for r in near if r['key'] in front] or near
+        return min(eligible,key=lambda r:(r['algorithm_nodes'],r['key']))
 
     def exhausted(self):
         return bool(self.stopper.reason or self.attempts>=self.budget['proposal_limit'] or self.account.exhausted()
@@ -1172,13 +1204,19 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     best=search.best()
     if progress:progress(f"搜索停止 · 已评价 {len(search.rows)} 图，提议 {search.attempts} 次，真实节点调用 {search.account.receipt()['used']}；预算内最佳 {best['key']}，RMSE {best['metrics']['RMSE']:.5g}。正在生成产品及回读。")
     comparison=search.comparison_report(best)
+    frontier=search.reference_frontier()
+    structure_key=frontier.get('minimum_gradient_error_key')
     save(folder/'selection_freeze.json',dict(key=best['key'],baseline_key=comparison['families']['SINGLE_SOURCE']['best_key'],
-        graph=search.records,review_axes=search.review_axes,confirmation_read=False))
+        graph=search.records,review_axes=search.review_axes,confirmation_read=False,
+        reference_frontier=frontier,structure_key=structure_key))
     out,trace=search.product(best['key']);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
     with xr.open_dataset(path,engine='h5netcdf') as readback:xr.testing.assert_equal(out,readback.load())
+    recommended_keys=list(dict.fromkeys(key for receipt in search.recommendation_receipts if receipt.get('status')=='PASS' for key in receipt.get('keys',[])))
     assessment=search.post_selection_assessment(dict(selected=best['key'],
         single_source_baseline=comparison['families']['SINGLE_SOURCE']['best_key'],
-        multisource_candidate=comparison['families']['MULTISOURCE']['best_key']))
+        multisource_candidate=comparison['families']['MULTISOURCE']['best_key'],
+        structure_preferred=structure_key,
+        **{'ds_recommendation_'+str(i):key for i,key in enumerate(recommended_keys[:2])}))
     confirmation=[]
     # Independent date-block confirmation is post-selection only; no promotion.
     if len(search.confirm_times):
@@ -1221,9 +1259,23 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     save(folder/'recommendation_review.json',review)
     delivered_key=delivered_graph['key']
     delivered_graph['records']={n.id:search.records[n.id] for n in search.nodes(delivered_key)}
+    retained_products=[];exported={delivered_key:str(path)}
+    for label,key in [('baseline',baseline_key),('structure_preferred',structure_key)]+[('ds_recommendation_'+str(i),key) for i,key in enumerate(recommended_keys[:2])]:
+        if key is None:continue
+        try:
+            if key not in exported:
+                product,product_trace=search.product(key)
+                alternative=folder/(label+'.nc');product.to_netcdf(alternative,engine='h5netcdf')
+                with xr.open_dataset(alternative) as restored:xr.testing.assert_allclose(product,restored.load())
+                exported[key]=str(alternative)
+            retained_products.append(dict(role=label,key=key,status='QUALITY_VALID',product=exported[key],
+                default=key==delivered_key,enhancement_confirmed=False,selection_scope='search_validation_only',
+                confirmation=assessment.get('schemes',{}).get(label,{}).get('metrics')))
+        except (SearchBudgetExceeded,DAGError,ValueError) as exc:
+            retained_products.append(dict(role=label,key=key,status='NOT_EXPORTED',reason=str(exc)))
     groups=[dict(held_station_ids=f['held'],training_station_ids=f['train'],reference_sha256=sha256(f['reference'].tobytes()).hexdigest()) for f in search.folds]
     result=dict(status='PASS',version=VERSION,product=str(path),best=best,initial_key=initial_key,
-        recommendation_review=review,delivery_status=delivery_status,delivered_graph=delivered_graph,
+        recommendation_review=review,delivery_status=delivery_status,delivered_graph=delivered_graph,retained_products=retained_products,
         delivered_best=next(r for r in search.rows if r['key']==delivered_key),
         candidate_product=str(candidate_product) if candidate_product else None,
         recommendation_validation=search.recommendation_receipts,
@@ -1257,6 +1309,11 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
             changed_choices=sum(t['guidance_changed_choice'] for t in search.transitions))
     result['component_catalog']=COMPONENTS
     result['evaluation_protocol']=search.evaluation_plan
+    result['reference_frontier']=frontier
+    result['structure_parent_keys']=sorted(getattr(search,'structure_parents_used',set()))
+    result['choice_scope']='ERROR_STRUCTURE_TRADEOFF_NO_UNIVERSAL_WINNER' if frontier.get('tradeoff') else 'ERROR_INCUMBENT_WITH_STRUCTURE_CHECK' if frontier.get('keys') else 'STRUCTURE_NOT_RANKABLE'
+    result['overall_optimum_claim']=False
+    result['evaluation_protocol']['date_partition']=search.date_protocol
     result['evaluation_cost']=dict(preparation_seconds=search.evaluation_plan.get('cost_seconds',0.),
         numerical_calls='Included in total_cost search ledger; coarse diagnostic and reduced scale run separately')
     if search.reconstruction is not None:

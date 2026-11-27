@@ -1,0 +1,1239 @@
+{
+  "status": "PASS",
+  "used_for_selection": false,
+  "source": "FROZEN_REDUCED_SCALE_OUTER_BLOCKS",
+  "reference_basis": "REDUCED_SCALE_PRODUCT_RECONSTRUCTION",
+  "statistical_independence_verified": false,
+  "accuracy_improvement": "NOT_ESTABLISHED",
+  "schemes": {
+    "selected": {
+      "status": "PASS",
+      "key": "c22e5f138a9850192746",
+      "metrics": {
+        "RMSE": 1.597319153669343,
+        "MAE": 1.2483736678323478,
+        "Bias": -0.07264822815869702,
+        "count": 48,
+        "spatial_structure": {
+          "version": "spatial_structure_v2_scores",
+          "status": "PASS",
+          "reference_required": true,
+          "original_shape": {
+            "time": 3,
+            "lat": 8,
+            "lon": 8
+          },
+          "evaluated_bounding_shape": {
+            "time": 3,
+            "lat": 8,
+            "lon": 6
+          },
+          "support_sha256": "b26d54160328b507c92c9fb19a561171f376ae15179ba75491bd432bf95d4ea9",
+          "gradient_RMSE_per_cell": 1.881392261490992,
+          "gradient_pairs": 54,
+          "unit": "K",
+          "interpretation": "Gradient per grid cell and normalized frequency shape; not physical-km spectra or independent truth",
+          "used_for_selection": false,
+          "spectrum_status": "MISSING_VALUES_NO_ZERO_FILL",
+          "FSS_status": "THRESHOLD_NOT_DECLARED",
+          "spectrum_frames": 0,
+          "total_frames": 3
+        }
+      },
+      "blocked_validation": {
+        "objective": 1.4892427289671708,
+        "objective_name": "equal_date_region_RMSE",
+        "pooled": {
+          "RMSE": 1.597319153669343,
+          "MAE": 1.2483736678323478,
+          "Bias": -0.07264822815869702,
+          "count": 48
+        },
+        "blocks": [
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 0.6314690055669879,
+              "MAE": 0.5156781980830374,
+              "Bias": 0.30395852484184616,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 0.9884574397858833,
+              "MAE": 0.8815154534001834,
+              "Bias": -0.5751001334531765,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 2.142741229136589,
+              "MAE": 1.8311302521346846,
+              "Bias": -0.634083801608412,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 1.7089849254880878,
+              "MAE": 1.1856874446603314,
+              "Bias": 1.1504245975241219,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 1.85609955831372,
+              "MAE": 1.5669016074883046,
+              "Bias": -1.0718664123916852,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 1.6589662960125433,
+              "MAE": 1.2209858111181404,
+              "Bias": 0.9899031984822102,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 1.4501063909685925,
+              "MAE": 1.0805315416499042,
+              "Bias": -0.8239780627751401,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 0.5003086991780556,
+              "MAE": 0.47081455196509125,
+              "Bias": -0.02191905829631935,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 2.0215570871076305,
+              "MAE": 1.8818963168641432,
+              "Bias": -1.8818963168641432,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 1.0306898086013796,
+              "MAE": 0.7953486635173448,
+              "Bias": 0.04365506743043568,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 2.4391725803248425,
+              "MAE": 2.333264698008705,
+              "Bias": 0.500508343938904,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 1.4423597271217339,
+              "MAE": 1.2167294750983046,
+              "Bias": 1.1486153152669942,
+              "count": 4
+            }
+          }
+        ],
+        "block_count": 12,
+        "date_count": 3,
+        "region_count": 4,
+        "RMSE_block_std": 0.577567808051454,
+        "worst_block_RMSE": 2.4391725803248425,
+        "source_bonus": 0,
+        "uncertainty": "Descriptive date-region variability, not a confidence interval",
+        "robustness_status": "MULTIPLE_DATES_AND_REGIONS"
+      },
+      "trace": [
+        {
+          "node": "a59c76d23f4cd9dd6f38",
+          "operation": "spatial.observations",
+          "parameters": {},
+          "cache_key": "2b2754ab3d79c0eec9792b65087e8f5a0de6ac65fb85da6808301297dfcfc142",
+          "cache_hit": false,
+          "seconds": 4.5900000259280205e-05,
+          "edges": [],
+          "outputs": {
+            "field": {
+              "kind": "spatial_conditioning_matrix",
+              "metadata": {
+                "operation": "spatial.observations",
+                "units": "K",
+                "coordinates": [
+                  [
+                    -118.75,
+                    31.25
+                  ],
+                  [
+                    -113.75,
+                    31.25
+                  ],
+                  [
+                    -108.75,
+                    31.25
+                  ],
+                  [
+                    -103.75,
+                    31.25
+                  ],
+                  [
+                    -118.75,
+                    36.25
+                  ],
+                  [
+                    -113.75,
+                    36.25
+                  ],
+                  [
+                    -108.75,
+                    36.25
+                  ],
+                  [
+                    -103.75,
+                    36.25
+                  ],
+                  [
+                    -118.75,
+                    41.25
+                  ],
+                  [
+                    -113.75,
+                    41.25
+                  ],
+                  [
+                    -108.75,
+                    41.25
+                  ],
+                  [
+                    -103.75,
+                    41.25
+                  ],
+                  [
+                    -118.75,
+                    46.25
+                  ],
+                  [
+                    -113.75,
+                    46.25
+                  ],
+                  [
+                    -108.75,
+                    46.25
+                  ],
+                  [
+                    -103.75,
+                    46.25
+                  ]
+                ],
+                "role": "retained observations only"
+              },
+              "fingerprint": "36278d154f87d8ddfae283a6f8c1817e9759f0d36f2b972230b8f9e5dee914f9"
+            }
+          },
+          "status": "PASS"
+        },
+        {
+          "node": "c22e5f138a9850192746",
+          "operation": "station.metpy_barnes",
+          "parameters": {},
+          "cache_key": "32e28070e3ede92e805d1da9798ee25172239d418964abb8f09bfc18b9b2f774",
+          "cache_hit": false,
+          "seconds": 0.039208500002132496,
+          "edges": [
+            {
+              "from": "a59c76d23f4cd9dd6f38.field",
+              "to": "c22e5f138a9850192746.observations",
+              "kind": "spatial_conditioning_matrix",
+              "fingerprint": "36278d154f87d8ddfae283a6f8c1817e9759f0d36f2b972230b8f9e5dee914f9",
+              "status": "PASS"
+            }
+          ],
+          "outputs": {
+            "field": {
+              "kind": "spatial_estimate_pair",
+              "metadata": {
+                "operation": "station.metpy_barnes",
+                "units": "K",
+                "algorithm": "station.metpy_barnes",
+                "frame_calls": 3,
+                "reports": [
+                  {
+                    "backend": "MetPy",
+                    "version": "1.7.1",
+                    "method": "barnes",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "nan_fraction": 0.0,
+                    "test_used_for_fitting": false
+                  },
+                  {
+                    "backend": "MetPy",
+                    "version": "1.7.1",
+                    "method": "barnes",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "nan_fraction": 0.0,
+                    "test_used_for_fitting": false
+                  },
+                  {
+                    "backend": "MetPy",
+                    "version": "1.7.1",
+                    "method": "barnes",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "nan_fraction": 0.0,
+                    "test_used_for_fitting": false
+                  }
+                ],
+                "observation_role": "actual retained-observation parent only",
+                "reference_used": false
+              },
+              "fingerprint": "e57b49d3b7e0e72fd66d5afcd568d0d6ba99363ec5fa6c2cb07d0138e3693ba9"
+            }
+          },
+          "status": "PASS"
+        }
+      ]
+    },
+    "single_source_baseline": {
+      "status": "PASS",
+      "key": "c22e5f138a9850192746",
+      "metrics": {
+        "RMSE": 1.597319153669343,
+        "MAE": 1.2483736678323478,
+        "Bias": -0.07264822815869702,
+        "count": 48,
+        "spatial_structure": {
+          "version": "spatial_structure_v2_scores",
+          "status": "PASS",
+          "reference_required": true,
+          "original_shape": {
+            "time": 3,
+            "lat": 8,
+            "lon": 8
+          },
+          "evaluated_bounding_shape": {
+            "time": 3,
+            "lat": 8,
+            "lon": 6
+          },
+          "support_sha256": "b26d54160328b507c92c9fb19a561171f376ae15179ba75491bd432bf95d4ea9",
+          "gradient_RMSE_per_cell": 1.881392261490992,
+          "gradient_pairs": 54,
+          "unit": "K",
+          "interpretation": "Gradient per grid cell and normalized frequency shape; not physical-km spectra or independent truth",
+          "used_for_selection": false,
+          "spectrum_status": "MISSING_VALUES_NO_ZERO_FILL",
+          "FSS_status": "THRESHOLD_NOT_DECLARED",
+          "spectrum_frames": 0,
+          "total_frames": 3
+        }
+      },
+      "blocked_validation": {
+        "objective": 1.4892427289671708,
+        "objective_name": "equal_date_region_RMSE",
+        "pooled": {
+          "RMSE": 1.597319153669343,
+          "MAE": 1.2483736678323478,
+          "Bias": -0.07264822815869702,
+          "count": 48
+        },
+        "blocks": [
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 0.6314690055669879,
+              "MAE": 0.5156781980830374,
+              "Bias": 0.30395852484184616,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 0.9884574397858833,
+              "MAE": 0.8815154534001834,
+              "Bias": -0.5751001334531765,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 2.142741229136589,
+              "MAE": 1.8311302521346846,
+              "Bias": -0.634083801608412,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 1.7089849254880878,
+              "MAE": 1.1856874446603314,
+              "Bias": 1.1504245975241219,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 1.85609955831372,
+              "MAE": 1.5669016074883046,
+              "Bias": -1.0718664123916852,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 1.6589662960125433,
+              "MAE": 1.2209858111181404,
+              "Bias": 0.9899031984822102,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 1.4501063909685925,
+              "MAE": 1.0805315416499042,
+              "Bias": -0.8239780627751401,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 0.5003086991780556,
+              "MAE": 0.47081455196509125,
+              "Bias": -0.02191905829631935,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 2.0215570871076305,
+              "MAE": 1.8818963168641432,
+              "Bias": -1.8818963168641432,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 1.0306898086013796,
+              "MAE": 0.7953486635173448,
+              "Bias": 0.04365506743043568,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 2.4391725803248425,
+              "MAE": 2.333264698008705,
+              "Bias": 0.500508343938904,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 1.4423597271217339,
+              "MAE": 1.2167294750983046,
+              "Bias": 1.1486153152669942,
+              "count": 4
+            }
+          }
+        ],
+        "block_count": 12,
+        "date_count": 3,
+        "region_count": 4,
+        "RMSE_block_std": 0.577567808051454,
+        "worst_block_RMSE": 2.4391725803248425,
+        "source_bonus": 0,
+        "uncertainty": "Descriptive date-region variability, not a confidence interval",
+        "robustness_status": "MULTIPLE_DATES_AND_REGIONS"
+      },
+      "trace": [
+        {
+          "node": "a59c76d23f4cd9dd6f38",
+          "operation": "spatial.observations",
+          "parameters": {},
+          "cache_key": "2b2754ab3d79c0eec9792b65087e8f5a0de6ac65fb85da6808301297dfcfc142",
+          "cache_hit": false,
+          "seconds": 4.5900000259280205e-05,
+          "edges": [],
+          "outputs": {
+            "field": {
+              "kind": "spatial_conditioning_matrix",
+              "metadata": {
+                "operation": "spatial.observations",
+                "units": "K",
+                "coordinates": [
+                  [
+                    -118.75,
+                    31.25
+                  ],
+                  [
+                    -113.75,
+                    31.25
+                  ],
+                  [
+                    -108.75,
+                    31.25
+                  ],
+                  [
+                    -103.75,
+                    31.25
+                  ],
+                  [
+                    -118.75,
+                    36.25
+                  ],
+                  [
+                    -113.75,
+                    36.25
+                  ],
+                  [
+                    -108.75,
+                    36.25
+                  ],
+                  [
+                    -103.75,
+                    36.25
+                  ],
+                  [
+                    -118.75,
+                    41.25
+                  ],
+                  [
+                    -113.75,
+                    41.25
+                  ],
+                  [
+                    -108.75,
+                    41.25
+                  ],
+                  [
+                    -103.75,
+                    41.25
+                  ],
+                  [
+                    -118.75,
+                    46.25
+                  ],
+                  [
+                    -113.75,
+                    46.25
+                  ],
+                  [
+                    -108.75,
+                    46.25
+                  ],
+                  [
+                    -103.75,
+                    46.25
+                  ]
+                ],
+                "role": "retained observations only"
+              },
+              "fingerprint": "36278d154f87d8ddfae283a6f8c1817e9759f0d36f2b972230b8f9e5dee914f9"
+            }
+          },
+          "status": "PASS"
+        },
+        {
+          "node": "c22e5f138a9850192746",
+          "operation": "station.metpy_barnes",
+          "parameters": {},
+          "cache_key": "32e28070e3ede92e805d1da9798ee25172239d418964abb8f09bfc18b9b2f774",
+          "cache_hit": false,
+          "seconds": 0.039208500002132496,
+          "edges": [
+            {
+              "from": "a59c76d23f4cd9dd6f38.field",
+              "to": "c22e5f138a9850192746.observations",
+              "kind": "spatial_conditioning_matrix",
+              "fingerprint": "36278d154f87d8ddfae283a6f8c1817e9759f0d36f2b972230b8f9e5dee914f9",
+              "status": "PASS"
+            }
+          ],
+          "outputs": {
+            "field": {
+              "kind": "spatial_estimate_pair",
+              "metadata": {
+                "operation": "station.metpy_barnes",
+                "units": "K",
+                "algorithm": "station.metpy_barnes",
+                "frame_calls": 3,
+                "reports": [
+                  {
+                    "backend": "MetPy",
+                    "version": "1.7.1",
+                    "method": "barnes",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "nan_fraction": 0.0,
+                    "test_used_for_fitting": false
+                  },
+                  {
+                    "backend": "MetPy",
+                    "version": "1.7.1",
+                    "method": "barnes",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "nan_fraction": 0.0,
+                    "test_used_for_fitting": false
+                  },
+                  {
+                    "backend": "MetPy",
+                    "version": "1.7.1",
+                    "method": "barnes",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "nan_fraction": 0.0,
+                    "test_used_for_fitting": false
+                  }
+                ],
+                "observation_role": "actual retained-observation parent only",
+                "reference_used": false
+              },
+              "fingerprint": "e57b49d3b7e0e72fd66d5afcd568d0d6ba99363ec5fa6c2cb07d0138e3693ba9"
+            }
+          },
+          "status": "PASS"
+        }
+      ]
+    },
+    "structure_preferred": {
+      "status": "PASS",
+      "key": "2c053fcc74e3d7f35328",
+      "metrics": {
+        "RMSE": 1.891115892187049,
+        "MAE": 1.4581500905386828,
+        "Bias": 0.008135863010555985,
+        "count": 48,
+        "spatial_structure": {
+          "version": "spatial_structure_v2_scores",
+          "status": "PASS",
+          "reference_required": true,
+          "original_shape": {
+            "time": 3,
+            "lat": 8,
+            "lon": 8
+          },
+          "evaluated_bounding_shape": {
+            "time": 3,
+            "lat": 8,
+            "lon": 6
+          },
+          "support_sha256": "b26d54160328b507c92c9fb19a561171f376ae15179ba75491bd432bf95d4ea9",
+          "gradient_RMSE_per_cell": 2.050283828237451,
+          "gradient_pairs": 54,
+          "unit": "K",
+          "interpretation": "Gradient per grid cell and normalized frequency shape; not physical-km spectra or independent truth",
+          "used_for_selection": false,
+          "spectrum_status": "MISSING_VALUES_NO_ZERO_FILL",
+          "FSS_status": "THRESHOLD_NOT_DECLARED",
+          "spectrum_frames": 0,
+          "total_frames": 3
+        }
+      },
+      "blocked_validation": {
+        "objective": 1.7428362714019452,
+        "objective_name": "equal_date_region_RMSE",
+        "pooled": {
+          "RMSE": 1.891115892187049,
+          "MAE": 1.4581500905386828,
+          "Bias": 0.008135863010555985,
+          "count": 48
+        },
+        "blocks": [
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 1.1792541441930642,
+              "MAE": 0.7701260639221488,
+              "Bias": 0.7701260639221488,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 1.0438399543250048,
+              "MAE": 0.910211314126741,
+              "Bias": -0.19247870790530897,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 2.708033685216714,
+              "MAE": 2.4263117082862777,
+              "Bias": -0.8521181034380731,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 2.6108905064352075,
+              "MAE": 2.1044854728146305,
+              "Bias": 2.1044854728146305,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 2.7224694706637114,
+              "MAE": 2.245461694419234,
+              "Bias": -1.841724671146082,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 1.6877820674438226,
+              "MAE": 1.2411681830175638,
+              "Bias": 0.8180453071325502,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 1.1057179150420355,
+              "MAE": 1.0019850458998292,
+              "Bias": -0.2714195324877551,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 0.7867771383859752,
+              "MAE": 0.7633761220807855,
+              "Bias": -0.15076011971498815,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 2.8544588063583642,
+              "MAE": 2.3603512345848117,
+              "Bias": -2.3603512345848117,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 1.3409922717907368,
+              "MAE": 1.2095546405765845,
+              "Bias": -0.20191874701515644,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 1.6689669942618528,
+              "MAE": 1.5899875884568075,
+              "Bias": 1.5899875884568075,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 1.2048523027068494,
+              "MAE": 0.8747820182787791,
+              "Bias": 0.6857570400927102,
+              "count": 4
+            }
+          }
+        ],
+        "block_count": 12,
+        "date_count": 3,
+        "region_count": 4,
+        "RMSE_block_std": 0.7340579328419418,
+        "worst_block_RMSE": 2.8544588063583642,
+        "source_bonus": 0,
+        "uncertainty": "Descriptive date-region variability, not a confidence interval",
+        "robustness_status": "MULTIPLE_DATES_AND_REGIONS"
+      },
+      "trace": [
+        {
+          "node": "a59c76d23f4cd9dd6f38",
+          "operation": "spatial.observations",
+          "parameters": {},
+          "cache_key": "2b2754ab3d79c0eec9792b65087e8f5a0de6ac65fb85da6808301297dfcfc142",
+          "cache_hit": true,
+          "seconds": 2.4999997549457476e-05,
+          "edges": [],
+          "outputs": {
+            "field": {
+              "kind": "spatial_conditioning_matrix",
+              "metadata": {
+                "operation": "spatial.observations",
+                "units": "K",
+                "coordinates": [
+                  [
+                    -118.75,
+                    31.25
+                  ],
+                  [
+                    -113.75,
+                    31.25
+                  ],
+                  [
+                    -108.75,
+                    31.25
+                  ],
+                  [
+                    -103.75,
+                    31.25
+                  ],
+                  [
+                    -118.75,
+                    36.25
+                  ],
+                  [
+                    -113.75,
+                    36.25
+                  ],
+                  [
+                    -108.75,
+                    36.25
+                  ],
+                  [
+                    -103.75,
+                    36.25
+                  ],
+                  [
+                    -118.75,
+                    41.25
+                  ],
+                  [
+                    -113.75,
+                    41.25
+                  ],
+                  [
+                    -108.75,
+                    41.25
+                  ],
+                  [
+                    -103.75,
+                    41.25
+                  ],
+                  [
+                    -118.75,
+                    46.25
+                  ],
+                  [
+                    -113.75,
+                    46.25
+                  ],
+                  [
+                    -108.75,
+                    46.25
+                  ],
+                  [
+                    -103.75,
+                    46.25
+                  ]
+                ],
+                "role": "retained observations only"
+              },
+              "fingerprint": "36278d154f87d8ddfae283a6f8c1817e9759f0d36f2b972230b8f9e5dee914f9"
+            }
+          },
+          "status": "PASS"
+        },
+        {
+          "node": "2c053fcc74e3d7f35328",
+          "operation": "station.pykrige_universal",
+          "parameters": {},
+          "cache_key": "d9fe4f33922a3b971fdc0272bcac69e54a6283697ba414fe996b284e9f3a83a5",
+          "cache_hit": false,
+          "seconds": 0.04772220000086236,
+          "edges": [
+            {
+              "from": "a59c76d23f4cd9dd6f38.field",
+              "to": "2c053fcc74e3d7f35328.observations",
+              "kind": "spatial_conditioning_matrix",
+              "fingerprint": "36278d154f87d8ddfae283a6f8c1817e9759f0d36f2b972230b8f9e5dee914f9",
+              "status": "PASS"
+            }
+          ],
+          "outputs": {
+            "field": {
+              "kind": "spatial_estimate_pair",
+              "metadata": {
+                "operation": "station.pykrige_universal",
+                "units": "K",
+                "algorithm": "station.pykrige_universal",
+                "frame_calls": 3,
+                "reports": [
+                  {
+                    "backend": "PyKrige",
+                    "version": "1.7.3",
+                    "method": "universal",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "test_used_for_fitting": false,
+                    "auxiliary_used": false
+                  },
+                  {
+                    "backend": "PyKrige",
+                    "version": "1.7.3",
+                    "method": "universal",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "test_used_for_fitting": false,
+                    "auxiliary_used": false
+                  },
+                  {
+                    "backend": "PyKrige",
+                    "version": "1.7.3",
+                    "method": "universal",
+                    "training_count": 16,
+                    "dropped_records": 0,
+                    "outside_station_hull_fraction": 0.4305555555555556,
+                    "test_used_for_fitting": false,
+                    "auxiliary_used": false
+                  }
+                ],
+                "observation_role": "actual retained-observation parent only",
+                "reference_used": false
+              },
+              "fingerprint": "de2e7aec12c81a524fd6a07f57bd03e73ebb1d322c531a65de01760611160348"
+            }
+          },
+          "status": "PASS"
+        }
+      ]
+    },
+    "ds_recommendation_0": {
+      "status": "PASS",
+      "key": "25575840a9ed8f4aefc4",
+      "metrics": {
+        "RMSE": 1.9495635355968068,
+        "MAE": 1.524785066083826,
+        "Bias": 0.0031962111551315786,
+        "count": 48,
+        "spatial_structure": {
+          "version": "spatial_structure_v2_scores",
+          "status": "PASS",
+          "reference_required": true,
+          "original_shape": {
+            "time": 3,
+            "lat": 8,
+            "lon": 8
+          },
+          "evaluated_bounding_shape": {
+            "time": 3,
+            "lat": 8,
+            "lon": 6
+          },
+          "support_sha256": "b26d54160328b507c92c9fb19a561171f376ae15179ba75491bd432bf95d4ea9",
+          "gradient_RMSE_per_cell": 2.7611299608619384,
+          "gradient_pairs": 54,
+          "unit": "K",
+          "interpretation": "Gradient per grid cell and normalized frequency shape; not physical-km spectra or independent truth",
+          "used_for_selection": false,
+          "spectrum_status": "MISSING_VALUES_NO_ZERO_FILL",
+          "FSS_status": "THRESHOLD_NOT_DECLARED",
+          "spectrum_frames": 0,
+          "total_frames": 3
+        }
+      },
+      "blocked_validation": {
+        "objective": 1.6991147874079375,
+        "objective_name": "equal_date_region_RMSE",
+        "pooled": {
+          "RMSE": 1.9495635355968068,
+          "MAE": 1.524785066083826,
+          "Bias": 0.0031962111551315786,
+          "count": 48
+        },
+        "blocks": [
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 0.686931819554338,
+              "MAE": 0.575000000000017,
+              "Bias": -0.0005698387612369515,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 0.463737271828722,
+              "MAE": 0.34835572620757205,
+              "Bias": -0.005788547584856474,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 3.462555403264075,
+              "MAE": 3.2975000000000136,
+              "Bias": 0.004601159978648184,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-10 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 1.4613155277052885,
+              "MAE": 1.2105246319723904,
+              "Bias": -0.021049263944803442,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 1.9138409358785724,
+              "MAE": 1.3973992728271014,
+              "Bias": -0.030201454345785805,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 1.9827003053445866,
+              "MAE": 1.8774999999999977,
+              "Bias": 0.009041615649039159,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 2.0138215664880232,
+              "MAE": 1.6500000000000057,
+              "Bias": 0.02184723443079406,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-11 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 1.1453736165467203,
+              "MAE": 1.125,
+              "Bias": 0.0023919618118952712,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 3,
+            "metrics": {
+              "RMSE": 1.6500192860624208,
+              "MAE": 1.6000000000000085,
+              "Bias": -0.007977742657331532,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 7,
+            "metrics": {
+              "RMSE": 0.936425938128288,
+              "MAE": 0.7750000000000057,
+              "Bias": 0.004305531261451279,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 10,
+            "metrics": {
+              "RMSE": 3.624806902013901,
+              "MAE": 3.5474999999999994,
+              "Bias": 0.0469715540261717,
+              "count": 4
+            }
+          },
+          {
+            "date": "2013-01-12 00:00:00",
+            "region": 12,
+            "metrics": {
+              "RMSE": 1.0478488760803166,
+              "MAE": 0.8936411619988007,
+              "Bias": 0.014782323997593494,
+              "count": 4
+            }
+          }
+        ],
+        "block_count": 12,
+        "date_count": 3,
+        "region_count": 4,
+        "RMSE_block_std": 0.9559324863924235,
+        "worst_block_RMSE": 3.624806902013901,
+        "source_bonus": 0,
+        "uncertainty": "Descriptive date-region variability, not a confidence interval",
+        "robustness_status": "MULTIPLE_DATES_AND_REGIONS"
+      },
+      "trace": [
+        {
+          "node": "25575840a9ed8f4aefc4",
+          "operation": "spatial.source",
+          "parameters": {
+            "index": 0
+          },
+          "cache_key": "242fff17d22e5bdd59d052a13096ed49192582767d42c17d61a0ae8cd26cb8f3",
+          "cache_hit": false,
+          "seconds": 2.3100001271814108e-05,
+          "edges": [],
+          "outputs": {
+            "field": {
+              "kind": "spatial_estimate_pair",
+              "metadata": {
+                "operation": "spatial.source",
+                "units": "K"
+              },
+              "fingerprint": "506c20c5b1437ef5ad1f71fcab0122265b65c4d77db83a634bb148a4a25370df"
+            }
+          },
+          "status": "PASS"
+        }
+      ]
+    }
+  },
+  "metric_backend": "Shared error_metrics; cached genuine numerical predictions, no new fitted graphs",
+  "test_ids": [
+    4,
+    5,
+    12,
+    13,
+    34,
+    35,
+    36,
+    37,
+    42,
+    43,
+    44,
+    45,
+    48,
+    49,
+    56,
+    57
+  ],
+  "conditioning": "Degraded primary only; fine test labels never used in fitting",
+  "review_support": {
+    "locations": [
+      "4",
+      "5",
+      "12",
+      "13",
+      "34",
+      "35",
+      "36",
+      "37",
+      "42",
+      "43",
+      "44",
+      "45",
+      "48",
+      "49",
+      "56",
+      "57"
+    ],
+    "times": [
+      "2013-01-10 00:00:00",
+      "2013-01-11 00:00:00",
+      "2013-01-12 00:00:00"
+    ],
+    "reference_key": "c3f63c27da932126bcbccef19870b1dce1df3369b7a26296608faca1e1f53b36"
+  }
+}

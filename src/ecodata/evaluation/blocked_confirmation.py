@@ -220,6 +220,27 @@ def compare(candidate,baseline,*,risk_limits=None):
     return result
 
 
+def range_comparison(candidate, baseline, *, phase):
+    """Descriptive paired ranges, never a post-hoc selection of winning blocks."""
+    compare_legacy(candidate, baseline)  # Same queue, references and denominators.
+    rows=[]
+    for a,b in zip(candidate['block_metrics'],baseline['block_metrics']):
+        if a['metrics'] is None:
+            rows.append(dict(block=a['fold_id'],status='NO_REFERENCE'));continue
+        left,right=a['metrics'],b['metrics']
+        delta=left['RMSE']-right['RMSE']
+        tolerance=64*np.finfo(float).eps*max(1.,abs(left['RMSE']),abs(right['RMSE']))
+        rows.append(dict(block=a['fold_id'],status='EVALUATED',phase=phase,
+            candidate=left,baseline=right,RMSE_change=delta,
+            lower_error='candidate' if delta < -tolerance else 'baseline' if delta > tolerance else 'equivalent'))
+    return dict(phase=phase,blocks=rows,used_for_selection=phase=='selection',
+        measured_blocks=sum(r['status']=='EVALUATED' for r in rows),
+        candidate_better=sum(r.get('lower_error')=='candidate' for r in rows),
+        baseline_better=sum(r.get('lower_error')=='baseline' for r in rows),
+        equivalent=sum(r.get('lower_error')=='equivalent' for r in rows),
+        limitation='Observed ranges only; unobserved dates, regions and unresolved fine scales remain UNKNOWN')
+
+
 def review(selection,selection_baseline,confirmation,confirmation_baseline,*,quality_pass,
            risk_limits=None,policy_version=None):
     if policy_version==LEGACY_VERSION:
@@ -241,7 +262,10 @@ def review(selection,selection_baseline,confirmation,confirmation_baseline,*,qua
     return dict(original,version=VERSION,status=status,recommended=recommended,
         decision='RECOMMEND' if recommended else 'TRIAL' if status=='TRIAL_AVAILABLE' else 'KEEP_BASELINE',
         candidate_trial_available=status=='TRIAL_AVAILABLE',
-        selection=first,confirmation=second,evidence_status='SUFFICIENT_ENGINEERING_SUPPORT' if first['sufficient'] and second['sufficient'] else 'INSUFFICIENT',
+        selection=first,confirmation=second,
+        range_comparison=dict(selection=range_comparison(selection,selection_baseline,phase='selection'),
+            confirmation=range_comparison(confirmation,confirmation_baseline,phase='confirmation')),
+        evidence_status='SUFFICIENT_ENGINEERING_SUPPORT' if first['sufficient'] and second['sufficient'] else 'INSUFFICIENT',
         policy=dict(POLICY,confirmation=original['policy']['confirmation']),
         warning='Paired block intervals are conditional diagnostics; not calibrated future guarantees or independent pixel replicates')
 
@@ -379,6 +403,47 @@ def review_field(search,result,outer,receipt,request):
     return result_review
 
 
+def scope_report(result, folder):
+    """Expose every measured date/region, including negative results, locally."""
+    from pathlib import Path
+    path=Path(folder)/'candidate_results.json'
+    if not path.is_file():return dict(status='NO_BLOCK_RECORDS',accuracy_claim=False)
+    values=json.loads(path.read_text(encoding='utf8'))
+    rows=list(values.values()) if isinstance(values,dict) else values
+    by_key={r['key']:r for r in rows if r.get('status') in {'PASS','ELIGIBLE_OUTPUT'}}
+    baseline=(result.get('selection_comparison',{}).get('families',{}).get('SINGLE_SOURCE',{}).get('best_key')
+              or (result.get('initial_best') or {}).get('key'))
+    candidates=[('selected',(result.get('best') or {}).get('key'))]
+    candidates += [('ds_recommendation_'+str(i),key) for i,r in enumerate(result.get('recommendation_validation',[]))
+                   if r.get('status')=='PASS' for key in r.get('keys',[])][:2]
+    def blocks(row):
+        raw=row.get('blocked_validation',{}).get('blocks',[])
+        return {str(b['date'])+'|'+str(b['region']):b['metrics'] for b in raw}
+    comparisons=[];assessment=result.get('post_selection_assessment',{}).get('schemes',{})
+    for name,key in candidates:
+        if key not in by_key or baseline not in by_key:continue
+        for phase,a,b in [('selection',by_key[key],by_key[baseline]),
+                ('confirmation',assessment.get(name,{}),assessment.get('single_source_baseline',{}))]:
+            left,right=blocks(a),blocks(b)
+            if not left or left.keys()!=right.keys():
+                comparisons.append(dict(candidate=name,key=key,phase=phase,status='NOT_COMPARABLE_OR_NOT_EVALUATED'));continue
+            ranges=[]
+            for block in sorted(left):
+                aa,bb=left[block],right[block]
+                if aa['count']!=bb['count']:raise ValueError('Scope report cannot compare different sample denominators')
+                delta=aa['RMSE']-bb['RMSE'];tol=64*np.finfo(float).eps*max(1.,aa['RMSE'],bb['RMSE'])
+                ranges.append(dict(block=block,candidate=aa,baseline=bb,RMSE_change=delta,
+                    lower_error='candidate' if delta < -tol else 'baseline' if delta > tol else 'equivalent'))
+            comparisons.append(dict(candidate=name,key=key,phase=phase,status='EVALUATED',blocks=ranges,
+                candidate_better=sum(r['lower_error']=='candidate' for r in ranges),
+                baseline_better=sum(r['lower_error']=='baseline' for r in ranges),
+                equivalent=sum(r['lower_error']=='equivalent' for r in ranges)))
+    return dict(version='observed_scope_v1',baseline_key=baseline,comparisons=comparisons,
+        date_partition=result.get('evaluation_protocol',{}).get('date_partition'),accuracy_claim=False,
+        limitation='Observed reference-supported ranges only; no universal or 95% full-population guarantee',
+        retained_products=result.get('retained_products',[]))
+
+
 def finalize(result,request,folder,*,inputs=(),validation=None,evaluation=None):
     """No successful public fusion/search response silently omits review status."""
     from pathlib import Path
@@ -432,6 +497,8 @@ def finalize(result,request,folder,*,inputs=(),validation=None,evaluation=None):
     if request.get('recommendation_isolation'):
         result['recommendation_isolation']=request['recommendation_isolation']
     result['post_mutation_acceptance']=mutation_acceptance(result,folder)
+    result['scope_report']=scope_report(result,folder)
+    save(Path(folder)/'scope_report.json',result['scope_report'])
     save(Path(folder)/'post_mutation_acceptance.json',result['post_mutation_acceptance'])
     save(Path(folder)/'recommendation_review.json',gate)
     save(Path(folder)/'summary.json',result)

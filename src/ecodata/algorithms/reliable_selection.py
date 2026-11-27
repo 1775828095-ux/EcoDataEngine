@@ -267,6 +267,49 @@ def choose(rows, policy):
     return ranked[0] if ranked else None
 
 
+def reference_frontier(rows):
+    """Weight-free measured error/structure selection on one common queue.
+
+    Tradeoffs do not acquire an invented scalar score or universal winner.
+    Missing structure is UNKNOWN, never zero error or an illegal algorithm.
+    """
+    rows=sorted((r for r in rows if r.get('status') in {'PASS','ELIGIBLE_OUTPUT'} and not r.get('dominated')),key=lambda r:str(r['key']))
+    structure=[r.get('metrics',{}).get('spatial_structure',{}) for r in rows]
+    def numeric(value):return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value)
+    base=dict(version='reference_pareto_v1',weights=None,used_reference_only=True,
+        reference_accuracy='Not established independently by a product reconstruction reference')
+    if not rows or not all(s.get('status')=='PASS' and s.get('gradient_pairs',0)>0 and
+            numeric(s.get('gradient_RMSE_per_cell')) and s.get('support_sha256') for s in structure):
+        return dict(base,status='STRUCTURE_EVIDENCE_INCOMPLETE',keys=[],tradeoff=None)
+    if len({s['support_sha256'] for s in structure})!=1:
+        return dict(base,status='STRUCTURE_QUEUES_DIFFER',keys=[],tradeoff=None)
+    for item in structure:item['used_for_selection']=True
+    metrics=['reference_error','gradient_RMSE_per_cell']
+    values=[[float(r['metrics']['objective']),s['gradient_RMSE_per_cell']] for r,s in zip(rows,structure)]
+    if all(s.get('spectrum_status')=='PASS' and numeric(s.get('normalized_spectrum_L1')) for s in structure):
+        metrics.append('normalized_spectrum_L1')
+        for value,s in zip(values,structure):value.append(s['normalized_spectrum_L1'])
+    fss=[{r['scale_pixels']:r['value'] for r in s.get('FSS',[]) if r.get('status')=='PASS' and numeric(r.get('value'))} for s in structure]
+    scales=sorted(set.intersection(*(set(s) for s in fss))) if fss else []
+    for scale in scales:
+        metrics.append('one_minus_FSS_'+str(scale))
+        for value,s in zip(values,fss):value.append(1-s[scale])
+    try:
+        from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
+    except ImportError:
+        return dict(base,status='PYMOO_DEPENDENCY_UNAVAILABLE',keys=[],tradeoff=None)
+    indices=NonDominatedSorting().do(np.asarray(values),only_non_dominated_front=True)
+    keys=[rows[int(i)]['key'] for i in indices]
+    front=[rows[int(i)] for i in indices]
+    error_key=min(front,key=lambda r:(r['metrics']['objective'],r['metrics']['spatial_structure']['gradient_RMSE_per_cell'],str(r['key'])))['key']
+    gradient_key=min(front,key=lambda r:(r['metrics']['spatial_structure']['gradient_RMSE_per_cell'],r['metrics']['objective'],str(r['key'])))['key']
+    return dict(base,status='TRADEOFF' if error_key!=gradient_key else 'ALIGNED_OBJECTIVES',keys=keys,
+        metrics=metrics,minimum_error_key=error_key,minimum_gradient_error_key=gradient_key,
+        tradeoff=error_key!=gradient_key,support_sha256=structure[0]['support_sha256'],
+        universal_winner=False,rule='Exclude Pareto-dominated measured candidates; retain genuine tradeoffs without invented weights',
+        evidence=[dict(key=r['key'],losses=v,nondominated=r['key'] in keys) for r,v in zip(rows,values)])
+
+
 def protected_order(rows,policy,baseline,*,support_sufficient):
     """Rank complete comparable measured evidence, including a better new graph.
 

@@ -195,7 +195,10 @@ class DatasetReference:
         p=prediction.values[self.mask];y=reference.values[self.mask]
         if not np.isfinite(p).all():raise ValueError("Incomplete fixed reference cohort; do not rank a successful subset")
         d=p-y
-        return dict(objective=float(np.sqrt(np.mean(d*d))),RMSE=float(np.sqrt(np.mean(d*d))),MAE=float(np.abs(d).mean()),Bias=float(d.mean()),denominator=len(d),accuracy_assessed=True)
+        from ecodata.evaluation.spatial_structure import compare_fields
+        structure=compare_fields(prediction,reference,threshold=reference.attrs.get('event_threshold'))
+        return dict(objective=float(np.sqrt(np.mean(d*d))),RMSE=float(np.sqrt(np.mean(d*d))),MAE=float(np.abs(d).mean()),Bias=float(d.mean()),denominator=len(d),accuracy_assessed=True,
+                    spatial_structure=structure)
 
 
 class SearchValidation(DatasetReference):
