@@ -106,6 +106,13 @@ def classification_fields(scan, approved):
 
 
 def eligible(recommendation):
+    from .sampling_risk import BAYESIAN_RULE
+
+    if recommendation.get("station_two_stage"):
+        return False
+    if any(item.get("acceptance_sampling", {}).get("acceptance_rule") == BAYESIAN_RULE
+           for item in recommendation.get("local_holdout_review", ())):
+        return False
     release = recommendation.get("execution_release", {})
     if release.get("status") == "failed":
         return bool(release.get("blockers")) and all(

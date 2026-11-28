@@ -146,3 +146,36 @@ def test_desktop_hides_fusion_recipe_until_final_confirmation(window, monkeypatc
     assert window.recommendation_checks[0].isEnabled()
     assert "最终验收理由" in window.recommend_json.toPlainText()
     assert "private-alternatives" not in window.recommend_json.toPlainText()
+
+
+def test_wrf_station_gap_waits_on_step_two_and_shows_reason(window, monkeypatch):
+    from ecodata.desktop import selected_processing
+
+    window.set_decision_model("wrf")
+    window.scan = {"research_tasks": {"wrf": [{"tool": "wrf_station_gap"}]}}
+    window.update_original_background()
+    assert window.search_button.text() == "开始小样本推荐"
+    monkeypatch.setattr(desktop, "assert_current", lambda scan: None)
+    work = []
+
+    def run(scan, tasks, folder, progress, **options):
+        assert options["api_key"] == "test-not-a-real-key"
+        assert window.tabs.currentIndex() == 1
+        progress("第 1 轮 · 发送给 DeepSeek 24 条训练配对小样本")
+        assert "24 条" in window.wrf_nomination_view.toPlainText()
+        return dict(manifest={"task_scope": "wrf_station_gap"},
+                    research_records=[dict(tool="wrf_station_gap", status="BLOCKED",
+                                           task="task-1", label="WRF 多站同时段气温补缺",
+                                           reason="模拟：站点表缺字段 elevation_m")])
+
+    monkeypatch.setattr(selected_processing, "run", run)
+    monkeypatch.setattr(window, "work", lambda job, finish: work.append((job, finish)))
+    window.search_button.click()
+    assert len(work) == 1 and window.wrf_nomination_running
+    job, finish = work.pop()
+    finish(job(window.show_progress))
+    assert window.tabs.currentIndex() == 1
+    assert "未完成小样本推荐" in window.recommendation_status.text()
+    assert "elevation_m" in window.wrf_nomination_view.toPlainText()
+    window.search_button.click()
+    assert window.tabs.currentIndex() == 2 and not work

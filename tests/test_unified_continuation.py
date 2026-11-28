@@ -73,7 +73,7 @@ def test_selected_operations_keep_success_and_research_failure(tmp_path,monkeypa
         return dict(files=[('actual.txt',b'actual product')],source_formats=['CSV'],target_format='Text',
             original_report={},local=dict(artifacts=[],reason='actual completed'))
     monkeypatch.setattr(pair_processing,'run',process)
-    monkeypatch.setattr(research_dispatch,'run',lambda *args:(_ for _ in ()).throw(ValueError('missing reference')))
+    monkeypatch.setattr(research_dispatch,'run',lambda *args, **kwargs:(_ for _ in ()).throw(ValueError('missing reference')))
     tasks=[(key,dict(recipes=[],route='pair_processing')) for key in ('bad','good')]
     result=service.run(dict(research_tasks={'data_only':[{}]}),tasks,tmp_path,model_id='data_only')
     assert result['processing_completed'] and result['continuation']['status']=='PARTIAL'

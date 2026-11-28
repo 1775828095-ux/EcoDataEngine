@@ -518,6 +518,9 @@ class Window(QMainWindow):
         self.recommendation_status.setTextFormat(Qt.TextFormat.PlainText)
         recbox.addWidget(self.recommendation_status)
         recbox.addWidget(cards,1)
+        self.wrf_nomination_view=page()
+        self.wrf_nomination_view.hide()
+        recbox.addWidget(self.wrf_nomination_view,1)
         recactions=QHBoxLayout()
         self.recommendation_details_button=self.button(recactions,'查看检查详情',self.open_recommendation_details)
         self.recommendation_details_button.hide()
@@ -824,6 +827,12 @@ class Window(QMainWindow):
         for widget in self.busy_controls:
             widget.setEnabled(True)
         if error is not None:
+            if self.wrf_nomination_running:
+                self.wrf_nomination_running=False
+                self.recommendation_status.setText('小样本推荐流程未完成。')
+                self.wrf_nomination_view.appendPlainText(str(error))
+                self.search_button.setText('重新开始小样本推荐')
+                self.search_button.setEnabled(True)
             if self.tabs.currentIndex()==2 and self.result is None:
                 self.result_cards.render_selection([dict(
                     title='转换未完成' if self.conversion_only.isChecked() else '本地处理未完成 · 未选出算法',
@@ -861,6 +870,10 @@ class Window(QMainWindow):
         self.set_batch_view(self.recommend_batch_index,[])
         self.recommend_json.setPlaceholderText('终审通过后显示最终推荐。')
         self.clear_recommendation_cards()
+        self.wrf_nomination_running=False
+        self.wrf_nomination_view.clear()
+        self.wrf_nomination_view.hide()
+        self.search_button.setText('继续处理')
         self.recommendation_status.setText("点击首页「开始自动处理」后，此处自动显示处理方案及理由。")
         self.ai_advice_button.setEnabled(False)
         self.search_button.setEnabled(False)
@@ -938,6 +951,8 @@ class Window(QMainWindow):
             self.workflow_status.setText(message[:300])
         self.log_event(message,assistant=any(term in message for term in ('DeepSeek','DS','AI','次尝试')),
             algorithm=any(term in message for term in ('RMSE','候选','寻优','算法','spatial.','融合')))
+        if self.wrf_nomination_running:
+            self.wrf_nomination_view.appendPlainText(message)
         if self.tabs.currentIndex()==2:
             self.result_cards.append_progress(message)
         if '次尝试' in message:
@@ -971,9 +986,10 @@ class Window(QMainWindow):
 
     def continue_automatically(self,reply,checked):
         """UI chaining only: every recipe still comes from the shared checked plan."""
-        from .issues import checks, recommendation_checks
+        from .issues import checks, inspection_checks, recommendation_checks
         from .release_gate import selectable
-        self.present_issues([*checks(checked,reply.get('failures',[])), *recommendation_checks(self.recommendation_rows)])
+        problems = [*checks(checked, reply.get('failures', [])), *recommendation_checks(self.recommendation_rows)]
+        self.present_issues(problems)
         self.auto_run=False
         self.auto_phase=None
         can_continue=any(selectable(row) and not row.get('advisory_only') for row in self.recommendation_rows)
@@ -989,6 +1005,9 @@ class Window(QMainWindow):
                 self.recommendation_status.setText('已识别可继续核验的工程或组件；不适用建议已跳过，实际操作仍逐项检查最低必要条件，尚未标记融合或转换通过。')
                 self.report_milestone('已识别组件转换方案，请确认后继续。')
                 return
+            inspection = inspection_checks(self.scan or {}, self.decision_model, reply)
+            if inspection:
+                self.present_issues([*problems, *inspection])
             if not self.current_issues:
                 from .issues import item
                 self.present_issues([item('算法匹配',None,'当前没有可执行方案，后台未提供具体缺项；不能判断是缺文件、元数据还是暂不支持。','查看处理依据与检查记录；此状态不证明数据损坏。')])
@@ -1452,7 +1471,8 @@ class Window(QMainWindow):
         self.auto_phase='prepare' if automatic else None
         self.scan=scan
         self.record_step('读取输入',f"已采集 {len(scan.get('file_cards', ()))} 个文件的结构信息")
-        self.report_milestone('目录已准备，等待 DeepSeek 判断文件类型。')
+        if not self.wrf_gap_only():
+            self.report_milestone('目录已准备，等待 DeepSeek 判断文件类型。')
         context=scan.get('saved_input_context')
         if context:
             self.log_event('历史上下文 · 原包SHA256匹配\n证据状态 · '+context['status']+'\n'+context.get('explanation',''))
@@ -1463,6 +1483,15 @@ class Window(QMainWindow):
         self.show_local_explanation()
         self.update_original_background()
         self.tabs.setCurrentIndex(0)
+        if automatic and self.wrf_gap_only():
+            self.auto_run=False
+            self.auto_phase=None
+            self.batch_timer.stop()
+            self.execute_now()
+
+    def wrf_gap_only(self):
+        tasks = (self.scan or {}).get('research_tasks', {}).get(self.decision_model, [])
+        return len(tasks) == 1 and tasks[0]['tool'] == 'wrf_station_gap'
 
     def original_background_ready(self):
         if self.scan is None:
@@ -1477,9 +1506,16 @@ class Window(QMainWindow):
         return bool(report.get('component_candidate') and not self.candidates and not discovery.blocking_checks(self.checked_decisions))
 
     def update_original_background(self):
-        if self.original_background_ready():
-            self.recommendation_status.setText('已识别组件转换候选；确认继续后核验最低必要数据。' if self.component_confirmation_ready()
-                                               else '已识别工程任务；查看方案与检查依据后确认继续。')
+        if self.wrf_gap_only():
+            self.recommendation_status.setText('已识别 WRF 站点补缺。将用训练小样本请 DeepSeek 提名，并在本地评分。')
+            self.search_button.setText('开始小样本推荐')
+            self.search_button.setEnabled(True)
+        elif self.original_background_ready():
+            note = ('已识别组件转换候选；确认继续后核验最低必要数据。' if self.component_confirmation_ready()
+                    else '已识别工程任务；查看方案与检查依据后确认继续。')
+            if self.decision_model == 'wrf':
+                note += ' 当前未匹配到本站点补缺入口所需的 WRF 同时段网格与站点表。'
+            self.recommendation_status.setText(note)
             self.search_button.setEnabled(True)
 
     def send_decision(self):
@@ -1516,12 +1552,16 @@ class Window(QMainWindow):
                                                   local_checks=reply.get("local_checks",[]),sampled_workflow=True)
                 feedback(dict(phase=4, notice="正在后台请求 DeepSeek 推荐算法…"))
                 rows,receipt=recommendations.recommend_plan(plan,reply['decisions'],mock=mock,api_key=key,
-                                                             progress=log)
+                                                             progress=log,scan=full_scan,gated=gated)
                 notices={'SIMULATED':'模拟推荐，未联网。','COMPLETED':'已收到 DeepSeek 算法推荐。',
+                         'STATION_PENDING':'站点融合暂待核验，请查看检查详情。',
                          'PLATFORM_FALLBACK':'线上推荐未完成，保留平台已有候选。'}
                 feedback(dict(phase=4, notice=notices[receipt['status']]))
                 log("正在本地复查留出的数据窗口…")
                 recommendations.review_holdouts(full_scan,approved,plan,rows,gated)
+                revisions = recommendations.retry_bayesian_reviews(full_scan, approved, plan, rows, gated,
+                                                                  mock=mock, api_key=key, progress=log)
+                receipt["api_receipts"].extend(revisions)
                 reply['algorithm_recommendation']=receipt
                 reply['api_receipts']=[*reply.get('api_receipts',[]),*receipt['api_receipts']]
                 final_receipt = recommendations.finalize_recipes(plan, rows, mock=mock, api_key=key, progress=log)
@@ -1575,8 +1615,13 @@ class Window(QMainWindow):
             if self.auto_run:
                 self.continue_automatically(reply,checked)
             else:
-                from .issues import checks, recommendation_checks
-                self.present_issues([*checks(checked,reply['failures']), *recommendation_checks(rows)])
+                from .issues import checks, inspection_checks, recommendation_checks
+                from .release_gate import selectable
+                problems = [*checks(checked, reply['failures']), *recommendation_checks(rows)]
+                if not (any(selectable(row) and not row.get('advisory_only') for row in rows)
+                        or self.component_confirmation_ready() or self.original_background_ready()):
+                    problems.extend(inspection_checks(full_scan, self.decision_model, reply))
+                self.present_issues(problems)
                 self.report_milestone('本轮检查已结束，请查看核验结果。')
             self.recommendation_review_busy=False
             self.send_next_automatic_fallback()
@@ -1648,7 +1693,8 @@ class Window(QMainWindow):
         steps=recipe["steps"]
         kind="算法组合" if len(steps)>1 else "算法"
         title=QLabel('自动比较合法处理方案' if recipe.get('search_admission') else "融合方案待核验" if private else
-                     recipe["name"] if recipe.get("advisory_only") else f"{kind} · {recommendations.recipe_name(steps)}")
+                     recipe["name"] if recipe.get("station_baseline") or recipe.get("advisory_only")
+                     else f"{kind} · {recommendations.recipe_name(steps)}")
         title.setObjectName("recommendationTitle")
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setWordWrap(True)
@@ -1677,7 +1723,7 @@ class Window(QMainWindow):
                     check.hide()
             audit = next((item["acceptance_sampling"] for item in row.get("local_holdout_review", ())
                           if "allowed_failures" in item.get("acceptance_sampling", {})), None)
-            if audit and details:
+            if audit and (details or row.get("station_baseline")):
                 from .sampling_risk import recipe_summary
                 sampling_label = QLabel(recipe_summary(audit))
                 sampling_label.setWordWrap(True)
@@ -1697,7 +1743,8 @@ class Window(QMainWindow):
                 from .release_gate import explanation
                 from .fallback_evidence import approved_fields, eligible
                 pending_final = row.get("requires_final_confirmation") and row["execution_release"]["status"] == "released"
-                gate = QLabel("留出评分已通过，等待 DeepSeek 最终确认。" if pending_final else explanation(row["execution_release"]))
+                gate = QLabel(row.get("baseline_block_reason") or (
+                    "留出评分已通过，等待 DeepSeek 最终确认。" if pending_final else explanation(row["execution_release"])))
                 gate.setWordWrap(True)
                 gate.setTextFormat(Qt.TextFormat.PlainText)
                 layout.addWidget(gate)
@@ -1715,9 +1762,9 @@ class Window(QMainWindow):
                         button = QPushButton("补充样本或审核全量副本")
                         button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_full_fallback(item)))
                         layout.addWidget(button)
-                if row.get("independent_required") or (row.get("requires_final_confirmation") and any(
+                if not row.get("station_two_stage") and (row.get("independent_required") or (row.get("requires_final_confirmation") and any(
                         item.get("basis") in {"no_shared_holdout_days", "no_disjoint_partition"}
-                        for item in row.get("local_holdout_review", ()))):
+                        for item in row.get("local_holdout_review", ())))):
                     validation_button = QPushButton("选择新的独立数据复验")
                     validation_button.clicked.connect(lambda checked=False, item=row: self.safe(lambda: self.review_new_independent_data(item)))
                     layout.addWidget(validation_button)
@@ -2378,6 +2425,12 @@ class Window(QMainWindow):
         selected=[row for row,check in zip(self.recommendation_rows,self.recommendation_checks)
                   if check is not None and check.isChecked()]
         if not selected:
+            if self.wrf_gap_only():
+                if self.result and self.result.get('manifest', {}).get('task_scope') == 'wrf_station_gap':
+                    self.tabs.setCurrentIndex(2)
+                else:
+                    self.execute_selected()
+                return
             if self.original_background_ready():
                 if not self.component_confirmation_ready():self.require_engineering_checks()
                 if self.scan.get("research_tasks",{}).get(self.decision_model):
@@ -2547,7 +2600,8 @@ class Window(QMainWindow):
 
     def execute_now(self):
         if not self.selected_recommendations and self.scan and self.scan.get("research_tasks",{}).get(self.decision_model):
-            self.tabs.setCurrentIndex(2)
+            if not self.wrf_gap_only():
+                self.tabs.setCurrentIndex(2)
             self.execute_selected()
             return
         if self.engineering_continuation or (not self.selected_recommendations and self.original_background_ready()):
@@ -2611,11 +2665,25 @@ class Window(QMainWindow):
         self.result=self.review_reply=self.approved=None
         self.export_button.setEnabled(False)
         self.set_candidate_options(None)
-        self.result_cards.reset("正在执行已核验方案并生成结果，请稍候…",processing=True)
-        self.record_step('本地处理','正在执行已核验的处理方案')
-        self.report_milestone('正在本地处理…')
         key=self.effective_api_key()
-        self.work(lambda log:run(scan,tasks,folder,progress=log,model_id=model_id,api_key=key),
+        mock=self.mock.isChecked()
+        if self.wrf_gap_only() and not tasks:
+            self.wrf_nomination_running=True
+            self.recommendation_cards_view.hide()
+            self.wrf_nomination_view.setPlainText('正在本地配对 WRF 网格和站点观测，划分训练、开发和最终留出。')
+            self.wrf_nomination_view.show()
+            self.tabs.setCurrentIndex(1)
+            self.search_button.setText('正在分析小样本…')
+            self.search_button.setEnabled(False)
+            mode = '模拟模式，未调用真实 DeepSeek。' if mock else '将调用 DeepSeek 分析训练小样本。' if key else '未配置 DeepSeek 密钥，本次只能核对本地单源。'
+            self.recommendation_status.setText(mode)
+            self.report_milestone(mode)
+            self.result_cards.reset('等待 DeepSeek 提名和本地评分…',processing=True)
+        else:
+            self.result_cards.reset("正在执行已核验方案并生成结果，请稍候…",processing=True)
+            self.record_step('本地处理','正在执行已核验的处理方案')
+            self.report_milestone('正在本地处理…')
+        self.work(lambda log:run(scan,tasks,folder,progress=log,model_id=model_id,api_key=key,mock=mock),
                   lambda value:self.show_result(value,model_id))
 
     def execute_original(self):
@@ -2671,6 +2739,19 @@ class Window(QMainWindow):
         self.set_candidate_options(result)
         self.export_button.setText('下载结果与检查记录')
         self.export_button.setEnabled(True)
+        if self.wrf_nomination_running:
+            self.wrf_nomination_running=False
+            title, details = output_review.station_gap_nomination(result)
+            self.recommendation_status.setText(title)
+            self.wrf_nomination_view.setPlainText(details)
+            self.search_button.setText('查看评分与输出' if check.get('task_scope') == 'wrf_station_gap' else '重新开始小样本推荐')
+            self.search_button.setEnabled(True)
+        if check.get('task_scope') == 'wrf_station_gap':
+            self.review_reply = None
+            self.result_cards.update_check(check)
+            self.record_step('输出检查', '已核对站点补缺结果与本地评分记录')
+            self.report_milestone('请查看站点补缺的本地评分和输出。')
+            return
         key=self.effective_api_key()
         mock=self.mock.isChecked()
         if not key and not mock:

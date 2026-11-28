@@ -60,6 +60,25 @@ def _exception(exc):
     return [item('当前操作',None,str(exc))]
 
 
+def inspection_checks(scan, model, reply):
+    """Surface scoped engineering evidence when no task can continue."""
+    probe = scan.get("native_model_probes", {}).get(model, {})
+    result = [
+        item("工程入口核验", row.get("file"), row["message"])
+        for row in probe.get("issues", ()) if row.get("message")
+    ]
+    conclusion = (reply.get("file_agent") or {}).get("result") or {}
+    unknowns = conclusion.get("unknowns", ())
+    if isinstance(unknowns, list):
+        for row in unknowns:
+            if isinstance(row, dict) and isinstance(row.get("item"), str) and row["item"].strip():
+                path = row.get("path")
+                result.append(item("资料核验", path if isinstance(path, str) else None,
+                                   row["item"].strip()[:800],
+                                   "请用本次工程的控制文件、依赖数据或原始说明核实。", "待核实"))
+    return result
+
+
 def recommendation_checks(rows):
     from .fallback_evidence import eligible
     from .release_gate import allowed, explanation, has_search_continuation
@@ -67,6 +86,10 @@ def recommendation_checks(rows):
     result = []
     for row in rows:
         release = row.get("execution_release")
+        if row.get("baseline_block_reason"):
+            result.append(item("算法验收", row["task"], row["baseline_block_reason"],
+                               "在方案卡片查看融合候选的分时段试跑记录。"))
+            continue
         if not release or row.get("advisory_only") or allowed(row):
             continue
         if release["status"] == "released" and row.get("requires_final_confirmation"):
@@ -86,6 +109,10 @@ def recommendation_checks(rows):
 def output(result,review=None):
     rows=checks([],result.get('failed_tasks',[]))
     manifest=result.get('manifest',{})
+    for record in result.get('research_records', []):
+        if record.get('tool') == 'wrf_station_gap' and record.get('status') == 'BLOCKED':
+            rows.append(item('站点补缺核验', record['label'], record['reason'],
+                             '按此原因核对同一时段的 WRF T2/HGT 网格及站点观测，再重跑补缺。', '受阻'))
     from ecodata.core.recovery import descriptions
     for entry in descriptions(result.get('automatic_recovery') or manifest.get('automatic_recovery')):
         rows.append(item('自动补救',entry['source'],entry['reason'],'原始文件不变；查看下载包中的补救依据及位置掩码。',entry['status']))
@@ -111,7 +138,7 @@ def output(result,review=None):
     native=gate.get('native',{})
     if native.get('status') in {'NOT_RUN','FAIL','ERROR'}:
         rows.append(item('模型试读',native.get('engine') or native.get('engine_id'),native.get('reason') or '原生试读未通过，详见模型日志',status='未完成'))
-    if review:
+    if review and manifest.get('task_scope') != 'wrf_station_gap':
         for key,stage in [('missing_data','待补数据'),('missing_information','待核实信息')]:
             for reason in review.get(key,[]):rows.append(item(stage,None,reason,status='待核实'))
     return rows

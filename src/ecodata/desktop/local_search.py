@@ -92,7 +92,8 @@ def run_paired(scan, task_id, task, frame, request, folder, progress, queues, *,
             import xarray as xr
             with xr.open_dataset(path) as ds:
                 artifacts.append(dict(name=name,dimensions=dict(ds.sizes),fields=list(ds.data_vars)))
-                if task.get('route')=='station_grid' and {'native_t','native_y','native_x'}<=set(frame):
+                if (task.get('route')=='station_grid' and not task.get('wind_components')
+                        and {'native_t','native_y','native_x'}<=set(frame)):
                     from .station_grid import native_update
                     matched=frame[frame.station.astype(str)==str(station['station'])].set_index('grid_time')
                     selected=matched.loc[pd.DatetimeIndex(ds.time.values)].reset_index()

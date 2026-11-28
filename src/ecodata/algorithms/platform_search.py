@@ -820,8 +820,12 @@ def execute_frozen_graph(inputs,request,graph,folder):
         raise ValueError('Current-input mode must use process_current_input; frozen transfer does not reselect')
     parsed,audit=parse_inputs(inputs)
     from ecodata.algorithms.spatial_fusion_task import applies,execute_graph,COMPONENTS
-    if applies(parsed,request) and all(row['operation'] in COMPONENTS for row in graph['records'].values()):
-        return execute_graph(parsed,request,audit,graph,folder)
+    if applies(parsed,request):
+        from ecodata.algorithms.spatial_registry_binding import operations
+        root_operation=graph['records'][graph['key']]['operation']
+        registered=operations(platform_registry()) if request.get('registry_expansion',True) else {}
+        if root_operation in COMPONENTS or root_operation in registered:
+            return execute_graph(parsed,request,audit,graph,folder)
     from ecodata.algorithms.profile_matching import prepare_model_request
     from ecodata.algorithms.autonomous_field import build_context,field_registry
     from ecodata.algorithms.autonomous_decision import Executor,clean

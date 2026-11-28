@@ -107,7 +107,8 @@ class ResultCards(QWidget):
             body.setSpacing(6)
             if row.get('task'):
                 body.addWidget(label(row['task'], 'selectionScope'))
-            title=('本次选中 · ' if metrics else '已执行 · ' if row.get('performed') else '')+row['title']
+            title=(row.get('selection_label', '本次选中')+' · ' if metrics else
+                   '已执行 · ' if row.get('performed') else '')+row['title']
             body.addWidget(label(title, 'recommendationTitle'))
             if metrics:
                 fields=[('RMSE','RMSE'),('MAE','MAE'),('count','样本')]
@@ -174,7 +175,7 @@ class ResultCards(QWidget):
             layout.setContentsMargins(14, 10, 14, 11)
             layout.setSpacing(5)
             heading = row["title"]
-            if row["metrics"]:
+            if row["metrics"] and row.get('rank') is not None:
                 heading = f"第 {row['rank']} 名 · {heading} · {row['family']}"
             if row["selected"] and row["metrics"]:
                 heading += ' · '+row.get('selection_label','本次最优')

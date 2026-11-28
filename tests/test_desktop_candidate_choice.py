@@ -118,7 +118,8 @@ def test_shared_registry_algorithms_can_be_recommended_without_adding_execution_
     row, = recommendations.validate(reply, summary)
     assert row["catalogue_algorithms"] == ids
     assert row["advisory_only"] and row["steps"] == []
-def test_final_recommendation_sends_only_verified_recipes_and_aggregate_counts(monkeypatch):
+@pytest.mark.parametrize("stratified", [False, True])
+def test_final_recommendation_sends_only_verified_recipes_and_aggregate_counts(monkeypatch, stratified):
     import json
     from ecodata.desktop import recommendations, service
 
@@ -127,18 +128,23 @@ def test_final_recommendation_sends_only_verified_recipes_and_aggregate_counts(m
     rejected = dict(approved, id="R2", description="rejected-private-evidence")
     plan = dict(target_model={"id": "data_only"}, tasks=[dict(id=task, operation="fusion",
                 context={"raw": "original-private-evidence"}, allowed_recipes=[approved, rejected])])
+    audit = dict(inspected=77, failed=3, allowed_failures=5)
+    if stratified:
+        audit["strata"] = [dict(label="partition-private-evidence")]
     accepted = dict(task=task, id="R1", execution_release={"status": "released"}, local_holdout_review=[dict(
         basis="joint_recipe_acceptance_passed", sampled_scores="holdout-private-evidence",
-        acceptance_sampling=dict(inspected=77, failed=3, allowed_failures=5))])
+        acceptance_sampling=audit)])
     blocked = dict(task=task, id="R2", execution_release={"status": "failed"})
 
     def send(request, digest, mock, **options):
         assert request.digest == digest
         summary = json.loads(request.summary)
         assert all(secret not in request.summary for secret in (
-            "original-private-evidence", "holdout-private-evidence", "rejected-private-evidence"))
+            "original-private-evidence", "holdout-private-evidence", "rejected-private-evidence",
+            "partition-private-evidence"))
         assert [item["id"] for item in summary["tasks"][0]["allowed_recipes"]] == ["R1"]
-        assert "验收 77 组" in request.summary
+        expected = "通过本地正式分层回检" if stratified else "验收 77 组"
+        assert expected in request.summary
         raw = dict(recommendations=[dict(task=task, recipe="R2"), dict(task=task, recipe="R1", reason="已通过")])
         return dict(recommendations=recommendations.validate(raw, summary))
 

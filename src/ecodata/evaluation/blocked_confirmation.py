@@ -117,6 +117,14 @@ def reference_blocks(reference,axes):
         support_note='Coordinate-axis quantile blocks; no claimed physical decorrelation')
 
 
+def block_error_change(candidate, baseline):
+    """Measured candidate-minus-baseline errors on a shared reference."""
+    if candidate.get('count') != baseline.get('count'):
+        raise ValueError('Candidate/baseline evaluation denominators differ')
+    return dict(rmse_change=candidate['RMSE']-baseline['RMSE'],
+                mae_change=candidate['MAE']-baseline['MAE'])
+
+
 def compare_legacy(candidate,baseline):
     if candidate['block_support']['fingerprint']!=baseline['block_support']['fingerprint']:
         raise ValueError('Candidate/baseline block queues differ')
@@ -131,8 +139,7 @@ def compare_legacy(candidate,baseline):
         if a['fold_id']!=b['fold_id'] or a['status']!=b['status']:
             raise ValueError('Candidate/baseline block mismatch')
         if a['metrics'] is None:continue
-        differences.append(dict(block=a['fold_id'],rmse_change=a['metrics']['RMSE']-b['metrics']['RMSE'],
-            mae_change=a['metrics']['MAE']-b['metrics']['MAE']))
+        differences.append(dict(block=a['fold_id'], **block_error_change(a['metrics'], b['metrics'])))
     tolerance=64*np.finfo(float).eps*max(1.,abs(candidate['objective']),abs(baseline['objective']))
     return dict(sufficient=candidate['block_support']['sufficient'],differences=differences,
         objective_change=candidate['objective']-baseline['objective'],
@@ -228,7 +235,7 @@ def range_comparison(candidate, baseline, *, phase):
         if a['metrics'] is None:
             rows.append(dict(block=a['fold_id'],status='NO_REFERENCE'));continue
         left,right=a['metrics'],b['metrics']
-        delta=left['RMSE']-right['RMSE']
+        delta=block_error_change(left, right)['rmse_change']
         tolerance=64*np.finfo(float).eps*max(1.,abs(left['RMSE']),abs(right['RMSE']))
         rows.append(dict(block=a['fold_id'],status='EVALUATED',phase=phase,
             candidate=left,baseline=right,RMSE_change=delta,
@@ -239,6 +246,38 @@ def range_comparison(candidate, baseline, *, phase):
         baseline_better=sum(r.get('lower_error')=='baseline' for r in rows),
         equivalent=sum(r.get('lower_error')=='equivalent' for r in rows),
         limitation='Observed ranges only; unobserved dates, regions and unresolved fine scales remain UNKNOWN')
+
+
+def _trial_summaries(blocks, unit, sufficient):
+    support = dict(fingerprint='shared_local_trial_queue', sufficient=sufficient and all(
+        row['candidate'] is not None for row in blocks), axes=['time'],
+        blocks=[dict(id=row['block']) for row in blocks])
+    definition = dict(unit=unit)
+    def summary(side):
+        rows = [dict(fold_id=row['block'], status='PASS' if row[side] is not None else 'NO_REFERENCE',
+                     metrics=row[side]) for row in blocks]
+        measured = [row['metrics'] for row in rows if row['metrics'] is not None]
+        return dict(block_support=support, evaluation_fingerprint='shared_local_trial_reference',
+                    evaluation_definition=definition, denominator=sum(row['count'] for row in measured),
+                    objective=float(np.mean([row['RMSE'] for row in measured])) if measured else 0.,
+                    block_metrics=rows)
+    return summary('candidate'), summary('baseline')
+
+
+def trial_range(blocks, *, phase):
+    """Shared descriptive range without treating blocks as independent draws."""
+    candidate, baseline = _trial_summaries(blocks, None, False)
+    return range_comparison(candidate, baseline, phase=phase)
+
+
+def trial_comparison(blocks, *, phase, unit=None, risk_limits=None, sufficient=False):
+    """Compare a paired queue already scored on the same reference."""
+    if not blocks:
+        return dict(status='NO_REFERENCE', phase=phase)
+    candidate, baseline = _trial_summaries(blocks, unit, sufficient)
+    return dict(version=VERSION, status='EVALUATED' if candidate['denominator'] else 'NO_REFERENCE',
+                comparison=compare(candidate, baseline, risk_limits=risk_limits),
+                range_comparison=range_comparison(candidate, baseline, phase=phase))
 
 
 def review(selection,selection_baseline,confirmation,confirmation_baseline,*,quality_pass,

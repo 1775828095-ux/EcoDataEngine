@@ -62,6 +62,8 @@ def searches(result):
 
 
 def conversion_reason(result, output, axes):
+    if result.get('manifest', {}).get('task_scope') == 'wrf_station_gap':
+        return '检查记录以 JSON 保存，已生成的站点预测以 CSV 保存。'
     if result.get('manifest',{}).get('native_writeback_verified') and result.get('manifest',{}).get('changes'):
         return f'已将处理结果写回工程副本的{output}；原始文件保留。实际格式和模型试读分别核验。'
     mode = result.get("mode")
@@ -126,6 +128,9 @@ def format_conversion(result):
                  for r in result.get('local',{}).get('artifacts',[]) if r.get('name')))
     if not targets:targets=list(dict.fromkeys(r['target_format'] for r in rows))
     if not targets:targets=list(dict.fromkeys(FORMATS.get(PurePosixPath(n).suffix.lower(),'编码待确认') for n in changes))
+    if manifest.get('task_scope') == 'wrf_station_gap':
+        suffixes = {PurePosixPath(name).suffix.lower() for name in result.get('archive_members', [])}
+        targets = [FORMATS[suffix] for suffix in ('.csv', '.json') if suffix in suffixes]
     # A validated source format list is preferable to guessing from a ZIP name.
     input_formats=source
     if rows:source=list(dict.fromkeys(r['source_format'] for r in rows))
@@ -186,10 +191,12 @@ def describe_output(result, profile):
     fields = {k.casefold() for row in artifact_rows for k in row.get("fields", [])}
     blocks = []
     profile = profile or {}
+    task_scope = manifest.get('task_scope')
+    station_gap_only = task_scope == 'wrf_station_gap'
     role_specs = profile.get("preparation_scenario", {}).get("inputs") or profile.get("inputs", [])
     component_only=manifest.get('status')=='COMPONENT_EXPORTED'
     bound_project=bool(gate and gate.get('project',{}).get('status')=='PASS')
-    for role in ([] if component_only or bound_project else role_specs):
+    for role in ([] if component_only or bound_project or station_gap_only else role_specs):
         if not role.get("required"):
             continue
         required = [f for f in field_requirements(role) if f.get("required", True)]
@@ -200,6 +207,9 @@ def describe_output(result, profile):
                            missing=missing, structure_needs_check=not required or not artifact_rows))
     local_notes = [f"{item['task']} 处理失败：{item['reason']}"
                    for item in result.get("failed_tasks",[])]
+    if station_gap_only:
+        local_notes.extend(f"{row['label']}：{row['reason']}" for row in result.get('research_records', [])
+                           if row.get('status') == 'BLOCKED' and row.get('reason'))
     if gate:
         local_notes.extend('最终格式检查：'+str(e) for e in gate.get('format',{}).get('errors',[])[:10])
         local_notes.extend('最终工程检查：'+str(e) for e in gate.get('project',{}).get('validation',{}).get('errors',[])[:10])
@@ -216,12 +226,127 @@ def describe_output(result, profile):
                 automatic_recovery=result.get('automatic_recovery') or manifest.get('automatic_recovery'),
                 continuation=result.get('continuation') or manifest.get('continuation'),
                 processing_completed=result.get('processing_completed'),
-                component_only=component_only,
+                component_only=component_only, task_scope=task_scope,
                 format_conversion=format_report,
                 final_check=manifest.get('final_check'),
                 files=output_files, archive_formats=archive_counts, source_formats=source, target_format=output,
                 requirements=blocks, notes=list(dict.fromkeys(local_notes)),
                 conversion_reason=conversion_reason(result, output, axes))
+
+
+def station_gap_nomination(result):
+    from .wrf_station_gap import CATALOG
+
+    record = next((row for row in result.get("research_records", []) if row["tool"] == "wrf_station_gap"), None)
+    if not record or not record.get("outcome"):
+        failure = (record or {}).get("reason") or "；".join(
+            str(row.get("reason", "")) for row in result.get("failed_tasks", []))
+        return "站点补缺未完成小样本推荐", failure or "未生成站点补缺推荐记录。"
+
+    data = record["outcome"]
+    inputs = data.get("nomination_input", {})
+    rounds = data["recommendation_rounds"]
+    replies = [row for row in rounds if row["status"] != "API_OR_RESPONSE_ERROR"]
+    mode = data.get("recommendation_status")
+    status = {
+        "SIMULATED": "模拟结果 · 未调用真实 DeepSeek",
+        "NO_API_KEY": "未调用 DeepSeek · 缺少密钥",
+        "NO_SUPPORTED_NEIGHBORS": "未调用 DeepSeek · 可用邻站不足",
+    }.get(mode)
+    if status is None:
+        status = ("收到 DeepSeek 的小样本分析结果" if replies else "DeepSeek 没有返回完整的推荐结果")
+    if data.get("recommended"):
+        status += " · 融合通过本批留出评分"
+    else:
+        status += " · 本批无合格融合推荐"
+
+    lines = []
+    if rounds and inputs:
+        prefix = "每轮请求" if mode == "SIMULATED" else "每轮 DeepSeek 请求"
+        lines.append(f"{prefix}包含 {inputs['sample_count']} 条训练配对小样本、"
+                     f"{inputs['training_blocks']} 个训练空间块的汇总；最终留出在本地评分。")
+    for row in rounds:
+        if row.get("reason"):
+            lines.append(f"第 {row['round']} 轮 · {row['reason']}")
+        else:
+            lines.append(f"第 {row['round']} 轮 · 返回 {len(row.get('proposed_candidates', []))} 个目录内组合。")
+    for entry in data.get("development", []):
+        if not (nomination := entry.get("nomination")):
+            continue
+        comparison = entry["comparison"]
+        label = CATALOG[entry["method"]][0]
+        passed = comparison["overall_ok"] and comparison["local_ok"]
+        lines.extend(["", f"第 {nomination['round']} 轮提名 · {label}",
+                      station_gap_parameters(entry["parameters"]),
+                      f"分析依据 · {nomination['reason']}" if nomination["reason"] else "模型未附提名依据。",
+                      f"开发 MAE {entry['metrics']['MAE']:.3f} K，"
+                      f"相对单源改善 {comparison['mae_gain_k']:+.3f} K · {'达标' if passed else '未达标'}"])
+    card = station_gap_card(record, "CSV / JSON")
+    lines.extend(["", f"{card['selection_label']} · {card['title']}" if data["recommended"] else "本地评分结论",
+                  card["parameters"] if data["recommended"] else "", card["selection_reason"]])
+    return status, "\n".join(lines)
+
+
+def station_gap_parameters(params):
+    labels = {
+        "neighbors": ("邻站数", ""), "power": ("距离权重指数", ""),
+        "lapse_k_per_km": ("海拔订正系数", " K/km"), "strength": ("残差订正强度", ""),
+    }
+    return "，".join(f"{label} {params[name]:g}{unit}"
+                    for name, (label, unit) in labels.items() if name in params)
+
+
+def station_gap_card(row, format_line):
+    from .wrf_station_gap import CATALOG
+
+    data = row["outcome"]
+    state = data["status"]
+    candidate = data.get("candidate")
+    delivered = data["delivered_recipe"]
+    selection = data["recommended"]
+    title = CATALOG[(candidate or delivered)["method"]][0]
+    baseline = data["best_single"]
+    baseline_name = CATALOG[baseline["method"]][0]
+    final_scores = {(entry["method"], tuple(sorted(entry["parameters"].items()))): entry["metrics"]
+                    for entry in data["final_controls"]}
+
+    def metrics(recipe):
+        return final_scores.get((recipe["method"], tuple(sorted(recipe["parameters"].items())))) or {}
+
+    parameters = station_gap_parameters((candidate or delivered)["parameters"])
+    rounds = data["recommendation_rounds"]
+    reason = f"本地比较 {len(final_scores)} 套冻结方案。"
+    if candidate:
+        proposal = any(candidate in entry.get("proposed_candidates", []) for entry in rounds)
+        origin = next((entry["origin"] for entry in data.get("development", [])
+                       if entry["method"] == candidate["method"] and entry["parameters"] == candidate["parameters"]), None)
+        if data.get("recommendation_status") == "SIMULATED" and (proposal or origin == "simulated"):
+            reason += "该组合经过模拟提名。"
+        elif proposal or origin == "deepseek":
+            reason += "该组合由 DeepSeek 提名并经本地评分。"
+        elif origin == "fixed_control":
+            reason += "该组合来自本地固定候选。"
+    if comparison := data.get("final_review"):
+        reason += (f"同批留出对照为{baseline_name}（MAE {metrics(baseline)['MAE']:.3f} K）。"
+                   f"总体 MAE 改善 {comparison['mae_gain_k']:+.3f} K，"
+                   f"最差空间块 MAE 变化 {comparison['worst_block_mae_increase_k']:+.3f} K。")
+        if data["policy"]["max_block_mae_increase_k"] is None:
+            reason += "本次未设局部退化限度。"
+    if state == "BATCH_RECOMMENDED":
+        reason += "本批同时段留站评分达标。跨日期适用性待新数据验证。"
+    elif not selection:
+        outcome = {"NO_FUSION_NOMINATION": "DeepSeek 未提供可评分的融合候选",
+                   "DEVELOPMENT_REJECTED": "DeepSeek 提名的融合候选开发评分未达标",
+                   "HOLDOUT_REJECTED": "留出评分未达标",
+                   "HOLDOUT_COVERAGE_INSUFFICIENT": "留出覆盖不足",
+                   "PUBLISHED_REPLAY_ONLY": "旧版历史批次记录，请重新运行以生成融合结果"}.get(state, state)
+        reason = f"{outcome}。本批实际输出采用{CATALOG[delivered['method']][0]}。{reason}"
+    selection_label = "本批推荐" if state == "BATCH_RECOMMENDED" else "融合通过留出验收"
+    return dict(task=row["label"], title=title, selected=selection,
+                metrics=metrics(delivered) if selection else {}, methods=[], performed=True,
+                parameters=parameters, proxy=False, format_line=format_line, reason=reason,
+                selection_reason=reason, selection_label=selection_label, summary_label=selection_label,
+                selection_reference="冻结候选后留出的站点实测（同一时段）")
 
 
 def cards(result, check):
@@ -294,7 +419,7 @@ def cards(result, check):
                               selection_reference=reference,
                               seed_usage=search.get('seed_usage'),steps=[*alignment,*methods],alternative=alternative,
                               reason=(benefit + "。" if benefit else "") + check["conversion_reason"]))
-            if row['selected'] and search['evidence'].get('reference_frontier',{}).get('tradeoff'):
+            if row['selected'] and (search['evidence'].get('reference_frontier') or {}).get('tradeoff'):
                 items[-1]['selection_label']='默认误差方案；另有结构优选'
                 items[-1]['selection_reason']+=' 误差与细节存在取舍；已保留结构优选产品，不能把本方案称为全面最优。'
     for entry in result.get("original_report", []) if result.get("mode")=="selected_operations" else []:
@@ -416,6 +541,9 @@ def cards(result, check):
                 parameters="",proxy=False,format_line=format_line,reason=reason))
             if report.get('recommendation_review'):items[-1]['audit']=['统一复检：'+report['recommendation_review']['status'],report['recommendation_review']['reason']]
     for row in result.get("research_records",[]):
+        if row.get("tool") == "wrf_station_gap" and row.get("outcome"):
+            items.append(station_gap_card(row, format_line))
+            continue
         status = {"PASS":"已执行","PARTIAL":"部分方案完成","BLOCKED":"条件不足"}.get(row["status"],row["status"])
         reason = row.get("reason") or f"原版服务返回 {row['status']}，已读回 {len(row.get('readback',[]))} 份 NetCDF。"
         items.append(dict(task=row["label"],title=status,selected=False,metrics={},methods=[],
@@ -482,6 +610,7 @@ def selection_summaries(items, failures, recommendations, *, result=None):
             summaries.append(dict(task=row['task'], title=row['title'], metrics=row['metrics'],
                 reason=row['selection_reason'], reference=row.get('selection_reference'),
                 parameters=row['parameters'],seed_usage=row.get('seed_usage'),
+                **({'selection_label': row['summary_label']} if 'summary_label' in row else {}),
                 steps=row.get('steps',row.get('methods',[])),alternative=row.get('alternative'),proxy=row['proxy']))
         elif row.get('performed'):
             summary=dict(task=row['task'],title=row['title'],reason=row['reason'],performed=True,
@@ -570,7 +699,7 @@ def review_request(check, items, *, summaries=()):
     weather=final.get('format',{}).get('weather_files',{})
     format_detail=check.get('format_conversion') or {}
     return dict(stage="output_check", target_model=check["model"], zip_readable=check["zip_readable"],
-                task_scope='component_conversion' if check.get('component_only') else 'data_only' if not check['model'] else 'model_project',
+                task_scope='component_conversion' if check.get('component_only') else 'data_only' if not check['model'] or check.get('task_scope') == 'wrf_station_gap' else 'model_project',
                 final_model_check=dict(model_requirements=final.get('model_requirements'),
                     format_status=final.get('format',{}).get('status'),format_errors=final.get('format',{}).get('errors',[])[:10],
                     format_scope=final.get('format',{}).get('scope'),
@@ -627,6 +756,10 @@ def validate_review(output, *, plan_ids=()):
 
 
 def availability_text(check, review=None):
+    if check.get('task_scope') == 'wrf_station_gap':
+        lines = ['WRF 同时段站点气温补缺 · 本地检查完成']
+        lines.extend(check['notes'])
+        return '\n'.join(lines)
     model = {"swat_plus":"SWAT+", "wrf":"WRF", "cmaq":"CMAQ", "camx":"CAMx",
              "calpuff":"CALPUFF"}.get(check["model"], "目标模型")
     if not check["model"]:

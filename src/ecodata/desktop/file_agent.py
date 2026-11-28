@@ -213,6 +213,34 @@ def complete_pair_headers(tools,calls,completion,progress):
     return calls
 
 
+def complete_calpuff_controls(tools, calls, completion, progress):
+    """Complete known CALPUFF controls locally within the existing tool budget."""
+    from .native_dependencies import CONTROL_BYTES
+
+    for display, entry in sorted(tools.directory_members.items()):
+        if calls >= 48:
+            break
+        name = Path(display).name.casefold()
+        if name not in {"calpuff.inp", "cpuf.inp"} or not 0 < (entry.get("bytes") or 0) <= CONTROL_BYTES:
+            continue
+        if tools.rows.get(display, {}).get("original_probe_payload"):
+            continue
+        progress("本地补读 CALPUFF 控制文件 · " + entry["path"])
+        chunks = tools.document_chunks.get(display, {})
+        for offset in range(0, entry["bytes"], 16384):
+            if offset in chunks:
+                continue
+            if calls >= 48:
+                break
+            response = tools.call("read_text", dict(path=entry["path"], offset=offset))
+            calls += 1
+            completion.append(dict(source="CALPUFF control", path=entry["path"], offset=offset,
+                                   ok=response["ok"]))
+            if not response["ok"]:
+                break
+    return calls
+
+
 def scan_index(location, progress=None, *, model=None):
     from .file_cards import local_cards
 
@@ -354,6 +382,8 @@ def _run(scan, summary, cache, mock, key, progress, feedback, tools):
         response = tools.call("read_header", dict(path=entry["path"]))
         calls += 1
         completion.append(dict(source="same-product daily shard", path=entry["path"], ok=response["ok"]))
+    if summary["target_model"]["id"] == "calpuff":
+        calls = complete_calpuff_controls(tools, calls, completion, progress)
     full = tools.scan()
     try:
         partition_precipitation(full)

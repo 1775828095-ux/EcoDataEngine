@@ -293,6 +293,8 @@ def review(scan, task, steps, *, independent=False):
             if not set(plan["groups"]) <= set(groups):
                 raise ValueError("锁定的表格回检组与外发记录重叠，或原分组已变化")
             groups = plan["groups"]
+        scope = task.get("bayesian_review_scope")
+        phase = scope["mask_phase"] if scope else None if independent else task.get("bayesian_mask_phase")
 
         def trial(index):
             group = groups[index]
@@ -304,7 +306,8 @@ def review(scan, task, steps, *, independent=False):
 
             scores = []
             failures = []
-            dropout = paired[1::4]
+            dropout = paired[1::4] if phase is None else paired[
+                recipe_trials.reference_positions(len(paired), 2*phase, index, partitions=8)]
             withheld = left.copy()
             withheld.loc[dropout] = np.nan
             fill_steps = [step for step in steps if step != recipe_trials.BLEND]
@@ -322,7 +325,8 @@ def review(scan, task, steps, *, independent=False):
                 # The original primary measurement is the reference. Reconstruct
                 # it using the recipe's temporal alignment before applying fusion,
                 # and score only points with both inputs actually available.
-                fusion = paired[2::4]
+                fusion = paired[2::4] if phase is None else paired[
+                    recipe_trials.reference_positions(len(paired), 2*phase+1, index, partitions=8)]
                 withheld = left.copy()
                 withheld.loc[fusion] = np.nan
                 blended, inputs = combine([withheld, right], task, steps)
@@ -341,7 +345,7 @@ def review(scan, task, steps, *, independent=False):
             failure = next((reason for reason in failures if reason not in recipe_trials.UNSCORED), None)
             return group, scores, failure or (failures[0] if failures else None)
 
-        return recipe_trials.audit(len(groups), f"withheld_{primary.category}", trial)
+        return recipe_trials.audit(len(groups), f"withheld_{primary.category}", trial, scope=scope)
 
 
 def run(scan, task_id, task, folder, model_id, progress):

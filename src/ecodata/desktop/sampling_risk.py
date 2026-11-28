@@ -4,6 +4,10 @@ from math import ceil, floor
 from random import Random
 from secrets import randbits
 
+BAYESIAN_RULE = "finite_population_uniform_prior"
+BAYESIAN_TARGET = 0.95
+BAYESIAN_CHECKPOINT = 126
+
 
 def settings():
     from os import environ
@@ -130,12 +134,223 @@ def recipe_summary(audit):
     units = {"withheld_spatial_block": "空间块", "withheld_time_and_spatial_block": "时空块",
              "withheld_station": "个站点", "withheld_month": "个月", "withheld_utc_day": "个 UTC 日",
              "withheld_day": "天"}
-    unit = units.get(audit["unit"], "组")
+    unit = units.get(audit.get("unit"), "组")
+    if audit.get("acceptance_rule") == BAYESIAN_RULE:
+        if audit.get("census"):
+            tally = (f"本批共 {audit['population']} {unit}，已逐组复跑，不适配 {audit['failed']}，"
+                     f"无法评分 {audit['unscored']}。")
+            if audit["posterior_probability"] is None:
+                return tally + "缺少评分依据，暂不放行。"
+            return (tally + f"本批不适配率 {audit['failed'] / audit['population']:.2%}，要求低于 5%。"
+                    "结论仅适用于本批回检总体。")
+        if strata := audit.get("strata"):
+            tally = "，".join(
+                f"{item['label']} {item['population']} {unit}，已抽 {item['inspected']}，"
+                f"不适配 {item['failed']}，无法评分 {item['unscored']}"
+                for item in strata)
+            probability = audit["posterior_probability"]
+            if probability is None:
+                return f"{tally}。同量回检的评分证据不足，未计算整批放行概率。"
+            note = "已调组结果反映本批复跑，泛化表现看未调组。"
+            best_possible = audit.get("best_possible_probability")
+            if best_possible is not None and best_possible < BAYESIAN_TARGET:
+                note += "按两类现有组数，即使等量抽满且全部通过，后验也达不到阈值。"
+            if audit.get("single_reference_per_unit"):
+                note += "每个站点时刻只有一项实测，已调组使用相同实测复跑。"
+            return (f"{tally}。按两类实际规模计算，整体不适配率低于 5% 的后验概率为 "
+                    f"{probability:.2%}，要求至少 {BAYESIAN_TARGET:.0%}（各类均匀先验）。"
+                    f"{note}")
+        note = (f"此前用于修改的 {audit['excluded_as_failures']} 个单元按最坏情况计算。"
+                if audit.get("excluded_as_failures") else "")
+        tally = (f"留出总体 {audit['population']} {unit}，抽检 {audit['inspected']}，其中 {audit['failed']} 不适配，"
+                 f"{audit['unscored']} 无法评分。")
+        if audit['posterior_probability'] is None:
+            return f"{tally}评分证据不足，未给出整批放行概率。{note}"
+        if audit.get('revision_required') and audit['inspected'] < audit['sample_size']:
+            note += (f"即使剩余单元全部通过，抽满 {audit['sample_size']} 个的后验概率也最多为 "
+                     f"{audit['best_possible_probability']:.2%}，已停止本方案抽检。")
+        return (f"{tally}整体不适配率低于 5% 的后验概率为 "
+                f"{audit['posterior_probability']:.2%}，要求至少 {BAYESIAN_TARGET:.0%}（均匀先验）。{note}")
     if audit["sample_size"] is None:
         return f"可抽 {audit['population']} {unit}。当前试跑预算不足以满足设定的误判风险。"
     return (f"可抽 {audit['population']} {unit}，计划试跑 {audit['sample_size']} 组，"
             f"最多允许 {audit['allowed_failures']} 组不合格。已查 {audit['inspected']} 组，"
             f"其中 {audit['failed']} 组不合格，{audit.get('unscored', 0)} 组缺少评分依据。")
+
+
+def posterior_below_five_percent(population, scored, failed, *, excluded_as_failures=0):
+    """Uniform prior on D, conditioned on a simple random sample without replacement."""
+    from scipy.stats import hypergeom
+
+    remaining = population - excluded_as_failures
+    if not 0 <= failed <= scored <= remaining or population < 1 or excluded_as_failures < 0:
+        raise ValueError("贝叶斯验收要求 0 ≤ 不适配数 ≤ 已评分数 ≤ 总体数")
+    # The posterior of D+1 is the (failed+1)th order statistic among
+    # scored+1 draws from 1..population+1. This evaluates the exact sum
+    # without enumerating each possible number of failures in a large lot.
+    below = (population + 19) // 20 - excluded_as_failures
+    if below <= 0:
+        return 0.0
+    return float(hypergeom.sf(failed, remaining + 1, below, scored + 1))
+
+
+def stratified_posterior(sizes, scored, failed):
+    """Posterior of the sum of the two finite failure counts under independent uniform priors."""
+    import numpy as np
+    from scipy.stats import betabinom, hypergeom
+
+    old, new = sizes
+    n_old, n_new = scored
+    d_old, d_new = failed
+    if old + new < 1 or any(not 0 <= d <= n <= size for size, n, d in zip(sizes, scored, failed)):
+        raise ValueError("回检分层计数不一致")
+    hidden = np.arange(old - n_old + 1)
+    cutoff = (old + new + 19) // 20
+    remaining = cutoff - d_old - hidden
+    masses = betabinom.pmf(hidden, old - n_old, d_old + 1, n_old - d_old + 1)
+    chances = hypergeom.sf(d_new, new + 1, np.clip(remaining, 0, new + 1), n_new + 1)
+    return float(np.clip(masses @ chances, 0, 1))
+
+
+def sample_other_units(population, groups, count, rng):
+    """Sample ranks from the complement without allocating the whole population."""
+    excluded = sorted(groups)
+    selected = []
+    for rank in rng.sample(range(population - len(excluded)), count):
+        for index in excluded:
+            if index > rank:
+                break
+            rank += 1
+        selected.append(rank)
+    return selected
+
+
+def evaluate_revision_sample(population, unit, test, scope):
+    """Evaluate development cohorts or an equal-sized, frozen two-stratum sample."""
+    tuning = scope["mode"] == "development"
+    census = scope["mode"] == "census"
+    old = scope["previous"]
+    new = scope["development_new"]
+    participating = set(old) | set(new)
+    if (len(participating) != len(old) + len(new) or population != scope["population"]
+            or any(not 0 <= index < population for index in participating)):
+        raise ValueError("回检单元与锁定总体不一致")
+    if tuning:
+        sizes = len(old), len(new)
+        queues = old, new
+        labels = "前轮已调组", "本轮新增调参组"
+    elif census:
+        sizes = (population,)
+        queues = (range(population),)
+        labels = ("本批全部组",)
+    else:
+        sizes = len(participating), population - len(participating)
+        quota = min(*sizes, BAYESIAN_CHECKPOINT // 2)
+        rng = Random(scope["seed"])
+        queues = (rng.sample(sorted(participating), quota),
+                  sample_other_units(population, participating, quota, rng))
+        labels = "已调组", "未调组"
+    strata = [dict(label=label, population=size, inspected=0, scored=0, failed=0, unscored=0)
+              for label, size in zip(labels, sizes)]
+    failures, unscored, checked = [], [], []
+
+    def inspect(index, stratum):
+        entry = strata[stratum]
+        entry["inspected"] += 1
+        checked.append(index)
+        outcome = test(index)
+        if outcome and outcome.get("unscored"):
+            unscored.append(outcome)
+            entry["unscored"] += 1
+        else:
+            entry["scored"] += 1
+            if outcome:
+                failures.append(outcome)
+                entry["failed"] += 1
+
+    probability = None
+    best_possible = None
+    if tuning or census:
+        for stratum, indices in enumerate(queues):
+            for index in indices:
+                inspect(index, stratum)
+        if census and not unscored:
+            probability = float(20 * len(failures) < population)
+    else:
+        best_possible = stratified_posterior(sizes, (quota, quota), (0, 0)) if quota else None
+        for pair in zip(*queues):
+            for stratum, index in enumerate(pair):
+                inspect(index, stratum)
+            if not unscored:
+                probability = stratified_posterior(sizes, [item["scored"] for item in strata],
+                                                   [item["failed"] for item in strata])
+                if probability >= BAYESIAN_TARGET:
+                    break
+                if failures:
+                    optimistic = stratified_posterior(sizes, (quota, quota), [item["failed"] for item in strata])
+                    if optimistic < BAYESIAN_TARGET:
+                        break
+    passed = probability is not None and not unscored and probability >= BAYESIAN_TARGET
+    insufficient = best_possible is not None and best_possible < BAYESIAN_TARGET
+    return dict(status="checked" if passed else "pending" if tuning or unscored or not checked or insufficient else "failed",
+                acceptance_rule=BAYESIAN_RULE, prior="complete_population" if census else
+                "independent_uniform_on_stratum_failure_counts",
+                unit=unit, population=population, available_population=population, excluded_as_failures=0,
+                sample_size=sum(map(len, queues)), allowed_failures=None, inspected=len(checked),
+                scored=len(checked)-len(unscored), failed=len(failures), failures=failures,
+                unscored=len(unscored), unscored_units=unscored, inspected_indices=checked,
+                posterior_probability=None if unscored else probability, posterior_target=BAYESIAN_TARGET,
+                rejectable_share=0.05, revision_required=False, strata=strata,
+                development_only=tuning, census=census, best_possible_probability=best_possible)
+
+
+def evaluate_bayesian_recipe(population, unit, test, *, excluded=(), seed=None):
+    excluded = set(excluded)
+    if any(not 0 <= index < population for index in excluded):
+        raise ValueError("上一轮抽检单元与本轮数据总体不一致")
+    remaining = population - len(excluded)
+    if remaining < 1:
+        raise ValueError("无未参与前轮反馈的验收单元")
+    limit = min(remaining, BAYESIAN_CHECKPOINT)
+    if seed is None:
+        seed = randbits(64)
+    selected = (i for i in Random(seed).sample(range(population), limit + len(excluded)) if i not in excluded)
+    failures, unscored, checked = [], [], []
+    scored = 0
+    def posterior(n, d):
+        return posterior_below_five_percent(population, n, d, excluded_as_failures=len(excluded))
+
+    probability = posterior(0, 0)
+    best_possible = posterior(limit, 0)
+    for index in selected:
+        checked.append(index)
+        outcome = test(index)
+        if outcome and outcome.get("unscored"):
+            unscored.append(outcome)
+        else:
+            scored += 1
+            if outcome:
+                failures.append(outcome)
+                best_possible = posterior(limit, len(failures))
+            probability = posterior(scored, len(failures))
+        if probability >= BAYESIAN_TARGET and not unscored:
+            break
+        # With the full retry budget available, stop as soon as even an
+        # all-passing remainder cannot change the recommendation decision.
+        if limit == BAYESIAN_CHECKPOINT and not unscored and best_possible < BAYESIAN_TARGET:
+            break
+    passed = probability >= BAYESIAN_TARGET and not unscored
+    revise = limit == BAYESIAN_CHECKPOINT and not unscored and best_possible < BAYESIAN_TARGET
+    return dict(status="checked" if passed else "failed" if not unscored else "pending",
+                acceptance_rule=BAYESIAN_RULE, prior="uniform_on_finite_failure_count", unit=unit,
+                population=population, available_population=remaining, excluded_as_failures=len(excluded),
+                sample_size=limit, allowed_failures=None,
+                inspected=len(checked), scored=scored, failed=len(failures), failures=failures,
+                unscored=len(unscored), unscored_units=unscored, sampling_seed=seed,
+                inspected_indices=checked, posterior_probability=None if unscored else probability,
+                posterior_target=BAYESIAN_TARGET, best_possible_probability=best_possible,
+                rejectable_share=0.05, revision_required=revise,
+                remaining_after_review=remaining - len(checked))
 
 
 def review_field(row, field, *, basis=None, partition=None, defect_share=0.05, detection=0.95):

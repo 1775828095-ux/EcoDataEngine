@@ -159,8 +159,9 @@ def review_pair(scan, candidate, task, paths, *, model=None):
 
     validation = dict(task, cf_daily=True, fields=[(index, field["name"])
                       for index, (_, _, field) in enumerate(source_fields)])
-    from .recipe_trials import review as trial
-    report = trial({"rows": rows}, candidate["task"], validation, candidate["steps"], model=model, independent=True)
+    from .recipe_trials import require_external_reference, review
+    report = review({"rows": rows}, candidate["task"], validation, candidate["steps"], model=model, independent=True)
+    report = require_external_reference(report)
     if any(digest_file(path) != checksum for path, _, checksum, _ in checks):
         raise ValueError("复验文件在检查期间已变化")
     assert_current(scan)
@@ -243,6 +244,7 @@ def review_generic_pair(scan, candidate, task, originals, paths, *, model):
                               table_field=fields_meta[indexes[task["table_index"]]])
         report = recipe_trials.review({"rows": rows}, candidate["task"], validation, candidate["steps"],
                                       model=model, independent=True)
+        report = recipe_trials.require_external_reference(report)
     if any(digest_file(path) != checksum for path, _, checksum, _ in records):
         raise ValueError("复验文件在检查期间已变化")
     assert_current(scan)

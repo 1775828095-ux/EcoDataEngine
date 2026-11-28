@@ -69,6 +69,174 @@ def test_default_hypergeometric_boundary_and_no_early_acceptance():
     assert failed["inspected"] == 1 and failed["status"] == "failed"
 
 
+def test_bayesian_posterior_matches_the_finite_population_sum():
+    from math import comb
+
+    population, n, d = 103, 60, 2
+    weights = [comb(k, d) * comb(population - k, n - d) for k in range(population + 1)]
+    expected = sum(weights[:6]) / sum(weights)
+    observed = sampling_risk.posterior_below_five_percent(population, n, d)
+    assert observed == pytest.approx(expected)
+    assert sampling_risk.posterior_below_five_percent(100, 100, 5) == 0
+    assert sampling_risk.posterior_below_five_percent(100, 100, 4) == 1
+
+
+@pytest.mark.parametrize('failures, expected', [(0, 58), (1, 92), (2, 123), (3, 17)])
+def test_bayesian_acceptance_revises_at_the_first_unreachable_outcome(failures, expected):
+    from itertools import count
+
+    inspected = count(1)
+    failure_positions = {3, 8, 17} if failures == 3 else set(range(1, failures + 1))
+    report = sampling_risk.evaluate_bayesian_recipe(10_000_000, 'block',
+        lambda index: {'rule': 'recipe_score_below_single_source'} if next(inspected) in failure_positions else None, seed=7)
+    assert report['inspected'] == expected and report['failed'] == failures
+    assert report['status'] == ('failed' if failures == 3 else 'checked')
+    assert report['revision_required'] == (failures == 3)
+
+
+def test_bayesian_acceptance_only_revises_when_exact_population_cannot_pass():
+    from itertools import count
+
+    inspected = count(1)
+    report = sampling_risk.evaluate_bayesian_recipe(126, 'block',
+        lambda index: {'rule': 'recipe_score_below_single_source'} if next(inspected) <= 3 else None, seed=7)
+    assert report['failed'] == 3 and report['status'] == 'checked'
+    assert not report['revision_required']
+
+
+def test_bayesian_retry_continues_after_failed_formal_review(monkeypatch):
+    from ecodata.desktop import recommendations, service
+
+    population = 100_000
+    requests, development, final = [], [], []
+
+    initial = sampling_risk.evaluate_bayesian_recipe(population, 'block',
+        lambda index: {'rule': 'recipe_score_below_single_source'}, seed=7)
+    row = dict(task='C1:fusion', id='R1', steps=['initial'], execution_release={'status': 'failed'},
+               local_holdout_review=[dict(acceptance_sampling=initial, sampled_scores=[])])
+    plan = dict(target_model={'id': 'test'}, tasks=[
+        dict(id='C1:fusion', candidate='C1', operation='fusion', bayesian_recipe_gate=True, allowed_recipes=[
+            dict(id='R1', steps=['initial']), dict(id='R2', steps=['revision']), dict(id='R3', steps=['better'])])])
+
+    def send(preview, *args, **kwargs):
+        import json
+        request = json.loads(preview.summary)
+        assert request['current_development']['development_only']
+        assert request['current_development']['posterior_probability'] is None
+        assert not request['bias_evidence']['development_only']
+        assert request['bias_evidence']['failed'] > 0
+        assert 'inspected_indices' not in preview.summary
+        assert 'development_new' not in preview.summary
+        requests.append(request)
+        if len(requests) == 1:
+            return {'recipe': 'R1'}
+        if len(requests) == 2:
+            assert 'reply_issue' in request
+            return {'recipe': 'R2'}
+        assert [choice['id'] for choice in request['allowed_recipes']] == ['R3']
+        return {'recipe': 'R3'}
+
+    def run_trial(execution, steps):
+        scope = execution['bayesian_review_scope']
+        bad = steps == ['initial'] or (steps == ['revision'] and scope['mode'] != 'development')
+        audit = sampling_risk.evaluate_revision_sample(population, 'block',
+            lambda index: {'rule': 'recipe_score_below_single_source'} if bad else None, scope)
+        (development if scope['mode'] == 'development' else final).append((scope, steps, audit))
+        return dict(acceptance_sampling=audit, sampled_scores=[])
+
+    def review(scan, approved, plan, rows, gated):
+        report = run_trial(gated['C1', 'fusion'], rows[0]['steps'])
+        status = 'released' if report['acceptance_sampling']['status'] == 'checked' else 'failed'
+        rows[0].update(local_holdout_review=[report], execution_release={'status': status})
+
+    monkeypatch.setattr(service, 'send', send)
+    monkeypatch.setattr(recommendations, 'review_holdouts', review)
+    monkeypatch.setattr(recipe_trials, 'review', lambda scan, task_id, task, steps, **kwargs: run_trial(task, steps))
+    rows = [row]
+    recommendations.retry_bayesian_reviews({}, {}, plan, rows, {('C1', 'fusion'): {}},
+                                           mock=False, api_key='fixture', progress=None)
+    assert rows[0]['id'] == 'R3' and rows[0]['execution_release']['status'] == 'released'
+    assert rows[0]['final_verified_recommendation']
+    assert recommendations.finalize_recipes(plan, rows, mock=False, api_key='fixture', progress=None) is None
+    assert [scope['mask_phase'] for scope, _, _ in development] == [1, 1, 2, 2]
+    assert requests[2]['previous_development_trials'][0]['recipe'] == 'R2'
+    (failed_scope, _, failed), (scope, steps, result) = final
+    assert failed['status'] == 'failed'
+    assert scope['mask_phase'] == 3 and steps == ['better']
+    participants = set(scope['previous']) | set(scope['development_new'])
+    assert set(initial['inspected_indices']) <= participants
+    assert set(failed['inspected_indices']) <= set(scope['previous'])
+    assert set(failed_scope['development_new']) <= set(scope['previous'])
+    assert all(old in participants and new not in participants
+               for old, new in zip(result['inspected_indices'][::2], result['inspected_indices'][1::2]))
+    assert result['strata'][0]['inspected'] == result['strata'][1]['inspected']
+    assert result['excluded_as_failures'] == 0
+
+
+def test_single_group_rejection_recommends_again_and_scores_entire_batch():
+    first = dict(id='R1', task='C1:fusion', steps=['bad'])
+    second = dict(id='R2', steps=['good'])
+
+    def evaluate(option, scope):
+        def trial(index):
+            truth = np.array([10.])
+            candidate = truth if option['id'] == 'R2' else truth + 5
+            metrics, failure = recipe_trials.score(candidate, truth, truth, 'fixture', retained=truth)
+            return index, metrics, failure
+        return recipe_trials.audit(1, 'day', trial, scope=scope)
+
+    initial = evaluate(first, None)
+    assert not initial['acceptance_sampling']['revision_required']
+    requests = []
+
+    def send(payload):
+        requests.append(payload)
+        return {'recipe': 'R2'}
+
+    selected, final, history, status = recipe_trials.tune_recipe(
+        first, initial, [first, second], evaluate, send, None, (ValueError,))
+    assert status == 'passed' and selected['id'] == 'R2' and len(history) == 1
+    assert requests[0]['bias_evidence']['candidate_rmse_median'] == 5
+    assert final['acceptance_sampling']['census'] and final['acceptance_sampling']['posterior_probability'] == 1
+
+
+def test_stratified_posterior_matches_explicit_finite_hypergeometric_sum():
+    from math import comb
+
+    sizes, inspected, failed = (12, 89), (8, 8), (1, 0)
+    def weights(size, n, d):
+        return [comb(k, d) * comb(size-k, n-d) for k in range(size+1)]
+
+    old, new = [weights(*args) for args in zip(sizes, inspected, failed)]
+    expected = sum(a*b for i, a in enumerate(old) for j, b in enumerate(new) if 20*(i+j) < sum(sizes))
+    assert sampling_risk.stratified_posterior(sizes, inspected, failed) == pytest.approx(
+        expected / (sum(old)*sum(new)))
+    assert sampling_risk.stratified_posterior((20, 80), (20, 80), (1, 4)) == 0
+    assert sampling_risk.stratified_posterior((20, 80), (20, 80), (1, 3)) == 1
+    assert sampling_risk.stratified_posterior((63, 99_937), (63, 63), (1, 0)) >= .95
+
+
+def test_gapfill_retries_hide_different_reference_cells_in_the_same_group(monkeypatch):
+    from ecodata.desktop.grid_preparation import trial_recipe
+
+    values = np.arange(1., 65.).reshape(1, 8, 8)
+    ds = xr.Dataset({"precipitation": (("time", "lat", "lon"), values)},
+                    coords=dict(time=[np.datetime64("2025-01-01")], lat=range(8), lon=range(8)))
+    ds.precipitation.attrs.update(units="mm", physical_variable="precipitation",
+                                  spatial_semantics="cell_mean", temporal_semantics="accumulation")
+    seen = []
+
+    def score(candidate, baseline, truth, *args, **kwargs):
+        seen.append(set(truth))
+        return None, None
+
+    monkeypatch.setattr(recipe_trials, "score", score)
+    for phase in range(4):
+        trial_recipe([ds, ds.copy()], 0, [recipe_trials.FILL], mask_phase=phase, mask_seed=7)
+    assert all(len(points) == 16 for points in seen)
+    assert len(set.union(*seen)) == 64
+
+
 def row(path, kind, field):
     return dict(name=path.name, ref=(path, "", None, None), format=kind, fields=[field], bytes=path.stat().st_size)
 
@@ -126,8 +294,10 @@ def test_raster_and_mixed_grid_recipe_score_on_original_windows(tmp_path, kind):
     candidate = dict(task="C1:fusion", steps=steps,
                      local_holdout_review=[dict(report, field=fid) for _, fid, _ in binding])
     candidate["execution_release"] = release_gate.assess(scan, candidate, task, binding)
-    assert report["basis"] == "recipe_numeric_rejected" and report["acceptance_sampling"]["inspected"] == 1
-    assert fallback_evidence.eligible(candidate)
+    assert report["basis"] == "recipe_numeric_rejected"
+    audit = report["acceptance_sampling"]
+    assert audit["inspected"] == audit["failed"] == 2 and audit["posterior_probability"] == 0
+    assert not fallback_evidence.eligible(candidate)
 
 
 @pytest.mark.parametrize("kind", ["CSV", "Excel"])
@@ -284,7 +454,7 @@ def test_new_draw_can_be_replayed_and_missing_evidence_cannot_pass():
     assert "1 组缺少评分依据" in sampling_risk.recipe_summary(report)
 
 
-def test_cf_time_only_fields_reach_final_recommendation_by_day(tmp_path):
+def test_cf_time_only_fields_keep_self_reference_as_diagnostic_by_day(tmp_path):
     from ecodata.desktop import catalog_decision, discovery, recommendations
     from ecodata.desktop.scan import Scanner
 
@@ -302,14 +472,16 @@ def test_cf_time_only_fields_reach_final_recommendation_by_day(tmp_path):
     checked, gated = discovery.check(scan, {"C1": local},
                                      {"decisions": [{"candidate": "C1", "action": "fusion"}]}, approved)
     assert gated["C1", "fusion"]["route"] == "indexed_table_recipe"
-    # Historical fixed-recipe protocol still reproduces its NIST/final-confirmation gate.
     plan = recommendations.make_request(scan, approved, checked, gated,prepared_graph_service=False)
     recipes, _ = recommendations.recommend_plan(plan, [], mock=True)
     recommendations.review_holdouts(scan, approved, plan, recipes, gated)
-    audit = recipes[0]["local_holdout_review"][0]["acceptance_sampling"]
+    report = recipes[0]["local_holdout_review"][0]
+    audit = report["diagnostic_sampling"]
     assert (audit["unit"], audit["population"], audit["inspected"]) == ("withheld_day", 4, 4)
-    recommendations.finalize_recipes(plan, recipes, mock=True, api_key=None, progress=None)
-    assert recipes[0]["final_verified_recommendation"]
+    assert audit["failed"] == 0 and "acceptance_sampling" not in report
+    assert report["basis"] == "external_accuracy_reference_required"
+    assert recipes[0]["execution_release"]["status"] == "pending"
+    assert recommendations.finalize_recipes(plan, recipes, mock=True, api_key=None, progress=None) is None
 
 
 def test_station_grid_preserves_true_mixed_format_holdout(tmp_path):
@@ -375,24 +547,63 @@ def test_first_recommendation_checks_a_real_grid_pair_without_deep_read(tmp_path
     assert all("supplement" in exposures(scan, index, field) for index, field in fields)
     task, = plan["tasks"]
     assert task["sample_complete"]
-    assert all(0 < len(f["perturbed_samples"]) <= 4 for f in task["context"]["pair_details"])
+    assert all(len(f["perturbed_samples"]) == 48 for f in task["context"]["pair_details"])
+    evidence = task["pretrial_evidence"]
+    assert evidence["source_sample_counts"] == {
+        field["id"]: len(field["perturbed_samples"]) for field in task["context"]["pair_details"]}
+    assert evidence["sample_comparison"] == "unpaired_perturbed_examples"
+    assert set(evidence["distinguishing_steps"]) == {item["id"] for item in task["allowed_recipes"]}
+    assert "locked_holdout" not in json.dumps(evidence)
+    candidate = task["allowed_recipes"][0]
+    pretrial, = recommendations.validate(dict(recommendations=[dict(task=task["id"], recipe=candidate["id"],
+        reason="需要同一批参考检查", pretrial_assessment="uncertain")]), plan)
+    assert pretrial["pretrial_assessment"]["outlook"] == "uncertain"
+    assert not pretrial.get("final_verified_recommendation")
+    from ecodata.desktop import deepseek_transport
+    field_id = task["context"]["fields"][0]
+    calls = []
+
+    def fetch(request, opener, stage, digest, progress):
+        messages = json.loads(request.data)["messages"]
+        body = json.loads(messages[1]["content"])
+        calls.append(body)
+        if len(calls) == 1:
+            assert body["can_request_recommendation_evidence"]
+            assert all(len(field["perturbed_samples"]) == 48
+                       for field in body["tasks"][0]["context"]["pair_details"])
+            output = dict(evidence_requests=[dict(task=task["id"], kind=kind, target=target) for kind,target in (
+                ("field_metadata", field_id), ("numeric_samples", field_id),
+                ("document_excerpt", "E1"), ("numeric_samples", "D99.F1"))])
+        else:
+            assert len(calls) == 2 and "can_request_recommendation_evidence" not in body
+            metadata, samples, document, denied = body["recommendation_evidence"]
+            assert metadata["metadata"]["unit"] == "degC"
+            assert len(samples["perturbed_samples"]) == 16
+            assert document["excerpt"] == "已批准说明"
+            assert denied["status"] == "outside_scope"
+            output = dict(recommendations=[dict(task=task["id"], recipe=candidate["id"], reason="补问后建议试跑",
+                                                pretrial_assessment="uncertain")])
+        return dict(id=f"mock-{len(calls)}", choices=[dict(message=dict(content=json.dumps(output)))])
+
+    with monkeypatch.context() as patch:
+        patch.setattr(deepseek_transport, "fetch", fetch)
+        followup_plan = dict(plan, engineering_documents=[dict(id="E1", text="已批准说明")])
+        supplemented, receipt = recommendations.recommend_plan(followup_plan, [], scan=scan, api_key="test-only")
+        assert len(receipt["api_receipts"]) == 2 and receipt["evidence_followup_sha256"]
+        assert all(entry["context_budget"]["conservative_total"] <= 1_000_000 for entry in receipt["api_receipts"])
+        assert supplemented[0]["pretrial_assessment"]["outlook"] == "uncertain"
+        assert "execution_release" not in supplemented[0]
+        assert execution["locked_holdout"]["window"] == [0, 64, 64, 16]
     with pytest.raises(ValueError, match="未收到有效推荐"):
         recommendations.validate(dict(recommendations=[dict(task=task["id"], recipe="registry_advice",
                                  algorithms=["spatial.blend"])]), plan)
     recipes, _ = recommendations.recommend_plan(plan, [], mock=True)
     assert len(recipes) == 1 and recipe_trials.FILL in recipes[0]["steps"]
     recommendations.review_holdouts(scan, approved, plan, recipes, gated)
-    from ecodata.desktop import release_gate, service
-    assert recipes[0]["execution_release"]["status"] == "released" and not release_gate.allowed(recipes[0])
-    with monkeypatch.context() as patch:
-        def unavailable(*args, **kwargs):
-            raise TimeoutError("offline")
-        patch.setattr(service, "send", unavailable)
-        receipt = recommendations.finalize_recipes(plan, recipes, mock=False, api_key=None, progress=None)
-        assert receipt["status"] == "PLATFORM_FALLBACK"
-        assert not recipes[0].get("final_verified_recommendation") and not release_gate.allowed(recipes[0])
-    recommendations.finalize_recipes(plan, recipes, mock=True, api_key=None, progress=None)
-    assert recipes[0]["final_verified_recommendation"] and release_gate.allowed(recipes[0])
+    from ecodata.desktop import release_gate
+    assert recipes[0]["execution_release"]["status"] == "pending" and not release_gate.allowed(recipes[0])
+    assert recipes[0]["local_holdout_review"][0]["basis"] == "external_accuracy_reference_required"
+    assert recommendations.finalize_recipes(plan, recipes, mock=True, api_key=None, progress=None) is None
     index, field = fields[0]
     supplement = exposures(scan, index, field)["supplement"]
     supplement["windows"] = (*supplement["windows"], dict(row=64, column=0, width=4, height=4))

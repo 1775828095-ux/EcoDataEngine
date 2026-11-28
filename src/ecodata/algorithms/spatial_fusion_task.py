@@ -1352,7 +1352,6 @@ def execute_graph(parsed,request,audit,graph,folder):
     engine=SpatialSearch(task,folder,budget,11);key=engine.bind_graph(graph)
     graph=dict(key=key,records={n.id:engine.records[n.id] for n in engine.nodes(key)})
     for node in engine.nodes(key):
-        if node.operation not in COMPONENTS:raise ValueError('Unknown fixed spatial component')
         if node.operation=='spatial.source' and not 0<=node.parameters['index']<len(task.fields):
             raise ValueError('Fixed graph source binding differs')
         if node.operation in {'spatial.affine','spatial.ratio','spatial.aux_affine'} and not request.get('allow_training'):

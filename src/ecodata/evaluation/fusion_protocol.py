@@ -157,7 +157,8 @@ def fixed_recipe_cohort(native, template, variable, *, seed=0):
     count=reconstruction['cohort']['query_count']
     selected=reconstruction['selected']
     inputs=[values[:,:count][:,selected] for values in reconstruction['cohort']['sources']]
-    return protocol,dict(inputs=inputs,reference=reconstruction['reference'][:,selected])
+    return protocol,dict(inputs=inputs, reference=reconstruction['reference'][:,selected],
+                         query=reconstruction['query'], selected=selected, times=sources[0].time.values)
 
 
 def paired_report(single,multi,reference,indices,split):

@@ -20,14 +20,55 @@ def export_field(scan, index, field, *, phase, limit=None):
 
     row = scan["rows"][index]
     if not scan.get("on_demand"):
-        return export(row, field)
+        return export(row, field, limit=limit)
+    key = field_key(index, field)
+    if key in scan.get("station_reserved_fields", ()) or (phase == "field_probe" and station_probe_deferred(scan, index, field)):
+        return dict(status="unavailable", basis="station_review_reserved", perturbed_samples=[])
     record = source_record(scan, index, field)
-    payload = export(row, field, require_partition=True, record=record)
-    if limit is not None:
-        payload["perturbed_samples"] = payload["perturbed_samples"][:limit]
+    payload = export(row, field, require_partition=True, record=record, limit=limit)
     if payload["perturbed_samples"]:
         record_exposure(scan, index, field, phase, record)
     return payload
+
+
+def station_probe_deferred(scan, index, field):
+    """Delay numeric evidence for possible station/grid pairs until the split."""
+    from .discovery import field_identity, station_wind_components
+    from .station_grid import eligible
+
+    rows = scan["rows"]
+    current = rows[index]
+    quantity, _ = field_identity(current, field)
+
+    def matches(other, variable):
+        other_quantity, _ = field_identity(other, variable)
+        return (not quantity or not other_quantity or quantity == other_quantity
+                or station_wind_components(current, field, other, variable)
+                or station_wind_components(other, variable, current, field))
+
+    if current["format"] == "NetCDF":
+        return any(eligible(current, field, row) and any(not variable.get("axis") and matches(row, variable)
+                                                        for variable in row["fields"])
+                   for row in rows if row is not current)
+    return any(eligible(row, variable, current) and matches(row, variable)
+               for row in rows if row["format"] == "NetCDF" for variable in row.get("fields", ()))
+
+
+def reserve_station_fields(scan, gated, tasks):
+    from .station_grid import background_fields
+
+    reserved = scan.setdefault("station_reserved_fields", set())
+    for candidate in tasks:
+        task = gated.get((candidate["candidate"], candidate["operation"]), {})
+        if task.get("route") != "station_grid":
+            continue
+        reserved.update(field_key(task["grid_index"], field) for field in background_fields(scan, task))
+        index = task["table_index"]
+        fields = scan["rows"][index]["fields"]
+        field = next(field for field in fields if field["name"] == task["table_name"])
+        reserved.add(field_key(index, field))
+        if task.get("wind_components") and field.get("source_column"):
+            reserved.update(field_key(index, item) for item in fields if item["name"] == field["source_column"])
 
 
 def record_exposure(scan, index, field, phase, record):

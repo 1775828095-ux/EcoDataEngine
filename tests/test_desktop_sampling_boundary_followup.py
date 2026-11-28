@@ -174,8 +174,12 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
         assert rec[0]["execution_release"]["status"] == "pending"
         assert rec[0]["local_holdout_review"][0]["fusion_score_groups"] == 0
         return
-    assert rec[0]["execution_release"]["status"] == "released"
-    assert rec[0]["local_holdout_review"][0]["acceptance_sampling"]["rounds"] == 1
+    assert rec[0]["execution_release"]["status"] == "pending"
+    holdout = rec[0]["local_holdout_review"][0]
+    assert holdout["basis"] == "external_accuracy_reference_required"
+    acceptance = holdout["diagnostic_sampling"]
+    assert acceptance["acceptance_rule"] == "finite_population_uniform_prior"
+    assert acceptance["posterior_probability"] >= .95
     selected = dict(task, recipes=[picked["steps"]], runtime_fields=rec[0]["execution_fields"])
     result = selected_processing.run(scan, [("C1:fusion", selected)],
                                      tmp_path.parent / f"grid-pair-output-{scenario}", model_id="data_only")
@@ -219,7 +223,8 @@ def test_two_source_daily_workflow_compares_grids_and_recovers_incomplete_days(t
                 ds.to_netcdf(path, engine="scipy")
             paths.append(path)
         reports = review_pair(scan, rec[0], task, paths)
-        assert all(report["status"] == "checked" and report["independent"] for report in reports)
+        assert all(report["status"] == "pending" and report["independent"]
+                   and report["basis"] == "external_accuracy_reference_required" for report in reports)
         with pytest.raises(ValueError, match="时段与原数据重叠"):
             review_pair(scan, rec[0], task, [tmp_path / paths[0].name, paths[1]])
 

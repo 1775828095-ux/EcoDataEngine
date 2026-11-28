@@ -312,6 +312,8 @@ def review(scan, task, steps, *, independent=False):
             times=[item for item in times if repr(tuple(item)) in approved]
         cols, rows = (max(1, ceil(size/BLOCK) - int(0 < size % BLOCK < 4 and size > BLOCK)) if size else 0
                       for size in (shared.width, shared.height))
+        scope = task.get("bayesian_review_scope")
+        phase = scope["mask_phase"] if scope else None if independent else task.get("bayesian_mask_phase")
 
         def trial(index):
             time, cell = divmod(index, rows * cols)
@@ -336,15 +338,32 @@ def review(scan, task, steps, *, independent=False):
                                 method if method == "conservative" else Resampling.average)
                 predictions.append(remap(reduced, coarse_affine, a.crs, left.shape, affine, a.crs, method))
             mask = np.isfinite(predictions[0]) & np.isfinite(predictions[1])
+            if phase is not None:
+                points = recipe_trials.reference_positions(left.size, phase, index)
+                partition = np.zeros_like(mask)
+                partition.flat[points] = True
+                mask &= partition
             truth = np.where(mask, left, np.nan)
             candidate = combine(*predictions, task, steps, a.temporal)
             baselines = sorted(predictions, key=lambda values: np.nansum((values - truth)**2))
             metrics, failure = recipe_trials.score(candidate, baselines[0], truth, "reduced_scale_grid_proxy",
                                                    retained=np.stack(predictions), request=task.get("scoring_request"))
+            if metrics and a.crs.is_geographic and not (affine.b or affine.d):
+                from ecodata.evaluation.spatial_structure import compare_fields
+
+                coordinates = dict(lat=affine.f + (np.arange(truth.shape[0]) + .5) * affine.e,
+                                   lon=affine.c + (np.arange(truth.shape[1]) + .5) * affine.a)
+                attrs = dict(units=task["unit"])
+                reference = xr.DataArray(truth, dims=("lat", "lon"), coords=coordinates, attrs=attrs)
+                threshold = (task.get("scoring_request") or {}).get("event_threshold")
+                metrics["spatial_structure"] = {
+                    label: compare_fields(reference.copy(data=values), reference, threshold=threshold)
+                    for label, values in (("candidate", candidate), ("baseline", baselines[0]))
+                }
             return group, metrics, failure
 
         unit = "withheld_spatial_block" if a.times is None else "withheld_time_and_spatial_block"
-        return recipe_trials.audit(len(times) * rows * cols, unit, trial)
+        return recipe_trials.audit(len(times) * rows * cols, unit, trial, scope=scope)
 
 
 def run(scan, task_id, task, folder, model_id, progress):

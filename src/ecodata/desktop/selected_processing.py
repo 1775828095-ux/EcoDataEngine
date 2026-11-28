@@ -3,7 +3,7 @@ from .scan import assert_current
 from .service import ALGORITHMS, bundle, run_original_workbench, run_station_batch
 
 
-def run(scan, tasks, folder, progress=None, *, model_id=None,api_key=None):
+def run(scan, tasks, folder, progress=None, *, model_id=None,api_key=None,mock=False):
     from ecodata.core.recovery import session,attach
     from contextlib import nullcontext
     from ecodata.algorithms.registered_graph import recommendation_session
@@ -11,11 +11,11 @@ def run(scan, tasks, folder, progress=None, *, model_id=None,api_key=None):
     provider=prepared_graph_provider(api_key,progress) if any(task.get('autonomous_recommendation') for _,task in tasks) else None
     variables={v for _,task in tasks for v in task.get('autonomous_variables',[]) if v}
     with session(api_key=api_key,progress=progress) as recovery, (recommendation_session(provider,variables=variables) if provider else nullcontext()):
-        result=_run(scan,tasks,folder,progress,model_id=model_id)
+        result=_run(scan,tasks,folder,progress,model_id=model_id,api_key=api_key,mock=mock)
         return attach(result,folder,recovery)
 
 
-def _run(scan, tasks, folder, progress=None, *, model_id=None):
+def _run(scan, tasks, folder, progress=None, *, model_id=None,api_key=None,mock=False):
     from ecodata.core.exceptions import EcoDataError
     from ecodata.core.continuation import decision,receipt
     from . import gap_search, independent_alignment, pair_processing, reference_search, station_grid
@@ -91,7 +91,7 @@ def _run(scan, tasks, folder, progress=None, *, model_id=None):
     if research_tasks:
         from .research_dispatch import run as run_research
         try:
-            research = run_research(scan,research_tasks,folder/"research",progress)
+            research = run_research(scan,research_tasks,folder/"research",progress,api_key=api_key,mock=mock)
         except (EcoDataError,ValueError,OSError,RuntimeError,KeyError) as exc:
             failures.append(dict(task='研究附加步骤',reason=str(exc)))
     original = None

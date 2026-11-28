@@ -5,6 +5,74 @@ from ecodata.algorithms import platform_search as api
 from ecodata.algorithms.registered_graph import recommendation_session,has_recommender
 
 
+@pytest.mark.parametrize('stage', ['recommendation', 'station_proposal'])
+def test_recommendation_context_budget_trims_samples_and_keeps_metadata(monkeypatch, stage):
+    from copy import deepcopy
+    from ecodata.desktop import service
+
+    field_ids = ['D1.F1', 'D2.F1']
+    summary = dict(stage=stage, shared_algorithm_catalogue={'spatial.blend': {'name': '加权融合'}},
+                   engineering_documents=[{'id': 'E1', 'text': '降水累计'}],
+                   tasks=[dict(context=dict(pair_details=[dict(id=fid, header='降水', unit='mm/day',
+                              perturbed_samples=list(range(48))) for fid in field_ids]),
+                              pretrial_evidence=dict(source_sample_counts=dict.fromkeys(field_ids, 48)))])
+    expected = deepcopy(summary)
+    for field in expected['tasks'][0]['context']['pair_details']:
+        field['perturbed_samples'] = field['perturbed_samples'][:6]
+    expected['tasks'][0]['pretrial_evidence']['source_sample_counts'] = dict.fromkeys(field_ids, 6)
+    reference = service.preview(expected)
+    reserved = json.loads(reference.body)['max_tokens'] + service.DEEPSEEK_CHAT_OVERHEAD
+    monkeypatch.setattr(service, 'DEEPSEEK_CONTEXT_LIMIT', len(reference.body) + reserved)
+    approved = service.preview(summary)
+    envelope = json.loads(approved.body)
+    assert envelope['messages'][0]['content'] == json.loads(reference.body)['messages'][0]['content']
+    assert json.loads(envelope['messages'][1]['content']) == json.loads(approved.summary) == expected
+    assert len(approved.body) + reserved <= service.DEEPSEEK_CONTEXT_LIMIT
+    assert summary['tasks'][0]['pretrial_evidence']['source_sample_counts'] == dict.fromkeys(field_ids, 48)
+
+
+def test_initial_recommendation_uses_48_permitted_grid_samples_in_actual_messages(tmp_path):
+    import numpy as np
+    import pandas as pd
+    import xarray as xr
+    from ecodata.desktop import recommendations, service
+
+    path = tmp_path / 'rain.nc'
+    values = np.arange(800.).reshape(8, 10, 10)
+    xr.Dataset({'rain': (('time', 'lat', 'lon'), values)},
+               coords=dict(time=pd.date_range('2025-01-01', periods=8))).to_netcdf(path, engine='scipy')
+    field = dict(name='rain', unit='mm')
+    row = dict(ref=(path, '', None, None), bytes=path.stat().st_size, format='NetCDF', fields=[field],
+               recommendation_cutoff='2025-01-04')
+    scan = dict(rows=[row], on_demand=True)
+    pair = dict(fields=['D1.F1'], pair_details=[dict(id='D1.F1', unit='mm')])
+    recommendations.attach_samples(scan, [pair])
+    request = service.preview(dict(stage='recommendation', tasks=[dict(context=pair)]))
+    body = json.loads(request.body)
+    samples = json.loads(body['messages'][1]['content'])['tasks'][0]['context']['pair_details'][0]['perturbed_samples']
+    assert len(samples) == 48
+    assert {int(value) // 100 for value in samples} == {0, 1, 2}
+    assert len(request.body) + body['max_tokens'] + service.DEEPSEEK_CHAT_OVERHEAD <= 1_000_000
+
+
+def test_recommendation_is_checked_again_at_send(monkeypatch):
+    from ecodata.desktop import service
+
+    approved = service.preview(dict(stage='recommendation', tasks=[]))
+    reserved = json.loads(approved.body)['max_tokens'] + service.DEEPSEEK_CHAT_OVERHEAD
+    monkeypatch.setattr(service, 'DEEPSEEK_CONTEXT_LIMIT', len(approved.body) + reserved - 1)
+    with pytest.raises(service.RequestCapacityError):
+        service.send(approved, approved.digest, mock=True)
+
+
+def test_recommendation_context_budget_blocks_an_oversized_catalogue(monkeypatch):
+    from ecodata.desktop import service
+
+    monkeypatch.setattr(service, 'DEEPSEEK_CONTEXT_LIMIT', service.DEEPSEEK_CHAT_OVERHEAD + 30_000)
+    with pytest.raises(service.RequestCapacityError, match='超过 100 万 token'):
+        service.preview(dict(stage='recommendation', tasks=[], shared_algorithm_catalogue={'A': '降水' * 4000}))
+
+
 def test_old_public_spatial_entry_consumes_prepared_graph_and_hides_held_labels(tmp_path):
     from test_spatial_relationship_fusion import fixture,BUDGET
     items,request,_=fixture()
@@ -60,6 +128,36 @@ def test_selected_workflow_owns_request_local_provider(monkeypatch,tmp_path):
     monkeypatch.setattr(selected_processing,'_run',lambda *a,**kw:seen.append(has_recommender()) or {})
     selected_processing.run({},[('C1:fusion',dict(autonomous_recommendation=True))],tmp_path)
     assert seen==[True] and not has_recommender()
+
+
+@pytest.mark.parametrize('selection', [dict(autonomous_recommendation=True),
+    dict(recommended_graphs=[dict(id='baseline', scope=dict(variable='precipitation'),
+                                  graph=dict(nodes=[], output='source:0'))])])
+def test_precipitation_registry_selection_reaches_search_without_legacy_blend(monkeypatch, tmp_path, selection):
+    import numpy as np
+    import xarray as xr
+    from ecodata.desktop import independent_alignment, local_search
+
+    days = np.arange('2024-01-01', '2024-01-04', dtype='datetime64[D]')
+    grid = xr.Dataset({'precipitation': (('time', 'lat', 'lon'), np.ones((3, 2, 2))),
+                       'time_bounds': (('time', 'bounds'), np.column_stack((days, days + 1)))},
+                      coords=dict(time=days, lat=[0., 1.], lon=[0., 1.]))
+    sources = [grid.copy(), grid.copy()]
+    monkeypatch.setattr(independent_alignment, 'assert_current', lambda _: None)
+    monkeypatch.setattr(independent_alignment, 'prepare', lambda *args: (
+        [{'product': 'left'}, {'product': 'right'}], {}, sources, sources, {}, {}, 0, days, days[-1:]))
+
+    class SearchReached(RuntimeError):
+        pass
+
+    def submit(inputs, request, folder, **kwargs):
+        assert len(inputs) == 2
+        raise SearchReached
+
+    monkeypatch.setattr(local_search, 'submit', submit)
+    task = dict(route='independent_grid_search', recipes=[['fusion.series_missing_fallback']], seeds=[], **selection)
+    with pytest.raises(SearchReached):
+        independent_alignment.run({}, [('C1:fusion', task)], tmp_path)
 
 
 def test_original_workbench_owns_same_request_local_provider(monkeypatch,tmp_path):

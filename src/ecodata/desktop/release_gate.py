@@ -22,6 +22,12 @@ def assess(scan, recommendation, task, fields):
             status, reason = "pending", "new_independent_evidence_required"
         elif status == "failed":
             pass
+        elif (recommendation.get("station_two_stage") and reason == "joint_recipe_acceptance_passed"
+              and status == "checked"):
+            from .station_recommendation import MIN_FORMAL
+
+            if review.get("count", 0) < MIN_FORMAL:
+                status, reason = "pending", "station_formal_minimum"
         elif joint:
             if reason != "joint_recipe_acceptance_passed":
                 if review.get("independent") and status == "checked" and "acceptance_sampling" not in review:
@@ -145,6 +151,7 @@ def explanation(release):
     labels = {
         "no_shared_holdout_days": "两源共同时间范围内可独立回检的 UTC 日为 0，需补充两源重叠的独立时段",
         "no_disjoint_partition": "在两源共同覆盖内没有可独立回检的分组，需补充独立数据",
+        "external_accuracy_reference_required": "需要独立实测或第三方参考；输入产品重建评分仅供诊断",
         "insufficient_sample_coverage": "首轮可用样本不足，需补充覆盖",
         "initial_recommendation_unavailable": "首轮 DeepSeek 推荐未完成，请重新请求推荐",
         "precipitation_time_bounds_or_unit_missing": "降水单位或统计时间区间缺少可核实依据",
@@ -160,6 +167,7 @@ def explanation(release):
         "recipe_coverage_budget_insufficient": "留出数据或读取预算不足以完成整套方案评分",
         "recipe_scoring_reference_insufficient": "部分留出组缺少可比较的评分参考",
         "recipe_numeric_rejected": "整套方案的留出试跑失败次数超过允许值",
+        "station_formal_minimum": "正式初筛至少需要 6 个可评分的留出实测点",
         "paired_independent_recipe_required": "需提供两份未外发的独立数据复验整套方案",
         "joint_recipe_adapter_unavailable": "此组合需要能试跑完整方案的本地适配器及评分参考",
         "joint_recipe_index_required": "缺少可按站点或月份读取的本地表格索引",

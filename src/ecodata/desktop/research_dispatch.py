@@ -46,6 +46,11 @@ def discover(scan, model=None):
         tool = task.get("tool")
         label = LABELS.get(tool,"未知科研工具") if isinstance(tool,str) else "未知科研工具"
         tasks.append(dict(file=row["name"],tool=tool,label=label,request=task))
+    if model == "wrf" and not any(task["tool"] == "wrf_station_gap" for task in tasks):
+        from .wrf_station_gap import LABEL, TOOL, discover as discover_wrf_gap
+        task = discover_wrf_gap(scan)
+        if task:
+            tasks.append(dict(file=task["grid"], tool=TOOL, label=LABEL, request=task))
     return tasks
 
 
@@ -198,7 +203,7 @@ def neural(task, resources, stage, *, comparison):
     return dict(status="PASS",report=result.report)
 
 
-def run(scan, tasks, folder, progress=None):
+def run(scan, tasks, folder, progress=None, *, api_key=None, mock=False):
     import xarray as xr
     from ecodata.algorithms.numerical_search import RETIRED_MESSAGE
 
@@ -221,6 +226,9 @@ def run(scan, tasks, folder, progress=None):
                 outcome = raster(task,data,stage)
             elif tool in ("neural_reconstruction","neural_comparison"):
                 outcome = neural(task,data,stage,comparison=tool=="neural_comparison")
+            elif tool=="wrf_station_gap":
+                from .wrf_station_gap import run as fill_station_gap
+                outcome = fill_station_gap(scan, task, stage, progress, api_key=api_key, mock=mock)
             elif tool=="hourly_search":
                 raise ValueError(RETIRED_MESSAGE)
             else:
@@ -248,5 +256,8 @@ def run(scan, tasks, folder, progress=None):
             raise ValueError("科研产物 ZIP 回读校验失败")
         members = z.namelist()
     assert_current(scan)
+    manifest_data = dict(native_ready=False, preparation={})
+    if records and all(record['tool'] == 'wrf_station_gap' for record in records):
+        manifest_data['task_scope'] = 'wrf_station_gap'
     return dict(original_archive=archive,archive_members=members,source_formats=[],
-                manifest=dict(native_ready=False,preparation={}),research_records=records)
+                manifest=manifest_data,research_records=records)

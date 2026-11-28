@@ -81,6 +81,21 @@ def test_wind_component_not_silently_treated_as_speed():
                  {'status':'equivalent','quantity':'wind_speed'})
 
 
+def test_camx_temperature_header_and_noaa_units_match_without_online_hint():
+    from ecodata.desktop.discovery import pair_units
+
+    camx = dict(name="t2", long_name="temperature at 2 m", unit="K")
+    noaa = dict(name="TMP.air_temperature", standard_name="air_temperature", unit="degC")
+    report = pair_units({}, camx, {}, noaa)
+    assert report["quantity"] == "air_temperature"
+    assert report["status"] == "convertible"
+    assert report["offset"] == pytest.approx(273.15)
+    assert pair_units({}, dict(camx, long_name="standard deviation of temperature at 2 m"), {},
+                      noaa)["status"] == "physical_identity_unconfirmed"
+    assert pair_units({}, dict(camx, standard_name="surface_temperature"), {},
+                      noaa)["status"] == "quantity_conflict"
+
+
 def test_comparison_does_not_fit_an_unrequested_bias(monkeypatch):
     from types import SimpleNamespace
     import pandas as pd

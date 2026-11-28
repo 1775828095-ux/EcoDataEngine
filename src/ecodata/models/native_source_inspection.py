@@ -74,7 +74,10 @@ def inspect_sources(model, files, records):
             issues.append(dict(file=control,message=('工程引用尚未按需核对：' if partial_inventory else '工程实际引用缺失：')+key+' → '+target));return
         claim(target,'engineering_dependency','工程控制明确引用：'+control+' / '+key)
     for row in records:
-        name=row['file']; base=PurePosixPath(name).name.lower()
+        name=row['file']
+        if not name and row.get('partial_inventory'):
+            continue
+        base=PurePosixPath(name).name.lower()
         facts=row.get('facts') or {}; attrs=facts.get('attributes',{}); variables=facts.get('variables',{})
         if model=='wrf' and ('REAL_EM' in str(attrs.get('TITLE','')) or 'OUTPUT FROM WRF' in str(attrs.get('TITLE',''))):
             if base.startswith('wrfout'):
@@ -140,6 +143,10 @@ def inspect_sources(model, files, records):
                 if len(met)!=1 or len(aux)!=1:raise ValueError('METDAT/AUXEXT缺少或重复')
                 reference(name,met[0],'METDAT');reference(name,met[0]+'.'+aux[0],'AUXEXT')
             except (ValueError,UnicodeError) as exc:issues.append(dict(file=name,message='CALPUFF控制读取失败：'+str(exc)))
+        elif model=='calpuff' and base in {'calpuff.inp', 'cpuf.inp'}:
+            message = ('CALPUFF 控制文件尚未完整读取。' if name in unread else
+                       '控制文件头不符合当前 CALPUFF 7.0 工程入口。')
+            issues.append(dict(file=name, message=message))
         elif model=='camx' and b'&camx_control' in payloads[name][:4096].lower():
             try:
                 assignments={}
