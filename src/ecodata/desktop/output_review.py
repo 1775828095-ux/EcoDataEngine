@@ -419,9 +419,11 @@ def cards(result, check):
                               selection_reference=reference,
                               seed_usage=search.get('seed_usage'),steps=[*alignment,*methods],alternative=alternative,
                               reason=(benefit + "。" if benefit else "") + check["conversion_reason"]))
-            if row['selected'] and (search['evidence'].get('reference_frontier') or {}).get('tradeoff'):
-                items[-1]['selection_label']='默认误差方案；另有结构优选'
-                items[-1]['selection_reason']+=' 误差与细节存在取舍；已保留结构优选产品，不能把本方案称为全面最优。'
+            frontier=search['evidence'].get('reference_frontier') or {}
+            if row['selected'] and frontier.get('tradeoff'):
+                items[-1]['selection_label']='默认交付方案；另有多尺度优选'
+                items[-1]['selection_reason']+=' 误差、结构或中间尺度存在取舍；已保留相应备选，不能把本方案称为全面最优。'
+
     for entry in result.get("original_report", []) if result.get("mode")=="selected_operations" else []:
         reports=entry['report']
         if entry.get('backend')=='statistical_preprocessing' and isinstance(reports,dict):
@@ -619,12 +621,25 @@ def selection_summaries(items, failures, recommendations, *, result=None):
                 summaries.append(summary)
     result=result or {}
     for task,search in searches(result).items():
-        frontier=search.get('reference_frontier') or search.get('evidence',{}).get('reference_frontier')
+        evidence=search.get('evidence',{})
+        frontier=search.get('reference_frontier') or evidence.get('reference_frontier')
         if frontier and frontier.get('keys'):
-            tradeoff=frontier.get('tradeoff')
-            summaries.append(dict(task=task,title='误差与细节联合筛选',performed=True,
-                reason=(f"保留 {len(frontier['keys'])} 个互有优势的可执行方案；误差优选与梯度结构优选不同，分别保留产品。没有依据合成唯一综合冠军。" if tradeoff else
-                    '误差与梯度结构的优选一致；仅限当前参考和评价队列，不代表全局真实精度。')))
+            has_intermediate='intermediate_RMSE' in frontier.get('metrics',[])
+            dimensions='参考误差、梯度结构和中间尺度误差' if has_intermediate else '参考误差和梯度结构'
+            reason=(f"按{dimensions}比较，得到 {len(frontier['keys'])} 个互有优势的方案。"
+                    if frontier.get('tradeoff') else f'按{dimensions}比较，优选方案一致。')
+            summaries.append(dict(task=task,title='空间误差与细节联合筛选',performed=True,
+                reason=reason+'结论限于当前参考和评价样本。'))
+        middle=search.get('intermediate_scale') or evidence.get('intermediate_scale')
+        if middle and middle.get('status')=='PASS':
+            single=middle['scores']['SINGLE_SOURCE']['RMSE']
+            multi=middle['scores']['MULTISOURCE']['RMSE']
+            summaries.append(dict(task=task,title='中间尺度分辨率对比',performed=True,
+                reason=f"在同一中间网格的 {middle['count']} 个有效格点样本上，单源 RMSE 为 {single:.5g}，"
+                       f"融合 RMSE 为 {multi:.5g}。两者均对照同一份原生细网格参考的面积聚合值。"))
+        elif middle and (evidence.get('evaluation_protocol') or {}).get('intermediate_scale'):
+            summaries.append(dict(task=task,title='中间尺度分辨率对比',performed=True,
+                reason='本次缺少可供单源和融合共同评分的中间尺度证据。'))
         scope=search.get('scope_report') or search.get('evidence',{}).get('scope_report')
         if not scope:continue
         for comparison in scope.get('comparisons',[]):

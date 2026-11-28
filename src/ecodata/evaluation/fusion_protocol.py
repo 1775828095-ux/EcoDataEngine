@@ -109,6 +109,14 @@ def prepare(task, times, seed):
         selected=np.array(split['selection_ids'],int);test=np.array(split['test_ids'],int)
         labels=values[:,selected]
         support=sha256(VERSION.encode()+repr((selected.tolist(),[str(t) for t in times])).encode()+query.tobytes()+np.isfinite(labels).tobytes()).hexdigest()
+        from ecodata.evaluation.intermediate_scale import prepare_grid
+        intermediate=prepare_grid(reference,degraded[reference_index])
+        intermediate_plan=dict(status='READY' if intermediate is not None else 'INTERMEDIATE_GRID_UNAVAILABLE',
+            reference='Same withheld native finer product used for fine scoring',
+            coarse_endpoint='Degraded grid of the same reference product in the reduced-scale experiment',
+            operator='Shared spherical area-weighted cell means; only complete cells inside each evaluation split')
+        if intermediate is not None:
+            intermediate_plan['steps_degrees']=intermediate['steps_degrees']
         plan.update(mode='REDUCED_SCALE_PRODUCT_RECONSTRUCTION',reference_source=reference.attrs['source_id'],
             reference_role='Original native finer product, not independent environmental truth',
             factor=2,operator='Existing spherical area overlap, complete native cells, no interpolation truth',
@@ -118,7 +126,7 @@ def prepare(task, times, seed):
             reference_shape=list(values.shape),degraded_shapes=[list(d[variable].shape) for d in degraded],
             target_grid_shape=[reference.sizes['lat'],reference.sizes['lon']],
             fixed_support_sha256=support,location_split=split,conditioning_count=len(sxy),
-            spatial_domain=domain,
+            spatial_domain=domain,intermediate_scale=intermediate_plan,
             selection_count=int(np.isfinite(labels).sum()),test_count=int(np.isfinite(values[:,test]).sum()),
             limitations=['Scale transfer is an assumption; degradation is not the true sensor error model',
                 'Shared upstream observations may correlate product errors',
@@ -128,7 +136,8 @@ def prepare(task, times, seed):
             degraded_input_sha256=[sha256(d[variable].values.tobytes()).hexdigest() for d in degraded])
         cohort=dict(y=conditioning[variable].values.reshape(len(times),-1),query_count=len(query),
             sources=sources,aux=[],sxy=sxy,allxy=np.concatenate([query,sxy]))
-        return plan,dict(cohort=cohort,reference=values,selected=selected,test=test,split=split,query=query)
+        return plan,dict(cohort=cohort,reference=values,selected=selected,test=test,split=split,query=query,
+                         intermediate_grid=intermediate)
     except ValueError as exc:
         plan['missing_evidence']=[str(exc)]
         return plan,None
