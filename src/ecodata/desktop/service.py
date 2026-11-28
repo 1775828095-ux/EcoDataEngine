@@ -116,6 +116,7 @@ def fusion_evidence(search):
                 holdout_scores=schemes,holdout_rmse_reduction=delta,
                 reference_basis=comparison.get("selection_reference_basis") or assessment.get("reference_basis") or comparison.get("reference_basis"),
                 evaluation_protocol=search.get('evaluation_protocol'),source_ablations=comparison.get('source_ablations',[]),
+                intermediate_scale=comparison.get('intermediate_scale'),
                 coarse_diagnostics={name:row.get('coarse_reference_diagnostic') for name,row in comparison.get('families',{}).items()},
                 paired_selection=comparison.get('paired_selection'),
                 selection_metric=comparison.get('selection_metric'),

@@ -4,6 +4,25 @@ import pytest
 from test_required_target_grid import task_and_inputs,BUDGET
 from ecodata.algorithms.spatial_fusion_task import SpatialSearch
 from ecodata.evaluation.fusion_protocol import prepare,degrade,remap
+from ecodata.evaluation.intermediate_scale import prepare_grid,score
+
+
+def test_intermediate_uses_actual_grid_geometry_and_only_complete_held_cells():
+    task,_,_=task_and_inputs()
+    coarse,fine=task.native_fields
+    grid=prepare_grid(fine,coarse)
+    assert all(s['fine']<s['intermediate']<s['coarse'] for s in grid['steps_degrees'].values())
+    assert prepare_grid(fine,fine) is None
+    reference=fine.temperature.values.reshape(len(fine.time),-1)
+    prediction=reference+2
+    indices=np.arange(reference.shape[1]//2)
+    measured=score(grid,prediction,reference,indices)
+    hidden=reference.copy()
+    hidden[:,len(indices):]+=1000
+    assert measured==score(grid,prediction,hidden,indices)
+    assert measured['RMSE']==pytest.approx(2)
+    assert 0<measured['count']<score(grid,prediction,reference,np.arange(reference.shape[1]))['count']
+    assert score(grid,prediction,reference,[0])['status']=='NO_COMPLETE_INTERMEDIATE_CELLS'
 
 
 def test_all_sources_are_degraded_and_reference_is_geometry_selected():
@@ -55,6 +74,12 @@ def test_no_source_count_bonus_and_real_ablations_share_one_queue(tmp_path):
         assert row['coarse_reference_diagnostic']['used_for_selection'] is False
     report=engine.comparison_report(engine.best())
     assert len(report['source_ablations'])==2 and report['paired_selection']
+    middle=report['intermediate_scale']
+    assert middle['status']=='PASS'
+    single,multi=middle['scores']['SINGLE_SOURCE'],middle['scores']['MULTISOURCE']
+    assert single['support_sha256']==multi['support_sha256']
+    assert single['count']==multi['count']==middle['count']
+    assert middle['RMSE_change']==pytest.approx(multi['RMSE']-single['RMSE'])
     for item in report['source_ablations']:
         row=next(r for r in engine.rows if r['key']==item['best_key'])
         assert item['omitted_source'] not in row['source_identities']
@@ -87,13 +112,19 @@ def test_unknown_policy_rejected_and_legacy_replay_is_explicit(tmp_path):
 
 def test_desktop_evidence_exposes_new_score_and_separate_coarse_diagnostic(tmp_path):
     from ecodata.desktop.service import fusion_evidence
+    from ecodata.desktop.output_review import selection_summaries
     task,_,_=task_and_inputs();engine=SpatialSearch(task,tmp_path,BUDGET,11)
     engine.execute(engine.leaves[0])
+    engine.execute(engine.intern('spatial.blend',engine.leaves[:2],dict(weight=.5)))
     comparison=engine.comparison_report(engine.best())
     info=fusion_evidence(dict(selection_comparison=comparison,evaluation_protocol=engine.evaluation_plan))
     assert info['reference_basis']=='REDUCED_SCALE_PRODUCT_RECONSTRUCTION'
     assert info['coarse_diagnostics']['SINGLE_SOURCE']['used_for_selection'] is False
     assert not info['independence_verified']
+    assert info['intermediate_scale']['status']=='PASS'
+    rows=selection_summaries([],[],[],result=dict(grid_searches=dict(test=dict(evidence=info))))
+    middle=next(row for row in rows if row['title']=='中间尺度分辨率对比')
+    assert '单源 RMSE' in middle['reason'] and '融合 RMSE' in middle['reason']
 
 
 def test_evaluation_predictions_use_public_flat_download_contract():

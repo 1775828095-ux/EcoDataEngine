@@ -286,6 +286,13 @@ def reference_frontier(rows):
     for item in structure:item['used_for_selection']=True
     metrics=['reference_error','gradient_RMSE_per_cell']
     values=[[float(r['metrics']['objective']),s['gradient_RMSE_per_cell']] for r,s in zip(rows,structure)]
+    intermediate=[r.get('metrics',{}).get('intermediate_scale',{}) for r in rows]
+    use_intermediate=all(s.get('status')=='PASS' and s.get('count',0)>0 and
+        numeric(s.get('RMSE')) and s.get('support_sha256') for s in intermediate)
+    use_intermediate=use_intermediate and len({s['support_sha256'] for s in intermediate})==1
+    if use_intermediate:
+        metrics.append('intermediate_RMSE')
+        for value,s in zip(values,intermediate):value.append(s['RMSE'])
     if all(s.get('spectrum_status')=='PASS' and numeric(s.get('normalized_spectrum_L1')) for s in structure):
         metrics.append('normalized_spectrum_L1')
         for value,s in zip(values,structure):value.append(s['normalized_spectrum_L1'])
@@ -303,9 +310,14 @@ def reference_frontier(rows):
     front=[rows[int(i)] for i in indices]
     error_key=min(front,key=lambda r:(r['metrics']['objective'],r['metrics']['spatial_structure']['gradient_RMSE_per_cell'],str(r['key'])))['key']
     gradient_key=min(front,key=lambda r:(r['metrics']['spatial_structure']['gradient_RMSE_per_cell'],r['metrics']['objective'],str(r['key'])))['key']
-    return dict(base,status='TRADEOFF' if error_key!=gradient_key else 'ALIGNED_OBJECTIVES',keys=keys,
+    intermediate_key=None
+    if use_intermediate:
+        intermediate_key=min(front,key=lambda r:(r['metrics']['intermediate_scale']['RMSE'],
+            r['metrics']['objective'],r['metrics']['spatial_structure']['gradient_RMSE_per_cell'],str(r['key'])))['key']
+    tradeoff=error_key!=gradient_key or (intermediate_key is not None and error_key!=intermediate_key)
+    return dict(base,status='TRADEOFF' if tradeoff else 'ALIGNED_OBJECTIVES',keys=keys,
         metrics=metrics,minimum_error_key=error_key,minimum_gradient_error_key=gradient_key,
-        tradeoff=error_key!=gradient_key,support_sha256=structure[0]['support_sha256'],
+        minimum_intermediate_error_key=intermediate_key,tradeoff=tradeoff,support_sha256=structure[0]['support_sha256'],
         universal_winner=False,rule='Exclude Pareto-dominated measured candidates; retain genuine tradeoffs without invented weights',
         evidence=[dict(key=r['key'],losses=v,nondominated=r['key'] in keys) for r,v in zip(rows,values)])
 

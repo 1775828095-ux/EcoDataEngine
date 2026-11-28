@@ -706,6 +706,16 @@ class SpatialSearch:
                 best_key=winner['key'] if winner else None,metrics=winner['metrics'] if winner else None,
                 coarse_reference_diagnostic=winner.get('coarse_reference_diagnostic') if winner else None,
                 blocked_validation=winner.get('blocked_validation') if winner else None)
+        intermediate_scores={
+            name: (row['metrics'] or {}).get('intermediate_scale', dict(status='NOT_EVALUATED'))
+            for name,row in families.items()
+        }
+        single=intermediate_scores['SINGLE_SOURCE']
+        multi=intermediate_scores['MULTISOURCE']
+        intermediate_comparison=dict(status='NOT_COMPARABLE', scores=intermediate_scores)
+        if single['status']==multi['status']=='PASS' and single['support_sha256']==multi['support_sha256']:
+            intermediate_comparison.update(status='PASS', count=single['count'],
+                RMSE_change=multi['RMSE']-single['RMSE'])
         ablations=[]
         for source in ['field:'+d.attrs['source_id'] for d in self.task.fields]:
             rows=[r for r in self.rows if r['status']=='PASS' and source not in r['source_identities']]
@@ -731,7 +741,7 @@ class SpatialSearch:
         return dict(protocol='spatial_selection_assessment_v2',evaluation_protocol=self.evaluation_plan,
             decision_after_scoring=True,selection_metric=best['metrics'].get('objective_name','RMSE'),
             fixed_support_sha256=[f['support_sha256'] for f in self.folds],
-            families=families,selected_key=best['key'],selected_family=best['source_family'],
+            families=families,intermediate_scale=intermediate_comparison,selected_key=best['key'],selected_family=best['source_family'],
             comparison_status='BOTH_FAMILIES_SCORED' if all(f['passed'] for f in families.values()) else 'COMPARISON_INCOMPLETE_OR_SINGLE_SOURCE_ONLY',
             reference_basis='PRIMARY_GRID_RECONSTRUCTION_PROXY' if self.task.self_reference else 'HELD_STATION_OBSERVATIONS',
             selection_reference_basis=self.evaluation_plan['mode'],source_ablations=ablations,paired_selection=paired,paired_date_regions=paired_blocks,
@@ -774,6 +784,9 @@ class SpatialSearch:
                     from ecodata.evaluation.spatial_structure import paired_grid
                     schemes[name]['metrics']['spatial_structure']=paired_grid(predictions[key],r['reference'],r['query'],times,index,
                         self.request['unit'],threshold=self.request.get('event_threshold'))
+                    from ecodata.evaluation.intermediate_scale import score as score_intermediate
+                    schemes[name]['metrics']['intermediate_scale']=score_intermediate(
+                        r.get('intermediate_grid'),predictions[key],r['reference'],index)
             return dict(status='PASS' if schemes else 'NO_SEPARATE_LOCATION_TEST',used_for_selection=False,
                 source='FROZEN_REDUCED_SCALE_OUTER_BLOCKS',reference_basis=self.evaluation_plan['mode'],
                 statistical_independence_verified=False,accuracy_improvement='NOT_ESTABLISHED',schemes=schemes,
@@ -1023,6 +1036,9 @@ class SpatialSearch:
                 r=self.reconstruction
                 row['metrics']['spatial_structure']=paired_grid(predicted,r['reference'],r['query'],self.search_times,r['selected'],self.request['unit'],
                     threshold=self.request.get('event_threshold'))
+                from ecodata.evaluation.intermediate_scale import score as score_intermediate
+                row['metrics']['intermediate_scale']=score_intermediate(
+                    r.get('intermediate_grid'),predicted,r['reference'],r['selected'])
             row['metrics']['objective']=report['objective'] if selection_policy=='date_region_v1' else rmse
             row['metrics']['objective_name']='equal_date_region_RMSE' if selection_policy=='date_region_v1' else 'pooled_RMSE'
             row['reconstruction_reference_used_for_selection']=self.reconstruction is not None
@@ -1206,9 +1222,10 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     comparison=search.comparison_report(best)
     frontier=search.reference_frontier()
     structure_key=frontier.get('minimum_gradient_error_key')
+    intermediate_key=frontier.get('minimum_intermediate_error_key')
     save(folder/'selection_freeze.json',dict(key=best['key'],baseline_key=comparison['families']['SINGLE_SOURCE']['best_key'],
         graph=search.records,review_axes=search.review_axes,confirmation_read=False,
-        reference_frontier=frontier,structure_key=structure_key))
+        reference_frontier=frontier,structure_key=structure_key,intermediate_key=intermediate_key))
     out,trace=search.product(best['key']);path=folder/'product.nc';out.to_netcdf(path,engine='h5netcdf')
     with xr.open_dataset(path,engine='h5netcdf') as readback:xr.testing.assert_equal(out,readback.load())
     recommended_keys=list(dict.fromkeys(key for receipt in search.recommendation_receipts if receipt.get('status')=='PASS' for key in receipt.get('keys',[])))
@@ -1260,7 +1277,10 @@ def submit(parsed,request,audit,folder,*,budget,seed=11,progress=None):
     delivered_key=delivered_graph['key']
     delivered_graph['records']={n.id:search.records[n.id] for n in search.nodes(delivered_key)}
     retained_products=[];exported={delivered_key:str(path)}
-    for label,key in [('baseline',baseline_key),('structure_preferred',structure_key)]+[('ds_recommendation_'+str(i),key) for i,key in enumerate(recommended_keys[:2])]:
+    alternatives=[('baseline',baseline_key),('structure_preferred',structure_key)]
+    alternatives.extend(('ds_recommendation_'+str(i),key) for i,key in enumerate(recommended_keys[:2]))
+    alternatives.append(('intermediate_preferred',intermediate_key))
+    for label,key in alternatives:
         if key is None:continue
         try:
             if key not in exported:

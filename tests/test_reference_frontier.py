@@ -52,6 +52,25 @@ def test_unknown_and_different_reference_queue_cannot_win_by_zero_score():
  assert reference_frontier(rows)['status']=='STRUCTURE_QUEUES_DIFFER'
 
 
+def test_intermediate_error_can_keep_a_fusion_candidate_without_a_source_bonus():
+ from ecodata.evaluation.intermediate_scale import prepare_grid,score
+ y=field(np.zeros((6,6)))
+ coarse=y.isel(lat=slice(0,None,2),lon=slice(0,None,2))
+ grid=prepare_grid(y,coarse)
+ rows=[]
+ for key,prediction in [('single',y+.5),('fusion',y+(-1.)**y.lon)]:
+  result=score(grid,prediction.values.reshape(1,-1),y.values.reshape(1,-1),np.arange(y.size))
+  rows.append(dict(key=key,status='PASS',metrics=dict(objective=float(np.sqrt(np.mean(prediction.values**2))),
+      spatial_structure=compare_fields(prediction,y),intermediate_scale=result)))
+ frontier=reference_frontier(rows)
+ assert frontier['minimum_error_key']=='single'
+ assert frontier['minimum_intermediate_error_key']=='fusion'
+ assert set(frontier['keys'])=={'single','fusion'} and frontier['tradeoff']
+ rows[1]['metrics']['intermediate_scale']['support_sha256']='another_queue'
+ assert reference_frontier(rows)['keys']==['single']
+ assert 'intermediate_RMSE' not in reference_frontier(rows)['metrics']
+
+
 def test_measured_structure_option_is_actual_mutation_parent():
  from ecodata.algorithms.spatial_fusion_task import SpatialSearch
  search=SpatialSearch.__new__(SpatialSearch)
